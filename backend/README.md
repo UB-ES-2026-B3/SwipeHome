@@ -309,6 +309,37 @@ login y logout. GET /api/auth/me ya permite consultar la identidad al recargar.
 El backend ya reconoce las cookies en las solicitudes siguientes mediante
 request.user. No se implementa infraestructura ni se realizan push o merges.
 
+## Continuidad para implementar login (US2)
+
+Login sigue pendiente: POST /api/auth/login recibe email y password, sin rol.
+Su codigo de exito y cuerpo exacto deben acordarse antes de implementarlo;
+200 con los mismos campos de identidad que registro/me es una propuesta.
+
+Reutiliza accounts.User, NormalizedEmailField, UserManager.normalize_email,
+las migraciones existentes y SQLite local. No crees otra tabla de usuarios ni
+otro mecanismo de autenticacion. Usa authenticate/check_password de Django;
+no compares hashes manualmente ni vuelvas a generar el hash para comprobarlo.
+La contrasena de login admite 1-128 caracteres, sin trim ni truncamiento:
+no reutilices sin adaptar la validacion de registro, que exige 15-128.
+Email inexistente y contrasena incorrecta deben devolver el mismo 401 y mensaje
+"Email o contraseña incorrectos."; datos invalidos 400 y fallo interno 500.
+
+Tras autenticar, reutiliza login(request, user) de Django y el patron atomico
+del registro para persistir la sesion antes de responder con exito. Ten en
+cuenta la renovacion de clave, last_login, la rotacion de CSRF y el rollback
+del estado de la peticion si falla el guardado. No conviertas un fallo de
+persistencia en credenciales incorrectas. Un login rechazado no debe crear
+una sesion nueva ni cerrar automaticamente una sesion previa.
+Mantener HttpOnly/Secure/SameSite=Lax, middleware de autenticacion/sesiones,
+CSRF activo, HTTPS local y errores/logs sin secretos. El rol siempre procede
+del usuario autenticado en el servidor. GET /api/auth/me se reutiliza sin
+crear un segundo endpoint para consultar la sesion de login.
+
+Pruebas futuras del login: ambos roles, credenciales incorrectas indistinguibles,
+contrasenas de 1-128 caracteres, sesiones separadas, renovacion de clave,
+CSRF, rollback de sesion/last_login y consulta posterior mediante /api/auth/me.
+Ejecutar tambien la suite completa actual para conservar registro/persistencia.
+
 ## Resultado verificado
 
 Suite completa: 40 pruebas correctas, incluida HTTPS real, sin omisiones.

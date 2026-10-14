@@ -304,7 +304,8 @@ No consta una selección definitiva de framework frontend/backend, base de datos
 
 También están pendientes:
 
-1. Contratos completos de respuestas y errores y código de éxito del login.
+1. Contratos de las APIs pendientes y codigo de exito del login. Registro y
+   GET /api/auth/me ya tienen contrato en el README backend.
 2. Integracion frontend de GET /api/auth/me (endpoint backend ya implementado).
 3. Nombres técnicos de los campos de publicación y envío de fotografías.
 4. URLs del formulario de registro y del formulario de publicación.

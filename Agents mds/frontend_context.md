@@ -2,6 +2,32 @@
 
 Fuente: `contexto-proyecto-codex.md` de Descargas, revisada el 14 de octubre de 2026. No existe frontend implementado, framework elegido ni comandos de ejecución verificados.
 
+## Estado vigente de la integracion con backend
+
+El backend ya implementa POST /api/auth/register y GET /api/auth/me sobre
+Django y SQLite local. [README backend](../backend/README.md) es la referencia
+principal de contratos, CSRF, cookies, certificados HTTPS, comandos y pruebas.
+Login aun esta pendiente; su codigo de exito y cuerpo deben acordarse.
+
+- Obtener csrfToken mediante GET /api/auth/register antes del POST; conservar
+  la cookie CSRF y enviar X-CSRFToken. Volver a obtenerlo tras autenticar,
+  porque Django rota el token.
+- Registro devuelve 201 con id/name/email/role, 400 por datos invalidos, 409
+  por duplicado, 403 por CSRF y 500 por fallo interno. El navegador recibe
+  la cookie sessionid con HttpOnly, Secure y SameSite=Lax.
+- Al cargar o recargar, consultar GET /api/auth/me: 200 con id/name/email/role,
+  401 sin sesion y 500 como error reintentable. No tratar 500 como logout.
+- sessionid no se lee con JavaScript ni se guarda en localStorage. El navegador
+  gestiona la cookie; el servidor resuelve identidad y rol. No enviar un rol
+  o identificador del cliente como prueba de autenticacion.
+- Reutilizar las rutas de inicio de cada rol. Conectar /api al backend mediante
+  HTTPS local y un origen/proxy configurado. No hay CORS general habilitado:
+  no asumir que dos servidores en puertos distintos funcionan sin integrar
+  cookies, origen y CSRF. El comando frontend depende del stack que se elija.
+
+La suite backend pasa 40 pruebas, incluida consulta real por HTTPS a /api/auth/me.
+La integracion visual y una recarga real de navegador siguen pendientes.
+
 ## Referencias principales
 
 [project_context.md](project_context.md) conserva las historias, criterios, validaciones de campos, reglas de fotografías y decisiones pendientes. [backend_context.md](backend_context.md) conserva los contratos HTTP y las reglas compartidas de autenticación. Este documento no define payloads ni rutas adicionales.
@@ -30,7 +56,10 @@ Las tareas US1-6, US2-7 y US3-8 cubren la comprobación de los recorridos integr
 - Una imagen rechazada no elimina los datos ni las imágenes válidas. Conservar el orden de selección y los datos ante errores para permitir reintentos. No se ha acordado persistencia del formulario al cerrar el navegador ni un sistema de borradores.
 - El menú de Comprador no muestra «Publicar». Los permisos y la identidad del propietario los comprueba el servidor.
 
-La sesión utiliza cookies y el rol procede del servidor. La recarga exige consultar el usuario actual, pero ese endpoint aún debe acordarse. No se adopta un token JWT/Bearer ni se inventa una estrategia de almacenamiento de credenciales en el navegador. Las condiciones de cookies entre dominios y para desarrollo local están pendientes.
+La sesion utiliza cookies y el rol procede del servidor. La recarga consulta
+GET /api/auth/me conforme al contrato anterior. No se adopta JWT/Bearer.
+HTTPS local esta preparado; las condiciones de deployment entre dominios
+siguen pendientes.
 
 Los límites de fotografías del backlog (1–10, hasta 5 MB, JPEG/PNG/WebP) se documentan con su estado de ratificación en US3. No imponer restricciones territoriales o longitudes de campos no acordadas.
 
@@ -48,6 +77,8 @@ Las dos pantallas de inicio son destinos de navegación requeridos. Su contenido
 
 ## Decisiones que bloquean el cierre de la integración
 
-Acordar los cuerpos de respuesta y errores, el código de éxito del login, la consulta de sesión, los nombres técnicos de campos multipart y archivos, las URLs de registro/publicación y las condiciones de cookies. La lista completa de decisiones pendientes está en el apartado 14 de [project_context.md](project_context.md).
+Acordar el cuerpo y codigo de exito del login, los nombres tecnicos de campos
+multipart y archivos, las URLs de registro/publicacion y las condiciones de
+cookies del deployment. Registro y consulta de sesion ya tienen contrato. La lista completa de decisiones pendientes está en el apartado 14 de [project_context.md](project_context.md).
 
 Las pantallas de inicio son destinos necesarios; perfiles, historial, exploración, swipes, candidatos, matches, chat y gestión posterior de anuncios no se incorporan al Sprint 0 por estas referencias.
