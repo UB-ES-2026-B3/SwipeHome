@@ -1,4 +1,4 @@
-# Backend de SwipeHome — US1.3
+# Backend de SwipeHome - US1.3 y US1.4.1
 
 ## Decisiones y documentación
 
@@ -6,7 +6,7 @@ La rama de trabajo para la PR es `features-US-1.3-implementar-api-registro`,
 creada desde `features` local, que sigue `origin/features`.
 Se incorporaron mediante fast-forward los dos commits de `origin/main`
 que contienen la documentación del equipo en `Agents mds/`.
-La implementación de US1.3 se conserva como cambios locales en la rama de PR.
+US1.4.1 se desarrolla directamente sobre el codigo existente de US1.3.
 El commit, el push y la PR los realizará el usuario manualmente.
 La base local incluye los dos commits de documentación de main todavía ausentes
 en origin/features; si no se sincroniza antes el destino remoto, aparecerán
@@ -29,31 +29,53 @@ SQLite es exclusivamente la decisión de desarrollo local; la base del futuro
 deployment sigue pendiente. No se necesita emulador ni credenciales cloud.
 Sesiones/cookies siguen siendo el mecanismo previsto; no se añade JWT.
 
-## Instalación y ejecución local
+## Instalacion y HTTPS local
 
-Desde la raíz del repositorio, en PowerShell:
+Desde la raiz, PowerShell (Python 3.13 y Git para Windows):
 
 ```powershell
 cd backend
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 .\.venv\Scripts\python.exe manage.py migrate
-.\.venv\Scripts\python.exe manage.py runserver 127.0.0.1:8000
+New-Item -ItemType Directory -Force .local-tls | Out-Null
+& 'C:/Program Files/Git/usr/bin/openssl.exe' req -x509 -newkey rsa:2048 -nodes -keyout .local-tls/localhost-key.pem -out .local-tls/localhost.pem -days 30 -subj '/CN=localhost' -addext 'subjectAltName=DNS:localhost,IP:127.0.0.1'
+.\.venv\Scripts\python.exe manage.py runhttps --cert .local-tls/localhost.pem --key .local-tls/localhost-key.pem
 ```
 
-No hace falta activar el entorno. Para detener el servidor: Ctrl+C.
-La configuración local funciona sin variables: crea `backend/db.sqlite3`.
-[.env.example](.env.example) describe las variables opcionales:
-`DJANGO_SECRET_KEY` y `DATABASE_PATH`. El archivo .env no se carga
-automáticamente; establece las variables en PowerShell antes de ejecutar:
+El comando usa ssl y wsgiref de Python, escucha solo en loopback y no tiene
+autoreload. Es exclusivamente un servidor de desarrollo. Ctrl+C para detenerlo.
+Si OpenSSL esta en PATH, puede usarse `openssl` en lugar de la ruta de Git.
+No se instala ninguna dependencia Python adicional ni herramienta global.
+Los certificados caducan a los 30 dias: vuelve a generarlos cuando sea necesario.
+`.local-tls/` esta ignorado por Git. Nunca compartas ni versiones la clave privada.
+La cookie conserva Secure: utiliza siempre `https://localhost:8443`.
+
+Para que Edge/Chrome en Windows confien en el certificado local, convierte e
+importa **solo el certificado publico** al almacen de tu usuario (paso manual):
+
+```powershell
+& 'C:/Program Files/Git/usr/bin/openssl.exe' x509 -in .local-tls/localhost.pem -outform DER -out .local-tls/localhost.cer
+$localCert = Import-Certificate -FilePath .local-tls/localhost.cer -CertStoreLocation Cert:\CurrentUser\Root
+$localCert.Thumbprint
+```
+
+Conserva esa huella para retirar la confianza cuando termines:
+`Remove-Item -LiteralPath "Cert:\CurrentUser\Root\HUELLA_GUARDADA"`.
+La importacion de confianza no se ha ejecutado automaticamente.
+Firefox puede necesitar importar el certificado en su propio almacen.
+
+La persistencia es SQLite local (`backend/db.sqlite3`); `migrate` prepara tambien
+`django_session`. No hay servicios cloud. DEBUG sigue desactivado.
+[.env.example](.env.example) describe DJANGO_SECRET_KEY y DATABASE_PATH.
+El archivo .env no se carga automaticamente. Variables opcionales:
 
 ```powershell
 $env:DJANGO_SECRET_KEY = 'swipehome-local-development-only'
 $env:DATABASE_PATH = Join-Path (Get-Location) 'db.sqlite3'
 ```
 
-El valor de ejemplo es local y público. DEBUG está desactivado.
-Entorno virtual, bases SQLite, bytecode y .env están excluidos en .gitignore.
+El secreto de ejemplo es publico y exclusivo de desarrollo local.
 
 ## Dependencias reproducibles
 
@@ -99,27 +121,41 @@ Referencias técnicas:
 [transacciones](https://docs.djangoproject.com/en/5.2/topics/db/transactions/),
 [SQLite](https://docs.djangoproject.com/en/5.2/ref/databases/#sqlite-notes).
 
-## Ejemplo
+## Registro con CSRF y comprobacion manual en navegador
 
-Con el servidor iniciado, en otra terminal PowerShell:
+`GET /api/auth/register` devuelve `csrfToken` y establece la cookie CSRF segura.
+No crea una sesion y su respuesta tiene Cache-Control: no-store.
+`POST` requiere esa cookie y `X-CSRFToken`, con origen HTTPS de la misma web.
+Sin proteccion CSRF valida devuelve 403; las validaciones mantienen 400,
+el email duplicado 409 y los fallos internos 500. No se habilita CORS general
+ni se anaden origenes de confianza externos.
 
-```powershell
-$body = @{
-    name = 'Ana García'
-    email = '  ANA@Example.COM  '
-    password = '  una contraseña completa  '
-    role = 'BUYER'
-} | ConvertTo-Json
-Invoke-RestMethod -Method Post -Uri 'http://127.0.0.1:8000/api/auth/register' -ContentType 'application/json; charset=utf-8' -Body ([System.Text.Encoding]::UTF8.GetBytes($body))
+Abre `https://localhost:8443/api/auth/register` y, en la consola del navegador,
+ejecuta usando un email nuevo en cada registro exitoso:
+
+```javascript
+const {csrfToken} = await fetch('/api/auth/register').then(r => r.json());
+const response = await fetch('/api/auth/register', {
+  method: 'POST',
+  headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
+  body: JSON.stringify({name: 'Ana Garcia', email: 'ana@example.com',
+    password: 'una contrasena completa', role: 'BUYER'})
+});
+console.log(response.status, await response.json());
 ```
 
-Respuesta 201 (identificador ilustrativo):
+Espera 201 con id, name, email y role. Repite con SELLER y otro email.
+En Network revisa los atributos de Set-Cookie, sin copiar su valor a logs.
+En Application > Cookies revisa sessionid con HttpOnly, Secure y SameSite=Lax.
+Recarga la pagina y comprueba que el navegador conserva la cookie y la envia
+al servidor. JavaScript no debe poder leer sessionid mediante document.cookie.
+Login rota tambien el token CSRF: vuelve a obtenerlo antes de otro POST.
 
-```json
-{"id": 1, "name": "Ana García", "email": "ana@example.com", "role": "BUYER"}
-```
-
-Repetir con el mismo email devuelve 409.
+No existe un endpoint publico de identidad acordado. Para comprobar que una
+solicitud posterior identifica al mismo usuario y rol, ejecuta las pruebas:
+`SessionRegistrationTests` y `LocalHTTPSTests` usan `/test/identity`, disponible
+**solo** con el URLconf exclusivo de pruebas. Las vistas futuras deben usar
+`request.user.pk` y `request.user.role`, nunca campos de identidad del cliente.
 
 ## Verificación
 
@@ -141,13 +177,59 @@ peticiones malformadas, restricciones SQL, concurrencia real con conexiones
 separadas y rollback incluso tras insertar o al preparar la respuesta.
 Verifican respuestas sin secretos y logs seguros ante fallos.
 
-## Alcance pendiente
+## Sesion implementada y alcance pendiente
 
-US1.3 implementa la creación de cuenta. No crea sesión ni redirige:
-el propio contexto asigna la sesión a US1.4A y la navegación a US1.4B.
-El endpoint no usa autenticación basada en cookies ni muta una sesión,
-y admite el registro JSON directo sin token CSRF. US1.4A deberá integrar
-sesiones, cookies y protección CSRF acorde al contrato del equipo.
-No hay login, deployment, infraestructura ni otras funcionalidades.
-El contrato general de respuestas y la base de producción deberán coordinarse
-con el equipo cuando se aborden sus tareas.
+US1.4.1 (US1-4A del contexto) integra las sesiones de base de datos y la
+AuthenticationMiddleware de Django con el usuario personalizado de US1.3.
+`login(request, user)` renueva la clave de sesion y rota CSRF. La identidad
+procede del usuario creado, y el rol se consulta en el modelo del servidor;
+no se almacena una copia del rol que pueda quedar obsoleta.
+
+La cuenta, last_login, renovacion y guardado de sesion estan dentro de la misma
+transaction.atomic. SessionMiddleware prepara la cookie y persiste antes del
+commit; se marca la sesion como no modificada para evitar un segundo guardado
+fuera de la transaccion. Si falla la persistencia, la respuesta o el commit,
+se revierten la cuenta y la sesion y se restaura el estado previo de la peticion.
+Una sesion autenticada anterior se conserva si el registro falla.
+No se devuelven claves de sesion, contrasenas, hashes ni trazas en JSON o logs.
+La duracion local usa el valor predeterminado Django: 14 dias; no se renueva en
+cada solicitud. La politica de deployment sigue pendiente.
+
+La redireccion y el estado de interfaz pertenecen a US1-4B. Siguen pendientes
+login, logout y el contrato publico para consultar la identidad al recargar.
+El backend ya reconoce las cookies en las solicitudes siguientes mediante
+request.user. No se implementa infraestructura ni se realizan push o merges.
+
+## Resultado verificado
+
+Suite completa: 22 pruebas correctas, incluida HTTPS real, sin omisiones.
+Tambien pasan pip check, manage.py check y makemigrations --check --dry-run.
+La migracion sessions.0001_initial se aplico a SQLite local.
+No se han modificado requirements.txt ni sus versiones fijadas.
+
+## Prueba HTTPS real
+
+Desde backend, con los certificados locales anteriores:
+
+```powershell
+$env:LOCAL_TLS_CERT = Join-Path (Get-Location) '.local-tls/localhost.pem'
+$env:LOCAL_TLS_KEY = Join-Path (Get-Location) '.local-tls/localhost-key.pem'
+.\.venv\Scripts\python.exe manage.py test accounts --verbosity 2
+```
+
+La suite usa SQLite en un directorio temporal aislado. No usar --keepdb.
+Sin estas variables se omite explicitamente la prueba HTTPS; con ellas se
+verifica TLS con confianza explicita en el certificado, sin desactivar su
+validacion. Usa el mismo servidor runhttps, una cookie jar real y tres
+solicitudes autenticadas consecutivas. Verifica tambien el duplicado por HTTPS.
+Las otras pruebas cubren ambos roles, atributos de cookie, identidad desde el
+servidor, rol actualizado, fijacion de sesion, solicitudes anonimas, CSRF,
+validaciones de US1.3, concurrencia, rollback y fallo al confirmar el commit.
+
+La verificacion automatica HTTPS y las solicitudes del cliente de pruebas no
+constituyen una recarga real de navegador. La comprobacion manual de navegador
+queda pendiente; los pasos anteriores permiten realizarla.
+
+Referencias: [sesiones Django](https://docs.djangoproject.com/en/5.2/topics/http/sessions/),
+[login Django](https://docs.djangoproject.com/en/5.2/topics/auth/default/#how-to-log-a-user-in),
+[CSRF Django](https://docs.djangoproject.com/en/5.2/howto/csrf/).

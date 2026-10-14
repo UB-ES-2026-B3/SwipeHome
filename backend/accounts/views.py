@@ -1,11 +1,13 @@
 import json
 import logging
 
+from django.contrib.auth import login
+from django.contrib.sessions.middleware import SessionMiddleware
+from django.middleware.csrf import get_token
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.debug import sensitive_post_parameters
-from django.views.decorators.http import require_POST
+from django.views.decorators.http import require_http_methods
 
 from .models import User
 from .validation import validate_registration
@@ -20,10 +22,12 @@ def internal_error():
 
 
 @sensitive_post_parameters("password")
-@csrf_exempt
-@require_POST
+@require_http_methods(["GET", "POST"])
 def register(request):
-    # This endpoint creates accounts only; session creation belongs to US1.4A.
+    if request.method == "GET":
+        response = JsonResponse({"csrfToken": get_token(request)})
+        response["Cache-Control"] = "no-store"
+        return response
     if request.content_type != "application/json":
         return JsonResponse({"error": "Se requiere application/json."}, status=400)
     try:
@@ -33,16 +37,28 @@ def register(request):
     values, errors = validate_registration(data)
     if errors:
         return JsonResponse({"errors": errors}, status=400)
+    original_session = request.session
+    original_user = request.user
+    completed = False
     try:
         # Hash outside the write transaction to keep the SQLite lock short.
         user = User(name=values["name"], email=values["email"], role=values["role"])
         user.set_password(values["password"])
         with transaction.atomic():
             user.save(force_insert=True)
+            # Work on a separate store so rollback also restores request state.
+            request.session = type(original_session)(original_session.session_key)
+            login(request, user)
+
             response = JsonResponse(
                 {"id": user.pk, "name": user.name, "email": user.email, "role": user.role},
                 status=201,
             )
+            # Run Django's persistence and cookie handling BEFORE committing.
+            # The outer middleware must not perform a second, non-atomic save.
+            response = SessionMiddleware(lambda request: response).process_response(request, response)
+            request.session.modified = False
+        completed = True
         return response
     except IntegrityError:
         # Query only after rollback; other integrity failures are internal errors.
@@ -54,3 +70,12 @@ def register(request):
         return internal_error()
     except Exception:
         return internal_error()
+
+    finally:
+        if not completed:
+            request.session = original_session
+            request.user = original_user
+
+
+def csrf_failure(request, reason=""):
+    return JsonResponse({"error": "Verificacion CSRF rechazada."}, status=403)
