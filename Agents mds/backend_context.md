@@ -1,5 +1,20 @@
 # Contexto backend de SwipeHome
 
+## Estado actualizado — US1.3
+
+La implementación local de US1.3 está en `backend/`, sobre la rama de PR
+`features-US-1.3-implementar-api-registro`, creada desde `features` local.
+El usuario autorizó Django 5.2, SQLite para desarrollo local y hashing de Django.
+SQLite no determina la base de datos del futuro deployment.
+El endpoint de registro valida los datos, crea usuarios de forma atómica y
+protege la unicidad del email en persistencia, incluida concurrencia.
+La sesión posterior al registro (US1-4A) sigue pendiente.
+Los comandos, versiones fijadas y el contrato local de respuestas se documentan
+en [backend/README.md](../backend/README.md).
+La suite incluye 15 pruebas locales de backend; su ejecución final pasó el
+14 de octubre de 2026. El resto del backlog conserva su estado pendiente.
+
+
 Fuente: `contexto-proyecto-codex.md` , revisada el 14 de octubre de 2026. Los apartados de la fuente mantienen su numeración original.
 
 ## Estado y responsabilidad
