@@ -1,0 +1,11 @@
+# Registro local del agente
+/agent_changelog_local.md
+
+# Configuración local de los IDE de JetBrains
+/.idea/
+
+# Configuración local de Visual Studio Code
+/.vscode/
+
+# Configuración local de codex
+/.codex/
