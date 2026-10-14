@@ -1,6 +1,6 @@
 # Contexto del proyecto SwipeHome
 
-## Estado actualizado - US1.3 y US1.4.1
+## Estado actualizado - US1.3, US1.4.1 y persistencia de cuentas
 
 El backend local usa Django 5.2 y SQLite en la rama
 `features-US-1.3-implementar-api-registro`. US1.4.1 (US1-4A) crea la sesion
@@ -9,6 +9,10 @@ Las cookies tienen HttpOnly, Secure y SameSite=Lax; CSRF esta activo.
 HTTPS local y los comandos de instalacion y pruebas estan documentados en
 [backend/README.md](../backend/README.md). No hay dependencias adicionales.
 La identidad y el rol se resuelven desde request.user en el servidor.
+US1-5 centraliza la normalizacion del email en el campo de persistencia.
+La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
+de email canonico; se mantienen UNIQUE de email y CHECK de rol.
+La suite completa pasa 32 pruebas, incluida concurrencia real y HTTPS.
 La consulta publica de identidad y la interfaz siguen pendientes de contrato.
 Las pruebas usan una vista exclusiva de pruebas para comprobar solicitudes
 posteriores. La comprobacion de recarga real en navegador queda pendiente.

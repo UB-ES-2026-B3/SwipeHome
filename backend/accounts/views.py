@@ -1,5 +1,6 @@
 import json
 import logging
+from sqlite3 import IntegrityError as SQLiteIntegrityError, SQLITE_CONSTRAINT_UNIQUE
 
 from django.contrib.auth import login
 from django.contrib.sessions.middleware import SessionMiddleware
@@ -60,13 +61,16 @@ def register(request):
             request.session.modified = False
         completed = True
         return response
-    except IntegrityError:
-        # Query only after rollback; other integrity failures are internal errors.
-        try:
-            if User.objects.filter(email=values["email"]).exists():
-                return JsonResponse({"error": "El email ya está registrado."}, status=409)
-        except Exception:
-            return internal_error()
+    except IntegrityError as error:
+        # SQLite is the established local backend. Match the actual violated
+        # constraint, not the mere existence of an account after rollback.
+        cause = error.__cause__
+        if (
+            isinstance(cause, SQLiteIntegrityError)
+            and getattr(cause, "sqlite_errorcode", None) == SQLITE_CONSTRAINT_UNIQUE
+            and str(cause) == "UNIQUE constraint failed: accounts_user.email"
+        ):
+            return JsonResponse({"error": "El email ya est\u00e1 registrado."}, status=409)
         return internal_error()
     except Exception:
         return internal_error()

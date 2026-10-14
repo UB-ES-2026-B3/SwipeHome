@@ -168,10 +168,16 @@ class ConcurrentRegistrationTests(TransactionTestCase):
     def test_simultaneous_duplicates_use_database_uniqueness(self):
         barrier = Barrier(3)
 
+        original_hash = User.set_password
+
+        def hash_and_overlap(user, password):
+            original_hash(user, password)
+            # All requests have reached persistence before any can insert.
+            barrier.wait(timeout=15)
+
         def register(email):
             connections.close_all()
             try:
-                barrier.wait(timeout=10)
                 response = Client().post(
                     "/api/auth/register",
                     data=json.dumps({**VALID, "email": email}),
@@ -181,7 +187,7 @@ class ConcurrentRegistrationTests(TransactionTestCase):
             finally:
                 connections.close_all()
 
-        with ThreadPoolExecutor(max_workers=3) as pool:
+        with patch.object(User, "set_password", hash_and_overlap), ThreadPoolExecutor(max_workers=3) as pool:
             statuses = list(pool.map(register, ["ana@example.com", " ANA@EXAMPLE.COM ", "Ana@Example.com"]))
         self.assertEqual(sorted(statuses), [201, 409, 409])
         self.assertEqual(User.objects.count(), 1)

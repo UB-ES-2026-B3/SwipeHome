@@ -1,4 +1,4 @@
-# Backend de SwipeHome - US1.3 y US1.4.1
+# Backend de SwipeHome - US1.3, US1.4.1 y persistencia de cuentas
 
 ## Decisiones y documentación
 
@@ -121,6 +121,76 @@ Referencias técnicas:
 [transacciones](https://docs.djangoproject.com/en/5.2/topics/db/transactions/),
 [SQLite](https://docs.djangoproject.com/en/5.2/ref/databases/#sqlite-notes).
 
+## Persistencia de cuentas e integridad (US1-5)
+
+Se conserva un unico modelo `accounts.User` y la base SQLite local.
+Ya existian BigAutoField como identificador unico, hash PBKDF2-SHA256 de Django,
+UNIQUE sobre email, CHECK de rol SELLER/BUYER y registro atomico con sesion.
+Esta tarea completa la normalizacion centralizada y distingue especificamente
+la violacion de unicidad del email de los demas fallos de base de datos.
+El contrato sigue siendo 201/400/409/500 (y 403 para CSRF).
+
+`NormalizedEmailField` aplica la misma funcion `strip().lower()` antes de
+persistir. Cubre create_user, create, save, bulk_create y las actualizaciones
+con valores del ORM, incluidas bulk_update. La validacion del endpoint y el
+manager reutilizan esa misma regla. No se utiliza la normalizacion de dominio
+parcial de BaseUserManager: se convierte toda la direccion a minusculas.
+Los objetos creados con save reflejan el email normalizado; tras update o
+bulk_update, usa refresh_from_db para actualizar su estado en memoria.
+
+La nueva restriccion `accounts_user_normalized_email` exige que el email
+almacenado ya sea canonico. Con el UNIQUE existente garantiza que una escritura
+SQL o una expresion que eluda el campo no introduzca variantes del mismo email.
+Los roles siguen protegidos por `accounts_user_valid_role`.
+
+Para que Python y SQLite apliquen exactamente las mismas reglas Unicode,
+AccountsConfig registra `swipehome_normalize_email` en cada conexion SQLite
+Django (tambien en las conexiones de los hilos). No usa LOWER/TRIM de SQLite,
+que no tienen la misma semantica Unicode. La funcion solo normaliza emails;
+el hashing sigue siendo set_password/check_password de Django.
+Crea cuentas mediante create_user o el flujo existente de registro; no asignes
+contrasenas en texto plano al campo password.
+
+La base requiere esa funcion para escribir en accounts_user. Usa conexiones
+Django (por ejemplo manage.py shell); un cliente SQLite externo sin la funcion
+fallara al escribir, sin saltarse la restriccion. Este ajuste es para SQLite
+local; otro motor futuro requerira adaptar la restriccion y el reconocimiento
+del conflicto de email. No se añade infraestructura ni dependencia adicional.
+
+### Migracion local segura
+
+`0002_normalize_account_emails` revisa primero TODOS los emails existentes.
+Si hay colisiones tras normalizar, se detiene sin cambiar cuentas y requiere
+resolucion manual del equipo. No fusiona, elimina ni cambia contrasenas.
+Sin colisiones normaliza los emails, conserva IDs, nombres, hashes y roles,
+y añade el CHECK en la misma transaccion. La marcha atras del esquema no
+restaura las mayusculas o espacios originales de los emails.
+La base local revisada antes de aplicar la migracion tenia cero cuentas.
+
+Desde backend:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py migrate
+.\.venv\Scripts\python.exe manage.py showmigrations accounts
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
+.\.venv\Scripts\python.exe manage.py test accounts --verbosity 2
+```
+
+Para incluir HTTPS real, establece LOCAL_TLS_CERT y LOCAL_TLS_KEY como indica
+el apartado de pruebas HTTPS. La suite completa tiene 32 casos. Las nuevas
+pruebas cubren normalizacion por distintas vias ORM, Unicode, restricciones
+SQL directas, actualizaciones duplicadas, hashes, identificadores, errores
+500 aun cuando ya existe el email y migraciones con/sin colisiones.
+La concurrencia utiliza tres hilos y conexiones independientes, con una barrera
+tras el hashing: ningun registro puede insertar hasta que los tres alcanzan
+ese punto. Se comprueban una respuesta 201, dos 409 y exactamente una cuenta.
+Se mantienen las pruebas de atomicidad, CSRF y sesiones de US1.3/US1.4.1.
+
+Referencias: [campos Django](https://docs.djangoproject.com/en/5.2/howto/custom-model-fields/),
+[restricciones](https://docs.djangoproject.com/en/5.2/ref/models/constraints/),
+[migraciones de datos](https://docs.djangoproject.com/en/5.2/ref/migration-operations/#runpython).
+
 ## Registro con CSRF y comprobacion manual en navegador
 
 `GET /api/auth/register` devuelve `csrfToken` y establece la cookie CSRF segura.
@@ -202,9 +272,10 @@ request.user. No se implementa infraestructura ni se realizan push o merges.
 
 ## Resultado verificado
 
-Suite completa: 22 pruebas correctas, incluida HTTPS real, sin omisiones.
+Suite completa: 32 pruebas correctas, incluida HTTPS real, sin omisiones.
 Tambien pasan pip check, manage.py check y makemigrations --check --dry-run.
-La migracion sessions.0001_initial se aplico a SQLite local.
+Las migraciones sessions.0001_initial y accounts.0002_normalize_account_emails
+se aplicaron a SQLite local conservando la base existente.
 No se han modificado requirements.txt ni sus versiones fijadas.
 
 ## Prueba HTTPS real

@@ -1,6 +1,8 @@
 from django.core.exceptions import ValidationError
 from django.core.validators import validate_email
 
+from .fields import normalize_account_email
+
 
 def validate_registration(data):
     errors = {}
@@ -13,7 +15,7 @@ def validate_registration(data):
         return None, errors
 
     name = data["name"].strip()
-    email = data["email"].strip().lower()
+    email = normalize_account_email(data["email"])
     password = data["password"]
     role = data["role"]
     if not 2 <= len(name) <= 80:
