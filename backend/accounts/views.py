@@ -8,7 +8,8 @@ from django.middleware.csrf import get_token
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.views.decorators.debug import sensitive_post_parameters
-from django.views.decorators.http import require_http_methods
+from django.views.decorators.http import require_GET, require_http_methods
+from django.views.decorators.cache import never_cache
 
 from .models import User
 from .validation import validate_registration
@@ -83,3 +84,17 @@ def register(request):
 
 def csrf_failure(request, reason=""):
     return JsonResponse({"error": "Verificacion CSRF rechazada."}, status=403)
+
+
+@never_cache
+@require_GET
+def current_user(request):
+    """Resolve identity from Django authentication, never client-supplied fields."""
+    try:
+        user = request.user
+        if not user.is_authenticated:
+            return JsonResponse({"error": "No hay una sesion autenticada."}, status=401)
+        return JsonResponse({"id": user.pk, "name": user.name, "email": user.email, "role": user.role})
+    except Exception:
+        logger.error("No se pudo consultar la sesion.")
+        return JsonResponse({"error": "No se pudo consultar la sesion. Intentalo de nuevo."}, status=500)

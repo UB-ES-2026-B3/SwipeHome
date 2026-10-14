@@ -221,7 +221,9 @@ def identity(request):
     return JsonResponse({"id": request.user.pk, "role": request.user.role})
 
 
-urlpatterns = [path("api/auth/register", register), path("test/identity", identity)]
+from config.urls import urlpatterns as backend_urls
+
+urlpatterns = [*backend_urls, path("test/identity", identity)]
 
 
 @override_settings(ROOT_URLCONF="accounts.tests")
@@ -344,8 +346,8 @@ class LocalHTTPSTests(TransactionTestCase):
             session_cookie = next(c for c in jar if c.name == "sessionid")
             self.assertTrue(session_cookie.secure)
             for _ in range(3):
-                with opener.open(base + "/test/identity", timeout=10) as response:
-                    self.assertEqual(json.load(response), {"id": user["id"], "role": "BUYER"})
+                with opener.open(base + "/api/auth/me", timeout=10) as response:
+                    self.assertEqual(json.load(response), user)
             # Duplicate request needs the rotated CSRF token.
             token = next(c.value for c in jar if c.name == "csrftoken")
             request = Request(base + "/api/auth/register", data=json.dumps(VALID).encode(), headers={"Content-Type": "application/json", "X-CSRFToken": token, "Origin": base})

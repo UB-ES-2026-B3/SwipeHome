@@ -12,10 +12,11 @@ La identidad y el rol se resuelven desde request.user en el servidor.
 US1-5 centraliza la normalizacion del email en el campo de persistencia.
 La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
 de email canonico; se mantienen UNIQUE de email y CHECK de rol.
-La suite completa pasa 32 pruebas, incluida concurrencia real y HTTPS.
-La consulta publica de identidad y la interfaz siguen pendientes de contrato.
-Las pruebas usan una vista exclusiva de pruebas para comprobar solicitudes
-posteriores. La comprobacion de recarga real en navegador queda pendiente.
+La suite completa pasa 40 pruebas, incluida concurrencia real y HTTPS.
+GET /api/auth/me esta implementado: 200 con id/name/email/role desde la sesion,
+401 sin autenticacion y 500 generico ante fallo interno, con Cache-Control no-store.
+La consulta se verifica con rutas reales y HTTPS local. La integracion de la
+interfaz y la comprobacion de recarga real en navegador siguen pendientes.
 Los apartados originales siguientes conservan el contexto del backlog;
 el estado implementado actual se describe en este bloque y el README backend.
 
@@ -90,7 +91,10 @@ La sesión se entrega mediante cookie. No se ha definido un token en el cuerpo d
 
 ### Endpoints auxiliares pendientes
 
-Se necesita resolver cómo consultará el frontend la sesión y el usuario actual al recargar. Un endpoint como `GET /api/auth/me` puede proponerse en la documentación, pero **todavía no es un endpoint acordado**. Su respuesta sin sesión, campos y estados deben cerrarse antes de tratarlo como contrato.
+Por peticion del usuario se implemento GET /api/auth/me para consultar la sesion
+al recargar: 200 con id, name, email y role; 401 sin sesion valida; 500 generico
+ante fallo interno. Respuestas no-store, sin secretos ni redirecciones.
+El frontend debe consumirlo para recuperar su estado autenticado.
 
 Tampoco se han definido endpoints de logout, recuperación de contraseña, verificación de email, listado/detalle de anuncios, edición, borrado, swipes, candidatos, matches, perfiles o historial. Documentarlos únicamente como pendientes o alcance futuro cuando corresponda.
 

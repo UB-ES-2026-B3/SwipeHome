@@ -178,7 +178,7 @@ Desde backend:
 ```
 
 Para incluir HTTPS real, establece LOCAL_TLS_CERT y LOCAL_TLS_KEY como indica
-el apartado de pruebas HTTPS. La suite completa tiene 32 casos. Las nuevas
+el apartado de pruebas HTTPS. La suite completa tiene 40 casos. Las nuevas
 pruebas cubren normalizacion por distintas vias ORM, Unicode, restricciones
 SQL directas, actualizaciones duplicadas, hashes, identificadores, errores
 500 aun cuando ya existe el email y migraciones con/sin colisiones.
@@ -221,11 +221,50 @@ Recarga la pagina y comprueba que el navegador conserva la cookie y la envia
 al servidor. JavaScript no debe poder leer sessionid mediante document.cookie.
 Login rota tambien el token CSRF: vuelve a obtenerlo antes de otro POST.
 
-No existe un endpoint publico de identidad acordado. Para comprobar que una
-solicitud posterior identifica al mismo usuario y rol, ejecuta las pruebas:
-`SessionRegistrationTests` y `LocalHTTPSTests` usan `/test/identity`, disponible
-**solo** con el URLconf exclusivo de pruebas. Las vistas futuras deben usar
-`request.user.pk` y `request.user.role`, nunca campos de identidad del cliente.
+## Consultar el usuario actual: GET /api/auth/me
+
+Disponible sin barra final. Reutiliza la cookie de sesion Django creada al
+registrarse y no necesita enviar id, rol ni token de sesion en el cuerpo.
+
+- 200: {"id": 1, "name": "Ana Garcia", "email": "ana@example.com", "role": "BUYER"}.
+- 401: {"error": "No hay una sesion autenticada."}, sin redireccion al login.
+- 500: error generico si no se puede consultar la identidad; no debe tratarse
+  como un cierre de sesion confirmado.
+
+La identidad y el rol se leen del usuario almacenado por el servidor en cada
+solicitud. No se exponen contrasenas, hashes ni identificadores de sesion.
+Las respuestas llevan Cache-Control con no-store y private para evitar que el
+navegador o un intermediario reutilicen datos de otra consulta de identidad.
+El GET no modifica datos de cuenta ni crea una sesion autenticada.
+Una sesion caducada/invalida, una cuenta eliminada o una contrasena cambiada
+devuelven 401. El registro conserva su proteccion CSRF; este GET no necesita
+token CSRF. No se cambia CORS ni la configuracion de origenes.
+
+Tras registrar al usuario con el ejemplo anterior, o al cargar/recargar la
+interfaz, ejecuta desde el mismo origen HTTPS:
+
+```javascript
+const meResponse = await fetch('/api/auth/me', {
+  credentials: 'same-origin',
+  cache: 'no-store'
+});
+if (meResponse.status === 200) {
+  const user = await meResponse.json();
+  console.log(user); // El frontend recupera aqui su estado autenticado.
+} else if (meResponse.status === 401) {
+  // Mostrar la interfaz sin sesion.
+} else {
+  // Mostrar el error y permitir reintentar la consulta.
+}
+```
+
+Para una demo abre https://localhost:8443/api/auth/me despues del registro:
+veras el usuario y puedes recargar para comprobar la consulta en navegador.
+El frontend debe conectar /api al backend con el origen HTTPS/proxy configurado.
+Las pruebas de identidad del nuevo endpoint usan las rutas reales del backend,
+y la prueba HTTPS consulta /api/auth/me tres veces con la cookie recibida.
+Los casos historicos de US1.4.1 conservan su vista exclusiva de pruebas.
+La comprobacion manual de una recarga real en navegador queda pendiente.
 
 ## Verificación
 
@@ -266,13 +305,13 @@ La duracion local usa el valor predeterminado Django: 14 dias; no se renueva en
 cada solicitud. La politica de deployment sigue pendiente.
 
 La redireccion y el estado de interfaz pertenecen a US1-4B. Siguen pendientes
-login, logout y el contrato publico para consultar la identidad al recargar.
+login y logout. GET /api/auth/me ya permite consultar la identidad al recargar.
 El backend ya reconoce las cookies en las solicitudes siguientes mediante
 request.user. No se implementa infraestructura ni se realizan push o merges.
 
 ## Resultado verificado
 
-Suite completa: 32 pruebas correctas, incluida HTTPS real, sin omisiones.
+Suite completa: 40 pruebas correctas, incluida HTTPS real, sin omisiones.
 Tambien pasan pip check, manage.py check y makemigrations --check --dry-run.
 Las migraciones sessions.0001_initial y accounts.0002_normalize_account_emails
 se aplicaron a SQLite local conservando la base existente.

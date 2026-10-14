@@ -12,10 +12,11 @@ La identidad y el rol se resuelven desde request.user en el servidor.
 US1-5 centraliza la normalizacion del email en el campo de persistencia.
 La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
 de email canonico; se mantienen UNIQUE de email y CHECK de rol.
-La suite completa pasa 32 pruebas, incluida concurrencia real y HTTPS.
-La consulta publica de identidad y la interfaz siguen pendientes de contrato.
-Las pruebas usan una vista exclusiva de pruebas para comprobar solicitudes
-posteriores. La comprobacion de recarga real en navegador queda pendiente.
+La suite completa pasa 40 pruebas, incluida concurrencia real y HTTPS.
+GET /api/auth/me esta implementado: 200 con id/name/email/role desde la sesion,
+401 sin autenticacion y 500 generico ante fallo interno, con Cache-Control no-store.
+La consulta se verifica con rutas reales y HTTPS local. La integracion de la
+interfaz y la comprobacion de recarga real en navegador siguen pendientes.
 Los apartados originales siguientes conservan el contexto del backlog;
 el estado implementado actual se describe en este bloque y el README backend.
 
@@ -304,7 +305,7 @@ No consta una selección definitiva de framework frontend/backend, base de datos
 También están pendientes:
 
 1. Contratos completos de respuestas y errores y código de éxito del login.
-2. Endpoint de consulta de sesión y datos del usuario actual.
+2. Integracion frontend de GET /api/auth/me (endpoint backend ya implementado).
 3. Nombres técnicos de los campos de publicación y envío de fotografías.
 4. URLs del formulario de registro y del formulario de publicación.
 5. Ratificación específica de máximos, tamaño y formatos de imágenes.
