@@ -3,7 +3,7 @@
 ## Estado actualizado - US1.3, US1.4.1 y persistencia de cuentas
 
 El backend local usa Django 5.2 y SQLite en la rama
-`features-US-1.3-implementar-api-registro`. US1.4.1 (US1-4A) crea la sesion
+`features-US-1.3-implementar-api-registro`. La rama de destino de la PR de estas US es `dev` (`origin/dev` en remoto). US1.4.1 (US1-4A) crea la sesion
 Django al registrar la cuenta y persiste ambas en una transaccion.
 Las cookies tienen HttpOnly, Secure y SameSite=Lax; CSRF esta activo.
 HTTPS local y los comandos de instalacion y pruebas estan documentados en

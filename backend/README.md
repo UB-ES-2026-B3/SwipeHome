@@ -2,17 +2,10 @@
 
 ## Decisiones y documentación
 
-La rama de trabajo para la PR es `features-US-1.3-implementar-api-registro`,
-creada desde `features` local, que sigue `origin/features`.
-Se incorporaron mediante fast-forward los dos commits de `origin/main`
-que contienen la documentación del equipo en `Agents mds/`.
+La rama de trabajo para la PR es `features-US-1.3-implementar-api-registro`.
+La rama de destino de la PR para estas US es `dev` (`origin/dev` en remoto).
 US1.4.1 se desarrolla directamente sobre el codigo existente de US1.3.
 El commit, el push y la PR los realizará el usuario manualmente.
-La base local incluye los dos commits de documentación de main todavía ausentes
-en origin/features; si no se sincroniza antes el destino remoto, aparecerán
-también en la comparación de la PR.
-Git no admite espacios ni dos puntos en ramas. Además, la rama features
-impide usar features/ como prefijo para otra referencia; por eso se usa un guion.
 
 Documentación revisada:
 [contexto backend](<../Agents mds/backend_context.md>),
