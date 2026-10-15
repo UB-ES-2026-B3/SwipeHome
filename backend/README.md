@@ -171,7 +171,7 @@ Desde backend:
 ```
 
 Para incluir HTTPS real, establece LOCAL_TLS_CERT y LOCAL_TLS_KEY como indica
-el apartado de pruebas HTTPS. La suite completa tiene 40 casos. Las nuevas
+el apartado de pruebas HTTPS. La suite completa tiene 48 casos. Las nuevas
 pruebas cubren normalizacion por distintas vias ORM, Unicode, restricciones
 SQL directas, actualizaciones duplicadas, hashes, identificadores, errores
 500 aun cuando ya existe el email y migraciones con/sin colisiones.
@@ -297,16 +297,18 @@ No se devuelven claves de sesion, contrasenas, hashes ni trazas en JSON o logs.
 La duracion local usa el valor predeterminado Django: 14 dias; no se renueva en
 cada solicitud. La politica de deployment sigue pendiente.
 
-La redireccion y el estado de interfaz pertenecen a US1-4B. Siguen pendientes
-login y logout. GET /api/auth/me ya permite consultar la identidad al recargar.
+La redireccion y el estado de interfaz pertenecen a US1-4B. Logout sigue
+pendiente. GET /api/auth/me permite consultar la identidad al recargar.
 El backend ya reconoce las cookies en las solicitudes siguientes mediante
 request.user. No se implementa infraestructura ni se realizan push o merges.
 
-## Continuidad para implementar login (US2)
+## Login implementado (US2.3 y US2.4)
 
-Login sigue pendiente: POST /api/auth/login recibe email y password, sin rol.
-Su codigo de exito y cuerpo exacto deben acordarse antes de implementarlo;
-200 con los mismos campos de identidad que registro/me es una propuesta.
+POST /api/auth/login recibe un objeto JSON con `email` y `password`, sin rol.
+Devuelve 200 con `id`, `name`, `email` y `role` cuando las credenciales son
+correctas. Datos invalidos devuelven 400 con `errors`; un email inexistente y
+una contrasena incorrecta devuelven 401 con el mismo mensaje; un fallo interno
+devuelve 500 con un mensaje generico.
 
 Reutiliza accounts.User, NormalizedEmailField, UserManager.normalize_email,
 las migraciones existentes y SQLite local. No crees otra tabla de usuarios ni
@@ -328,15 +330,18 @@ CSRF activo, HTTPS local y errores/logs sin secretos. El rol siempre procede
 del usuario autenticado en el servidor. GET /api/auth/me se reutiliza sin
 crear un segundo endpoint para consultar la sesion de login.
 
-Pruebas futuras del login: ambos roles, credenciales incorrectas indistinguibles,
-contrasenas de 1-128 caracteres, sesiones separadas, renovacion de clave,
-CSRF, rollback de sesion/last_login y consulta posterior mediante /api/auth/me.
-Ejecutar tambien la suite completa actual para conservar registro/persistencia.
+Las pruebas en `accounts/test_login.py` cubren ambos resultados de autenticacion,
+normalizacion, contrasenas de 1-128 caracteres, validacion de tipos y limites,
+errores indistinguibles, cookie segura, sesion asociada, ruta exacta y rollback
+ante un fallo de persistencia. Ejecutar tambien la suite completa para conservar
+registro, persistencia y consulta de usuario.
 
 ## Resultado verificado
 
-Suite completa: 40 pruebas correctas, incluida HTTPS real, sin omisiones.
-Tambien pasan pip check, manage.py check y makemigrations --check --dry-run.
+Suite completa: 48 pruebas correctas, incluida la prueba HTTPS real al definir
+`LOCAL_TLS_CERT` y `LOCAL_TLS_KEY`. Sin esas variables, Django omite solamente
+la prueba HTTPS. Tambien pasan `manage.py check` y
+`makemigrations --check --dry-run`.
 Las migraciones sessions.0001_initial y accounts.0002_normalize_account_emails
 se aplicaron a SQLite local conservando la base existente.
 No se han modificado requirements.txt ni sus versiones fijadas.

@@ -12,7 +12,7 @@ from django.views.decorators.http import require_GET, require_http_methods
 from django.views.decorators.cache import never_cache
 
 from .models import User
-from .validation import validate_registration
+from .validation import validate_login, validate_registration
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,11 @@ def internal_error():
     # Never log the exception or payload: either may contain credentials/SQL.
     logger.error("No se pudo completar el registro.")
     return JsonResponse({"error": "No se pudo completar el registro. Inténtalo de nuevo."}, status=500)
+
+
+def login_internal_error():
+    logger.error("No se pudo completar el inicio de sesión.")
+    return JsonResponse({"error": "No se pudo completar el inicio de sesión. Inténtalo de nuevo."}, status=500)
 
 
 @sensitive_post_parameters("password")
@@ -76,6 +81,45 @@ def register(request):
     except Exception:
         return internal_error()
 
+    finally:
+        if not completed:
+            request.session = original_session
+            request.user = original_user
+
+
+@sensitive_post_parameters("password")
+@require_http_methods(["POST"])
+def login_view(request):
+    if request.content_type != "application/json":
+        return JsonResponse({"error": "Se requiere application/json."}, status=400)
+    try:
+        data = json.loads(request.body)
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse({"error": "JSON inválido."}, status=400)
+    values, errors = validate_login(data)
+    if errors:
+        return JsonResponse({"errors": errors}, status=400)
+
+    original_session = request.session
+    original_user = request.user
+    completed = False
+    try:
+        user = User.objects.filter(email=values["email"]).first()
+        if user is None or not user.check_password(values["password"]):
+            return JsonResponse({"error": "Email o contraseña incorrectos."}, status=401)
+
+        with transaction.atomic():
+            login(request, user)
+            response = JsonResponse(
+                {"id": user.pk, "name": user.name, "email": user.email, "role": user.role},
+                status=200,
+            )
+            response = SessionMiddleware(lambda request: response).process_response(request, response)
+            request.session.modified = False
+        completed = True
+        return response
+    except Exception:
+        return login_internal_error()
     finally:
         if not completed:
             request.session = original_session
