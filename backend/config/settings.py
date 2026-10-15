@@ -12,6 +12,14 @@ _DEV = os.environ.get("DJANGO_DEV", "").strip() == "1"
 
 DEBUG = _DEV
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
+
+# En modo DEV, el frontend Vite (localhost:5173) hace de proxy hacia Django.
+# El navegador envía Origin: http://localhost:5173, que Django rechaza porque
+# no coincide con su propio host (127.0.0.1:8000).
+# CSRF_TRUSTED_ORIGINS permite ese origen explícitamente en modo local.
+CSRF_TRUSTED_ORIGINS = (
+    ["http://localhost:5173", "http://127.0.0.1:5173"] if _DEV else []
+)
 INSTALLED_APPS = ["django.contrib.auth", "django.contrib.contenttypes", "django.contrib.sessions", "accounts"]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
