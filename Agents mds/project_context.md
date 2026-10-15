@@ -308,7 +308,7 @@ También están pendientes:
    GET /api/auth/me ya tienen contrato en el README backend.
 2. Integracion frontend de GET /api/auth/me (endpoint backend ya implementado).
 3. Nombres técnicos de los campos de publicación y envío de fotografías.
-4. URLs del formulario de registro y del formulario de publicación.
+4. URL del formulario de registro: **`/registro`** (implementado en US1_Registro). URL del formulario de publicación: pendiente.
 5. Ratificación específica de máximos, tamaño y formatos de imágenes.
 6. Límites de textos y validación territorial del código postal.
 7. Semántica exacta del número de personas y de la oferta de habitaciones.

@@ -1,0 +1,511 @@
+/* ═══════════════════════════════════════════════════════════════════
+   SwipeHome – Estilos globales
+   Tema: aplicación de alquiler de pisos al estilo Tinder
+   ═══════════════════════════════════════════════════════════════════ */
+
+/* ── Variables de diseño ─────────────────────────────────────────── */
+:root {
+  /* Paleta principal */
+  --color-primary:       #fd5564;   /* Rojo-coral (acción principal) */
+  --color-primary-dark:  #e03d4f;
+  --color-secondary:     #44d4c9;   /* Verde-agua (acento secundario) */
+  --color-bg:            #f7f7f8;   /* Fondo general */
+  --color-surface:       #ffffff;
+  --color-text:          #1c1c1e;
+  --color-text-muted:    #6b7280;
+  --color-border:        #e5e7eb;
+  --color-error:         #dc2626;
+  --color-error-bg:      #fef2f2;
+  --color-like:          #fd5564;
+  --color-dislike:       #b0b8c1;
+
+  /* Sombras */
+  --shadow-card:  0 8px 32px rgba(0, 0, 0, 0.12);
+  --shadow-sm:    0 2px 8px rgba(0, 0, 0, 0.07);
+
+  /* Radios */
+  --radius-card:  20px;
+  --radius-btn:   50px;
+  --radius-input: 12px;
+
+  /* Tipografía */
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+/* ── Reset mínimo ────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Loading spinner ─────────────────────────────────────────────── */
+.page-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: var(--color-bg);
+}
+
+.page-loading__spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PÁGINA DE AUTENTICACIÓN (registro / login)
+   ═══════════════════════════════════════════════════════════════════ */
+.auth-page {
+  display: flex;
+  min-height: 100vh;
+}
+
+/* ── Panel izquierdo: branding ───────────────────────────────────── */
+.auth-page__brand {
+  display: none; /* Oculto en móvil */
+  flex: 1;
+  background: linear-gradient(145deg, #fd5564 0%, #e03d4f 40%, #c0392b 100%);
+  padding: 3rem;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  overflow: hidden;
+  position: relative;
+}
+
+@media (min-width: 768px) {
+  .auth-page__brand {
+    display: flex;
+  }
+}
+
+.auth-page__brand-content {
+  text-align: center;
+  color: #fff;
+  z-index: 1;
+}
+
+.auth-page__logo {
+  font-size: 4rem;
+  margin-bottom: 0.5rem;
+}
+
+.auth-page__tagline {
+  font-size: 2.5rem;
+  font-weight: 800;
+  letter-spacing: -0.5px;
+  color: #fff;
+}
+
+.auth-page__subtitle {
+  font-size: 1rem;
+  color: rgba(255,255,255,0.85);
+  margin-top: 0.25rem;
+}
+
+/* ── Tarjetas decorativas (estilo Tinder) ────────────────────────── */
+.auth-page__brand-cards {
+  position: relative;
+  width: 240px;
+  height: 320px;
+  margin-bottom: 2rem;
+}
+
+.mock-card {
+  position: absolute;
+  width: 220px;
+  height: 290px;
+  border-radius: var(--radius-card);
+  overflow: hidden;
+  background: var(--color-surface);
+  box-shadow: var(--shadow-card);
+  display: flex;
+  flex-direction: column;
+}
+
+.mock-card--back {
+  top: 16px;
+  left: 16px;
+  transform: rotate(6deg);
+  opacity: 0.75;
+}
+
+.mock-card--front {
+  top: 0;
+  left: 0;
+  z-index: 2;
+}
+
+.mock-card--preview {
+  position: static;
+  width: 200px;
+  height: 250px;
+  margin: 1rem auto 0;
+}
+
+.mock-card__img {
+  flex: 1;
+  background-size: cover;
+  background-position: center;
+}
+
+/* Gradientes como placeholder de imágenes de pisos */
+.mock-card__img--1 {
+  background: linear-gradient(135deg, #f5a623 0%, #f76b1c 100%);
+}
+
+.mock-card__img--2 {
+  background: linear-gradient(135deg, #a78bfa 0%, #7c3aed 100%);
+}
+
+.mock-card__info {
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #fff;
+}
+
+.mock-card__title {
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: var(--color-text);
+}
+
+.mock-card__price {
+  font-size: 0.8rem;
+  color: var(--color-primary);
+  font-weight: 600;
+}
+
+.mock-card__actions {
+  display: flex;
+  justify-content: center;
+  gap: 1rem;
+  padding: 0.5rem 1rem 0.75rem;
+  background: #fff;
+}
+
+.mock-card__btn {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  border: none;
+  cursor: default;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.mock-card__btn--like {
+  background: var(--color-like);
+  color: #fff;
+}
+
+.mock-card__btn--dislike {
+  background: var(--color-dislike);
+  color: #fff;
+}
+
+/* ── Panel derecho: formulario ───────────────────────────────────── */
+.auth-page__form-panel {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem 1.5rem;
+  background: var(--color-bg);
+}
+
+@media (min-width: 768px) {
+  .auth-page__form-panel {
+    max-width: 520px;
+  }
+}
+
+.auth-page__form-container {
+  width: 100%;
+  max-width: 400px;
+}
+
+.auth-page__form-header {
+  margin-bottom: 2rem;
+  text-align: center;
+}
+
+.auth-page__form-title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--color-text);
+  letter-spacing: -0.3px;
+}
+
+.auth-page__form-desc {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  margin-top: 0.25rem;
+}
+
+.auth-page__login-link {
+  text-align: center;
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  color: var(--color-text-muted);
+}
+
+.auth-page__link {
+  color: var(--color-primary);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.auth-page__link:hover {
+  text-decoration: underline;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   FORMULARIO DE REGISTRO
+   ═══════════════════════════════════════════════════════════════════ */
+.register-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* Error global del servidor */
+.register-form__server-error {
+  background: var(--color-error-bg);
+  border: 1px solid var(--color-error);
+  border-radius: var(--radius-input);
+  padding: 0.75rem 1rem;
+  color: var(--color-error);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+
+/* Botón de envío */
+.register-form__submit {
+  width: 100%;
+  padding: 0.875rem 1.5rem;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  color: #fff;
+  font-size: 1rem;
+  font-weight: 700;
+  border: none;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  margin-top: 0.5rem;
+  transition: opacity 0.2s, transform 0.1s;
+  letter-spacing: 0.3px;
+  box-shadow: 0 4px 14px rgba(253, 85, 100, 0.4);
+}
+
+.register-form__submit:hover:not(:disabled) {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+
+.register-form__submit:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.register-form__submit:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   CAMPO DE FORMULARIO (FormField)
+   ═══════════════════════════════════════════════════════════════════ */
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.form-field__label {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.form-field__input,
+.form-field__select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+  font-family: inherit;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1.5px solid var(--color-border);
+  border-radius: var(--radius-input);
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+.form-field__input:focus,
+.form-field__select:focus {
+  border-color: var(--color-primary);
+  box-shadow: 0 0 0 3px rgba(253, 85, 100, 0.15);
+}
+
+.form-field__input--error,
+.form-field__input--error:focus {
+  border-color: var(--color-error);
+  box-shadow: 0 0 0 3px rgba(220, 38, 38, 0.12);
+}
+
+/* Select personalizado (flecha) */
+.form-field__input-wrapper {
+  position: relative;
+}
+
+.form-field__input-wrapper::after {
+  content: '▾';
+  position: absolute;
+  right: 1rem;
+  top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: var(--color-text-muted);
+  font-size: 0.9rem;
+}
+
+.form-field__select {
+  padding-right: 2.5rem;
+  cursor: pointer;
+}
+
+/* Color atenuado para el placeholder del select */
+.form-field__select option[value=""] {
+  color: var(--color-text-muted);
+}
+
+/* Mensaje de error */
+.form-field__error {
+  font-size: 0.8rem;
+  color: var(--color-error);
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.form-field__error::before {
+  content: '⚠';
+  font-size: 0.75rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PÁGINAS DE INICIO (Vendedor / Comprador)
+   ═══════════════════════════════════════════════════════════════════ */
+.home-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+}
+
+.home-page--seller {
+  background: linear-gradient(145deg, #fff5f5 0%, #ffe4e6 100%);
+}
+
+.home-page--buyer {
+  background: linear-gradient(145deg, #f0fdfa 0%, #ccfbf1 100%);
+}
+
+.home-page__content {
+  text-align: center;
+  max-width: 480px;
+}
+
+.home-page__logo {
+  font-size: 3.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.home-page__title {
+  font-size: 1.75rem;
+  font-weight: 800;
+  color: var(--color-text);
+  margin-bottom: 0.75rem;
+}
+
+.home-page__role-badge {
+  display: inline-block;
+  padding: 0.25rem 1rem;
+  border-radius: var(--radius-btn);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin-bottom: 1rem;
+}
+
+.home-page__role-badge--seller {
+  background: rgba(253, 85, 100, 0.12);
+  color: var(--color-primary);
+}
+
+.home-page__role-badge--buyer {
+  background: rgba(68, 212, 201, 0.15);
+  color: #0f9690;
+}
+
+.home-page__desc {
+  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  line-height: 1.6;
+  margin-bottom: 2rem;
+}
+
+.home-page__cta {
+  padding: 0.875rem 2rem;
+  background: linear-gradient(135deg, var(--color-primary) 0%, var(--color-primary-dark) 100%);
+  color: #fff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  border: none;
+  border-radius: var(--radius-btn);
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(253, 85, 100, 0.35);
+  transition: opacity 0.2s, transform 0.1s;
+}
+
+.home-page__cta:hover {
+  opacity: 0.9;
+  transform: translateY(-1px);
+}
+
+.home-page__swipe-preview {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+}

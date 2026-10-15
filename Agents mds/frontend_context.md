@@ -1,6 +1,49 @@
 # Contexto frontend de SwipeHome
 
-Fuente: `contexto-proyecto-codex.md` de Descargas, revisada el 14 de octubre de 2026. No existe frontend implementado, framework elegido ni comandos de ejecución verificados.
+Fuente original: `contexto-proyecto-codex.md` de Descargas, revisada el 14 de octubre de 2026.
+**Actualizado el 15 de octubre de 2026** con el stack y la implementación de US1 (rama `US1_Registro`).
+
+## Stack frontend (confirmado a 15 oct 2026)
+
+| Tecnología | Versión | Uso |
+|---|---|---|
+| React | 19.x | Librería de UI |
+| Vite | 8.x | Bundler y servidor de desarrollo |
+| react-router-dom | 7.x | Enrutamiento SPA |
+| Oxlint | 1.x | Linter |
+
+El frontend reside en `frontend/` en la raíz del repositorio. El backend Django corre en `http://127.0.0.1:8000`; Vite proxifica `/api/*` hacia él en desarrollo mediante `vite.config.js`.
+
+### Comandos verificados
+
+```bash
+cd frontend
+npm install        # instalar dependencias
+npm run dev        # servidor de desarrollo (http://localhost:5173)
+npm run build      # build de producción (dist/)
+npm run lint       # oxlint
+```
+
+### Estructura de `frontend/src/`
+
+```
+api/
+  auth.js           → getCsrfToken, registerUser, fetchCurrentUser
+context/
+  AuthContext.jsx   → AuthProvider, AuthContext (user, loading, setUser, clearUser)
+hooks/
+  useAuth.js        → hook useAuth()
+components/
+  FormField.jsx     → campo reutilizable con label, input/select y error accesible
+  RegisterForm.jsx  → formulario de registro con validaciones US1
+pages/
+  RegisterPage.jsx  → /registro (redirige si ya autenticado)
+  SellerHome.jsx    → /vendedor/inicio (placeholder Sprint 0)
+  BuyerHome.jsx     → /comprador/inicio (placeholder Sprint 0)
+App.jsx             → router con rutas protegidas (PrivateRoute)
+main.jsx            → BrowserRouter + AuthProvider + App
+index.css           → estilos globales (tema SwipeHome estilo Tinder)
+```
 
 ## Estado vigente de la integracion con backend
 
@@ -32,7 +75,19 @@ La integracion visual y una recarga real de navegador siguen pendientes.
 
 [project_context.md](project_context.md) conserva las historias, criterios, validaciones de campos, reglas de fotografías y decisiones pendientes. [backend_context.md](backend_context.md) conserva los contratos HTTP y las reglas compartidas de autenticación. Este documento no define payloads ni rutas adicionales.
 
-## Responsabilidades del Sprint 0
+## Estado de implementación (rama US1_Registro)
+
+| Tarea | Estado | Notas |
+|---|---|---|
+| US1-1: Formulario de registro y validaciones | ✅ Implementado | `RegisterForm.jsx` + `FormField.jsx` |
+| US1-2: Conexión del formulario con la API | ✅ Implementado | `api/auth.js` + `RegisterForm.jsx` |
+| US1-4B: Actualizar interfaz y redirigir según rol | ✅ Implementado | `AuthContext.jsx` + `App.jsx` |
+| US1-3: API de registro (backend) | ✅ En backend (rama mergeada en dev) | `accounts/views.py` |
+| US1-4A: Sesión tras registro (backend) | ✅ En backend | `accounts/views.py` (login automático) |
+| US1-5: Persistencia de usuarios (backend) | ✅ En backend | `accounts/models.py` |
+| US1-6: Verificación integrada | Pendiente QA | — |
+
+## Responsabilidades del Sprint 0 (estado actualizado)
 
 | Historia | Tareas de interfaz | Resultado esperado |
 |---|---|---|
@@ -65,15 +120,13 @@ Los límites de fotografías del backlog (1–10, hasta 5 MB, JPEG/PNG/WebP) se 
 
 ## 10. Rutas del frontend
 
-| Ruta u opción | Uso definido |
-|---|---|
-| `/login` | Pantalla de acceso; permanece abierta ante un login fallido. |
-| `/vendedor/inicio` | Destino de un Vendedor tras registro o login exitoso. |
-| `/comprador/inicio` | Destino de un Comprador tras registro o login exitoso. |
-| Opción «Publicar» | Abre el formulario para un Vendedor autenticado; su URL no está fijada. |
-| Formulario de registro | Necesario para US1; su URL no está fijada. |
-
-Las dos pantallas de inicio son destinos de navegación requeridos. Su contenido completo y todas las funcionalidades futuras de cada rol no están incluidos automáticamente en el sprint.
+| Ruta u opción | Uso definido | Estado |
+|---|---|---|
+| `/registro` | Formulario de registro US1 | ✅ Implementado |
+| `/login` | Pantalla de acceso; permanece abierta ante un login fallido. | Pendiente US2 |
+| `/vendedor/inicio` | Destino de un Vendedor tras registro o login exitoso. | ✅ Placeholder implementado |
+| `/comprador/inicio` | Destino de un Comprador tras registro o login exitoso. | ✅ Placeholder implementado |
+| Opción «Publicar» | Abre el formulario para un Vendedor autenticado; su URL no está fijada. | Pendiente US3 |
 
 ## Decisiones que bloquean el cierre de la integración
 
