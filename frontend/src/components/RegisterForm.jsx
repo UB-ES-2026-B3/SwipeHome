@@ -63,7 +63,12 @@ function validateForm({ name, email, password, role }) {
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export function RegisterForm() {
+/**
+ * Props:
+ *  - onSuccess: función opcional a llamar después de un registro exitoso
+ *    (p.ej. para cerrar el overlay). La redirección de rol la hace siempre.
+ */
+export function RegisterForm({ onSuccess } = {}) {
   const navigate = useNavigate()
   const { setUser } = useAuth()
 
@@ -119,6 +124,7 @@ export function RegisterForm() {
       if (ok && status === 201) {
         // CA-02: actualizar estado de autenticación y redirigir según rol
         setUser(data)
+        onSuccess?.()
         if (data.role === 'SELLER') {
           navigate('/vendedor/inicio')
         } else {
