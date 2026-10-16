@@ -22,7 +22,25 @@ SQLite es exclusivamente la decisión de desarrollo local; la base del futuro
 deployment sigue pendiente. No se necesita emulador ni credenciales cloud.
 Sesiones/cookies siguen siendo el mecanismo previsto; no se añade JWT.
 
-## Instalacion y HTTPS local
+## Instalacion y modos de desarrollo
+
+### Modo HTTP (runserver) — para desarrollo rápido sin certificado
+
+```powershell
+cd backend
+py -3.13 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
+.\.venv\Scripts\python.exe manage.py migrate
+$env:DJANGO_DEV = '1'
+.\.venv\Scripts\python.exe manage.py runserver
+```
+
+Con `DJANGO_DEV=1` las cookies de sesión y CSRF no requieren HTTPS (`Secure=False`)
+y `DEBUG=True` activa los mensajes de error detallados de Django.
+El frontend Vite proxifica `/api/*` a `http://127.0.0.1:8000` automáticamente.
+**No usar `DJANGO_DEV=1` en producción ni con `runhttps`.**
+
+### Modo HTTPS local (runhttps) — replica la configuración de producción
 
 Desde la raiz, PowerShell (Python 3.13 y Git para Windows):
 
@@ -59,13 +77,15 @@ La importacion de confianza no se ha ejecutado automaticamente.
 Firefox puede necesitar importar el certificado en su propio almacen.
 
 La persistencia es SQLite local (`backend/db.sqlite3`); `migrate` prepara tambien
-`django_session`. No hay servicios cloud. DEBUG sigue desactivado.
-[.env.example](.env.example) describe DJANGO_SECRET_KEY y DATABASE_PATH.
-El archivo .env no se carga automaticamente. Variables opcionales:
+`django_session`. No hay servicios cloud.
+[.env.example](.env.example) describe todas las variables de entorno disponibles.
+El archivo .env no se carga automaticamente. Variables habituales:
 
 ```powershell
 $env:DJANGO_SECRET_KEY = 'swipehome-local-development-only'
 $env:DATABASE_PATH = Join-Path (Get-Location) 'db.sqlite3'
+# Solo en modo HTTP local; NO usar con runhttps:
+$env:DJANGO_DEV = '1'
 ```
 
 El secreto de ejemplo es publico y exclusivo de desarrollo local.
