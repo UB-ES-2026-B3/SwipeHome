@@ -56,6 +56,32 @@ export async function registerUser(payload) {
 }
 
 /**
+ * Envía las credenciales de acceso y crea la sesión del usuario.
+ *
+ * @param {{ email: string, password: string }} credentials
+ * @returns {{ ok: boolean, status: number, data: object }}
+ */
+export async function login(credentials) {
+  const token = await getCsrfToken()
+
+  const response = await fetch('/api/auth/login', {
+    method: 'POST',
+    credentials: 'include',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': token,
+    },
+    body: JSON.stringify({
+      email: credentials.email,
+      password: credentials.password,
+    }),
+  })
+
+  const data = await response.json()
+  return { ok: response.ok, status: response.status, data }
+}
+
+/**
  * Consulta la sesión activa para recuperar el usuario autenticado.
  * Utilizado al recargar la página para mantener el estado de autenticación.
  *
