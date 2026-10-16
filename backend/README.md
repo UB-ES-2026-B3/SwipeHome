@@ -90,6 +90,39 @@ $env:DJANGO_DEV = '1'
 
 El secreto de ejemplo es publico y exclusivo de desarrollo local.
 
+## Crear un superusuario
+
+Desde `backend`, con el entorno y las dependencias anteriores preparados:
+
+```powershell
+uv run python manage.py migrate
+uv run python manage.py createsuperuser
+```
+
+El comando solicita email, nombre, rol (`BUYER` o `SELLER`) y contrase?a.
+El email se normaliza y la contrase?a se guarda con el hashing de Django.
+Los permisos administrativos (`is_staff`, `is_superuser`) son independientes
+del rol de producto; no existe un rol `ADMIN`. Las cuentas existentes conservan
+sus datos y reciben permisos administrativos desactivados en la migraci?n 0003.
+No hay panel Django admin configurado en este proyecto.
+
+Para arrancar por HTTP desde CMD (las variables no se comparten con otra terminal):
+
+```bat
+cd backend
+set DJANGO_DEV=1
+uv run python manage.py runserver
+```
+
+En PowerShell usa `$env:DJANGO_DEV = '1'` antes de arrancar el backend.
+Copiar `.env.example` a `.env` no activa esta variable autom?ticamente.
+Reinicia Django tras cambiarla. En HTTPS elimina la variable en esa terminal:
+`Remove-Item Env:DJANGO_DEV -ErrorAction SilentlyContinue` en PowerShell
+o `set DJANGO_DEV=` en CMD. El navegador tambi?n debe usar HTTPS para recibir
+cookies Secure; un proxy a un backend HTTPS no convierte el frontend HTTP en HTTPS.
+El cliente solicita un token CSRF nuevo antes de cada registro/login para admitir
+la rotaci?n de Django y evita cachear esa consulta.
+
 ## Dependencias reproducibles
 
 `requirements.txt` fija todas las dependencias directas y transitivas:

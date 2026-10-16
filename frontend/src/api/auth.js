@@ -9,18 +9,15 @@
  * y se reutiliza mientras dure la sesión.
  */
 
-let csrfToken = null
-
 /**
  * Obtiene el token CSRF del backend (GET /api/auth/register).
  * El valor se cachea en memoria para la sesión del navegador.
  */
 async function getCsrfToken() {
-  if (csrfToken) return csrfToken
-
   const response = await fetch('/api/auth/register', {
     method: 'GET',
     credentials: 'include',
+    cache: 'no-store',
   })
 
   if (!response.ok) {
@@ -28,8 +25,7 @@ async function getCsrfToken() {
   }
 
   const data = await response.json()
-  csrfToken = data.csrfToken
-  return csrfToken
+  return data.csrfToken
 }
 
 /**

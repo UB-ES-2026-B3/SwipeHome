@@ -1,5 +1,15 @@
 # Contexto frontend de SwipeHome
 
+## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
+
+DJANGO_DEV=1 activa HTTP local con cookies sin Secure; sin esa variable se conserva
+Secure. Debe definirse en la terminal del backend antes de arrancarlo; .env no se
+carga autom?ticamente. El frontend obtiene CSRF antes de cada registro/login para
+evitar reutilizar el token que Django rota. El modelo admite createsuperuser con
+permisos Django independientes de BUYER/SELLER, mediante la migraci?n 0003.
+Los comandos vigentes est?n en [README backend](../backend/README.md).
+
+
 Fuente original: `contexto-proyecto-codex.md` de Descargas, revisada el 14 de octubre de 2026.
 **Actualizado el 15 de octubre de 2026** con el stack, la implementación de US1 y el rediseño visual (rama `US1_Registro`).
 

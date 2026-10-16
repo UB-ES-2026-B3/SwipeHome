@@ -88,7 +88,7 @@ class AccountPersistenceTests(TestCase):
         for email, role in (("ana@example.com", "BUYER"), ("other@example.com", "ADMIN")):
             with self.assertRaises(IntegrityError), transaction.atomic(), connection.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO accounts_user (name, email, password, role) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO accounts_user (name, email, password, role, is_staff, is_superuser) VALUES (%s, %s, %s, %s, 0, 0)",
                     [VALID["name"], email, self.encoded, role],
                 )
         self.assertEqual(User.objects.count(), 1)
@@ -99,7 +99,7 @@ class AccountPersistenceTests(TestCase):
         for email in (" ANA@EXAMPLE.COM ", "\tother@example.com\n", "other@\u00d1ANDU.COM", "\u2003other@example.com\u2003"):
             with self.assertRaises(IntegrityError), transaction.atomic(), connection.cursor() as cursor:
                 cursor.execute(
-                    "INSERT INTO accounts_user (name, email, password, role) VALUES (%s, %s, %s, %s)",
+                    "INSERT INTO accounts_user (name, email, password, role, is_staff, is_superuser) VALUES (%s, %s, %s, %s, 0, 0)",
                     [VALID["name"], email, self.encoded, "BUYER"],
                 )
         with self.assertRaises(IntegrityError), transaction.atomic():
@@ -133,14 +133,19 @@ class EmailMigrationTests(TransactionTestCase):
     def tearDown(self):
         # Only the isolated test database. Restore schema even after a failed test.
         self.old_user.objects.all().delete()
-        MigrationExecutor(connection).migrate(self.after)
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
         super().tearDown()
 
     def test_existing_account_preserves_id_password_and_role(self):
         password = make_password(VALID["password"])
         old = self.old_user.objects.create(name=VALID["name"], email="\tANA@EXAMPLE.COM\n", password=password, role="SELLER")
         MigrationExecutor(connection).migrate(self.after)
+        executor = MigrationExecutor(connection)
+        executor.migrate(executor.loader.graph.leaf_nodes())
         stored = User.objects.get(pk=old.pk)
+        self.assertFalse(stored.is_staff)
+        self.assertFalse(stored.is_superuser)
         self.assertEqual(stored.email, "ana@example.com")
         self.assertEqual(stored.name, old.name)
         self.assertEqual(stored.password, password)
