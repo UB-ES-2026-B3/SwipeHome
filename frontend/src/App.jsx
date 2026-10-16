@@ -2,6 +2,7 @@ import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { BuyerHome } from './pages/BuyerHome'
 import { LandingPage } from './pages/LandingPage'
+import { LoginPage } from './pages/LoginPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { SellerHome } from './pages/SellerHome'
 
@@ -43,8 +44,8 @@ export default function App() {
       {/* Formulario de registro standalone (acceso directo por URL) */}
       <Route path="/registro" element={<RegisterPage />} />
 
-      {/* Login — se implementará en US2 */}
-      <Route path="/login" element={<Navigate to="/" replace />} />
+      {/* Formulario de inicio de sesión */}
+      <Route path="/login" element={<LoginPage />} />
 
       {/* Inicio Vendedor */}
       <Route
