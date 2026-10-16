@@ -31,3 +31,26 @@ def validate_registration(data):
     if role not in ("SELLER", "BUYER"):
         errors["role"] = "Selecciona SELLER o BUYER."
     return {"name": name, "email": email, "password": password, "role": role}, errors
+
+
+def validate_login(data):
+    errors = {}
+    if not isinstance(data, dict):
+        return None, {"body": "Debe ser un objeto JSON."}
+    for field in ("email", "password"):
+        if field not in data or not isinstance(data[field], str):
+            errors[field] = "Campo obligatorio de tipo texto."
+    if errors:
+        return None, errors
+
+    email = normalize_account_email(data["email"])
+    password = data["password"]
+    try:
+        validate_email(email)
+    except ValidationError:
+        errors["email"] = "Introduce un email válido."
+    if len(email) > 254 or any(char.isspace() for char in email):
+        errors["email"] = "Introduce un email válido."
+    if not 1 <= len(password) <= 128:
+        errors["password"] = "La contraseña debe tener entre 1 y 128 caracteres."
+    return {"email": email, "password": password}, errors
