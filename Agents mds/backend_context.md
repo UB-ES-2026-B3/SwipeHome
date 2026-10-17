@@ -1,33 +1,10 @@
 # Contexto backend de SwipeHome
 
-## Estado actualizado - US1.3, US1.4.1 y persistencia de cuentas
-
-El backend local usa Django 5.2 y SQLite en la rama
-`features-US-1.3-implementar-api-registro`. La rama de destino de la PR de estas US es `dev` (`origin/dev` en remoto). US1.4.1 (US1-4A) crea la sesion
-Django al registrar la cuenta y persiste ambas en una transaccion.
-Las cookies tienen HttpOnly, Secure y SameSite=Lax; CSRF esta activo.
-HTTPS local y los comandos de instalacion y pruebas estan documentados en
-[backend/README.md](../backend/README.md). No hay dependencias adicionales.
-La identidad y el rol se resuelven desde request.user en el servidor.
-US1-5 centraliza la normalizacion del email en el campo de persistencia.
-La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
-de email canonico; se mantienen UNIQUE de email y CHECK de rol.
-La suite completa pasa 40 pruebas, incluida concurrencia real y HTTPS.
-GET /api/auth/me esta implementado: 200 con id/name/email/role desde la sesion,
-401 sin autenticacion y 500 generico ante fallo interno, con Cache-Control no-store.
-La consulta se verifica con rutas reales y HTTPS local. La integracion de la
-interfaz y la comprobacion de recarga real en navegador siguen pendientes.
-Los apartados originales siguientes conservan el contexto del backlog;
-el estado implementado actual se describe en este bloque y el README backend.
-
-
 Fuente: `contexto-proyecto-codex.md` , revisada el 14 de octubre de 2026. Los apartados de la fuente mantienen su numeración original.
 
 ## Estado y responsabilidad
 
-El backend implementado usa Django y SQLite local; el estado vigente y los comandos
-estan en [backend/README.md](../backend/README.md). Login y publicacion siguen
-siendo requisitos del backlog, con sus decisiones pendientes indicadas.
+No existe backend implementado ni stack confirmado en este repositorio. Los siguientes contratos son requisitos del backlog, con sus decisiones pendientes expresamente indicadas.
 
 Las reglas de campos, criterios y tareas se mantienen en [project_context.md](project_context.md):
 
@@ -41,8 +18,7 @@ La referencia principal de las reglas de imágenes está en US3 del contexto del
 
 ## Verificación prevista
 
-La suite actual tiene 40 pruebas ejecutables de registro, persistencia, sesiones
-y consulta de usuario. Antes de dar una implementación por terminada deberán verificarse validación directa de API, unicidad de email bajo concurrencia, protección de credenciales, identidad y separación de sesiones, permisos por rol y reversión de datos/archivos ante fallos. La lista completa de casos está en el apartado 13 del contexto del proyecto.
+No hay pruebas ejecutables actualmente. Antes de dar una implementación por terminada deberán verificarse validación directa de API, unicidad de email bajo concurrencia, protección de credenciales, identidad y separación de sesiones, permisos por rol y reversión de datos/archivos ante fallos. La lista completa de casos está en el apartado 13 del contexto del proyecto.
 
 ## 5. Reglas transversales y autenticación
 
@@ -60,12 +36,7 @@ La base documental actual utiliza autenticación mediante **sesiones y cookies**
 - La recarga de una página debe permitir recuperar el estado de autenticación consultando la sesión.
 - Autenticación significa identificar al usuario. Autorización significa decidir qué puede hacer; la publicación exige autorización de Vendedor.
 
-La base implementada usa PBKDF2-SHA256 de Django, sesiones en SQLite y una
-vigencia local predeterminada de 14 dias. GET /api/auth/me define la consulta
-del usuario actual; HTTPS y CSRF local estan documentados. La politica de
-produccion y las condiciones entre dominios siguen pendientes.
-La guia "Continuidad para implementar login (US2)" del README backend explica
-los componentes y garantias que debe reutilizar el siguiente desarrollo.
+No se ha elegido un algoritmo de hash, un proveedor de autenticación, una duración de sesión ni el contrato del endpoint que consultará el usuario actual. Tampoco se han definido las condiciones de cookies entre diferentes dominios ni los ajustes de desarrollo local. Registrar estas decisiones como pendientes, sin tratar los atributos de cookie como una solución completa de seguridad.
 
 ## 9. Contratos HTTP definidos hasta ahora
 
@@ -74,7 +45,6 @@ Estos son los endpoints recogidos en el backlog. No confundirlos con rutas de na
 | Método y endpoint | Contenido | Acceso | Resultado esperado |
 |---|---|---|---|
 | `POST /api/auth/register` | `application/json`: `name`, `email`, `password`, `role` | Registro de persona sin cuenta | Crear la cuenta e iniciar sesión; `201 Created`. |
-| `GET /api/auth/me` | Sin cuerpo; cookie de sesion | Consulta del usuario actual | Implementado: 200 con id/name/email/role; 401 sin sesion; 500 generico. |
 | `POST /api/auth/login` | `application/json`: `email`, `password` | Comprobación de credenciales | Crear una sesión nueva y proporcionar identidad/rol. Código de éxito por cerrar. |
 | `POST /api/inmuebles` | `multipart/form-data`: datos del anuncio y una o más fotografías | Sesión válida con rol `SELLER` | Publicar el inmueble asociado al usuario; `201 Created` con identificador. |
 
@@ -90,9 +60,7 @@ Estos son los endpoints recogidos en el backlog. No confundirlos con rutas de na
 
 ### Cuerpos y mensajes
 
-Registro y GET /api/auth/me tienen contrato implementado y ejemplos en el README
-backend. Los campos de entrada de login estan fijados, pero su cuerpo de exito
-y codigo siguen pendientes. No hay un envoltorio comun acordado para toda la API.
+Los campos de entrada de registro y login están fijados. No se han acordado ejemplos completos de cuerpos JSON, un envoltorio común de respuestas, nombres de códigos de error ni estructura exacta de errores por campo.
 
 Para publicación se han definido los campos funcionales, pero no sus nombres técnicos en `multipart/form-data`, la representación de los booleanos ni el nombre del campo o campos de archivos. No convertir los nombres españoles del formulario en un contrato de payload sin marcarlo como propuesta.
 
@@ -102,10 +70,7 @@ La sesión se entrega mediante cookie. No se ha definido un token en el cuerpo d
 
 ### Endpoints auxiliares pendientes
 
-Por peticion del usuario se implemento GET /api/auth/me para consultar la sesion
-al recargar: 200 con id, name, email y role; 401 sin sesion valida; 500 generico
-ante fallo interno. Respuestas no-store, sin secretos ni redirecciones.
-El frontend debe consumirlo para recuperar su estado autenticado.
+Se necesita resolver cómo consultará el frontend la sesión y el usuario actual al recargar. Un endpoint como `GET /api/auth/me` puede proponerse en la documentación, pero **todavía no es un endpoint acordado**. Su respuesta sin sesión, campos y estados deben cerrarse antes de tratarlo como contrato.
 
 Tampoco se han definido endpoints de logout, recuperación de contraseña, verificación de email, listado/detalle de anuncios, edición, borrado, swipes, candidatos, matches, perfiles o historial. Documentarlos únicamente como pendientes o alcance futuro cuando corresponda.
 
