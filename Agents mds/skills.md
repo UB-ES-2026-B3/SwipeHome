@@ -22,7 +22,7 @@ Este archivo recoge pautas para agentes y colaboradores. No es un catálogo de s
 
 ## Git y registro local de esta tarea
 
-La rama de trabajo es `docs/contexto-proyecto`. Se crean `features` y `release` si faltan, sin imponer todavía un flujo de integración entre ramas.
+La rama de destino de las PR de estas US es `dev` (`origin/dev` en remoto), anteriormente llamada `features`. La rama `release` se conserva. La rama de trabajo actual es `features-US-1.3-implementar-api-registro`; `docs/contexto-proyecto` corresponde a la tarea documental inicial.
 
 Registrar los cambios y las comprobaciones en `agent_changelog_local.md`, excluido de Git mediante `.gitignore`. No añadirlo forzadamente al índice. Conservar los archivos locales preexistentes ajenos a la tarea.
 
