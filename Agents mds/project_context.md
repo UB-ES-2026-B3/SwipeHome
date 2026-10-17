@@ -1,5 +1,36 @@
 # Contexto del proyecto SwipeHome
 
+## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
+
+DJANGO_DEV=1 activa HTTP local con cookies sin Secure; sin esa variable se conserva
+Secure. Debe definirse en la terminal del backend antes de arrancarlo; .env no se
+carga autom?ticamente. El frontend obtiene CSRF antes de cada registro/login para
+evitar reutilizar el token que Django rota. El modelo admite createsuperuser con
+permisos Django independientes de BUYER/SELLER, mediante la migraci?n 0003.
+Los comandos vigentes est?n en [README backend](../backend/README.md).
+
+
+## Estado actualizado - US1.3, US1.4.1 y persistencia de cuentas
+
+El backend local usa Django 5.2 y SQLite en la rama
+`features-US-1.3-implementar-api-registro`. La rama de destino de la PR de estas US es `dev` (`origin/dev` en remoto). US1.4.1 (US1-4A) crea la sesion
+Django al registrar la cuenta y persiste ambas en una transaccion.
+Las cookies tienen HttpOnly, Secure y SameSite=Lax; CSRF esta activo.
+HTTPS local y los comandos de instalacion y pruebas estan documentados en
+[backend/README.md](../backend/README.md). No hay dependencias adicionales.
+La identidad y el rol se resuelven desde request.user en el servidor.
+US1-5 centraliza la normalizacion del email en el campo de persistencia.
+La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
+de email canonico; se mantienen UNIQUE de email y CHECK de rol.
+La suite completa pasa 40 pruebas, incluida concurrencia real y HTTPS.
+GET /api/auth/me esta implementado: 200 con id/name/email/role desde la sesion,
+401 sin autenticacion y 500 generico ante fallo interno, con Cache-Control no-store.
+La consulta se verifica con rutas reales y HTTPS local. La integracion de la
+interfaz y la comprobacion de recarga real en navegador siguen pendientes.
+Los apartados originales siguientes conservan el contexto del backlog;
+el estado implementado actual se describe en este bloque y el README backend.
+
+
 Documentación preparada el 14 de octubre de 2026 a partir de `contexto-proyecto-codex.md`, leído en Descargas. Los apartados extraídos conservan su numeración de origen para facilitar la trazabilidad.
 
 ## Estado observado del repositorio
@@ -283,10 +314,11 @@ No consta una selección definitiva de framework frontend/backend, base de datos
 
 También están pendientes:
 
-1. Contratos completos de respuestas y errores y código de éxito del login.
-2. Endpoint de consulta de sesión y datos del usuario actual.
+1. Contratos de las APIs pendientes y codigo de exito del login. Registro y
+   GET /api/auth/me ya tienen contrato en el README backend.
+2. Integracion frontend de GET /api/auth/me (endpoint backend ya implementado).
 3. Nombres técnicos de los campos de publicación y envío de fotografías.
-4. URLs del formulario de registro y del formulario de publicación.
+4. URL del formulario de registro: **`/registro`** (implementado en US1_Registro). URL del formulario de publicación: pendiente.
 5. Ratificación específica de máximos, tamaño y formatos de imágenes.
 6. Límites de textos y validación territorial del código postal.
 7. Semántica exacta del número de personas y de la oferta de habitaciones.
