@@ -1,14 +1,11 @@
 # Registro local del agente
 /agent_changelog_local.md
 
-# Local JetBrains IDE settings
+# Configuración local de los IDE de JetBrains
 /.idea/
 
-# Local Visual Studio Code settings
+# Configuración local de Visual Studio Code
 /.vscode/
 
-# Local Codex settings
+# Configuración local de codex
 /.codex/
-
-# Certificados TLS generados solo para desarrollo local
-/backend/.local-tls/
