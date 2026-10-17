@@ -154,10 +154,31 @@ anunciado.
 ## 7. Estado de las ramas (18 octubre 2026)
 
 - `dev` — rama de trabajo, al día.
-- `main` — **rota**: el revert de la PR #45 se mezcló aquí y eliminó todo el
-  código (backend y frontend); el "reapply" (PR #48) solo llegó a `dev`. Hay
-  que arreglarla con una PR de `dev` a `main`, no con otro revert. Nada se ha
-  perdido: está todo en el historial.
+- `main` — **vacía de código** (solo README y `Agents mds`). El revert de la
+  PR #45 se mezcló aquí y eliminó todo el código, backend y frontend
+  incluidos; el "reapply" (PR #48) solo llegó a `dev`. Nada se ha perdido:
+  está todo en el historial.
+
+  **Decisión: se deja así de momento**, hasta que el backend y el frontend
+  estén cuadrados con Firebase. `main` solo recibirá trabajo terminado.
+
+  > ⚠️ **AVISO IMPORTANTE para quien haga el merge a `main` en el futuro.**
+  > Una PR normal de `dev` a `main` **no restaura el código**. Está
+  > comprobado: git la da por buena ("Automatic merge went well"), sin
+  > conflictos ni avisos, y `main` se queda con 6 ficheros, sin backend ni
+  > frontend.
+  >
+  > El motivo: respecto al ancestro común (el merge de la PR #45, que sí
+  > tenía todo el código), `main` borró los ficheros y `dev` acabó igual que
+  > el ancestro tras revertir y reaplicar. Git interpreta que solo una rama
+  > hizo un cambio —el borrado— y lo respeta.
+  >
+  > Para mergear de verdad hay que hacer **una** de estas dos cosas:
+  > 1. Revertir el revert en `main` (`git revert` del commit `fdf29ff`) y
+  >    mergear `dev` después, o
+  > 2. Dejar `main` apuntando directamente al mismo commit que `dev`.
+  >
+  > Si alguien abre la PR sin esto, parecerá correcta y dejará `main` vacía.
 - `deploy/render-bootstrap` — configuración de despliegue (gunicorn, endpoint
   `GET /api/health`, hosts de Render). No toca `accounts/`.
 
