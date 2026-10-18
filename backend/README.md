@@ -224,7 +224,7 @@ Desde backend:
 ```
 
 Para incluir HTTPS real, establece LOCAL_TLS_CERT y LOCAL_TLS_KEY como indica
-el apartado de pruebas HTTPS. La suite completa tiene 48 casos. Las nuevas
+el apartado de pruebas HTTPS. La suite completa tiene 53 casos. Las nuevas
 pruebas cubren normalizacion por distintas vias ORM, Unicode, restricciones
 SQL directas, actualizaciones duplicadas, hashes, identificadores, errores
 500 aun cuando ya existe el email y migraciones con/sin colisiones.
@@ -310,7 +310,8 @@ El frontend debe conectar /api al backend con el origen HTTPS/proxy configurado.
 Las pruebas de identidad del nuevo endpoint usan las rutas reales del backend,
 y la prueba HTTPS consulta /api/auth/me tres veces con la cookie recibida.
 Los casos historicos de US1.4.1 conservan su vista exclusiva de pruebas.
-La comprobacion manual de una recarga real en navegador queda pendiente.
+La recarga real y la consulta de sesion desde la interfaz tambien se
+comprobaron en navegador durante US1-6 para ambos roles, a traves del proxy Vite.
 
 ## Verificación
 
@@ -391,13 +392,47 @@ registro, persistencia y consulta de usuario.
 
 ## Resultado verificado
 
-Suite completa: 48 pruebas correctas, incluida la prueba HTTPS real al definir
+Suite completa: 53 pruebas correctas, incluida la prueba HTTPS real al definir
 `LOCAL_TLS_CERT` y `LOCAL_TLS_KEY`. Sin esas variables, Django omite solamente
 la prueba HTTPS. Tambien pasan `manage.py check` y
 `makemigrations --check --dry-run`.
 Las migraciones sessions.0001_initial y accounts.0002_normalize_account_emails
 se aplicaron a SQLite local conservando la base existente.
 No se han modificado requirements.txt ni sus versiones fijadas.
+
+### Resultado de verificación de US1-6 (18 octubre 2026)
+
+Ejecución local con certificado HTTPS configurado:
+
+```powershell
+$env:LOCAL_TLS_CERT = (Resolve-Path '.local-tls\localhost.pem').Path
+$env:LOCAL_TLS_KEY = (Resolve-Path '.local-tls\localhost-key.pem').Path
+.\.venv\Scripts\python.exe manage.py test accounts --verbosity 2
+```
+
+**Resultado: 53 tests correctos, ninguno fallido ni omitido.** También pasan
+`manage.py check` y `manage.py makemigrations --check --dry-run`. La ejecución
+verifica los registros SELLER y BUYER, datos y hashes persistidos, sesión,
+validaciones directas a la API y límites, email normalizado y duplicado
+concurrente, rollback de cuenta/sesión ante fallos y respuestas/logs sin datos
+sensibles.
+
+El frontend también se verificó en navegador a través del proxy Vite → Django
+con `DJANGO_DEV=1`. Se registró un Vendedor y un Comprador: ambas solicitudes
+devolvieron 201, guardaron el rol correcto y redirigieron respectivamente a
+`/vendedor/inicio` y `/comprador/inicio`. Tras recargar, ambas rutas se
+mantuvieron y `GET /api/auth/me` devolvió 200 con la identidad y el rol
+correspondientes. La cookie `sessionid` no fue accesible desde JavaScript. Con
+los cuatro campos vacíos, el formulario impidió el envío y mostró los cuatro
+errores requeridos. La base aislada de esta prueba terminó con exactamente dos
+cuentas y dos sesiones.
+
+También se ejecutaron `npm --prefix frontend ci`, `npm --prefix frontend run
+build` y `npm --prefix frontend run lint`. La instalación y el build terminaron
+correctamente; el lint terminó con código 0 y mostró una advertencia
+`react(only-export-components)` en `src/context/AuthContext.jsx:15`. No hubo
+fallos que requirieran cambios de implementación. La suite backend y esta
+comprobación integrada cubren las rutas de aceptación de US1-6.
 
 ## Prueba HTTPS real
 

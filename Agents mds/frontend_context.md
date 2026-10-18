@@ -189,8 +189,12 @@ Login aun esta pendiente; su codigo de exito y cuerpo deben acordarse.
   no asumir que dos servidores en puertos distintos funcionan sin integrar
   cookies, origen y CSRF. El comando frontend depende del stack que se elija.
 
-La suite backend pasa 40 pruebas, incluida consulta real por HTTPS a /api/auth/me.
-La integracion visual y una recarga real de navegador siguen pendientes.
+La suite backend pasa 53 pruebas, incluida consulta real por HTTPS a /api/auth/me.
+El resultado de la verificación US1-6 está registrado en el
+[README backend](../backend/README.md): los contratos de API y sesión pasan.
+También pasan build y lint; el lint informa una advertencia de Fast Refresh en
+`AuthContext.jsx`. El recorrido en navegador verificó registro, destino y
+recarga de sesión para ambos roles.
 
 ## Referencias principales
 
@@ -206,7 +210,7 @@ La integracion visual y una recarga real de navegador siguen pendientes.
 | US1-3: API de registro (backend) | ✅ En backend (rama mergeada en dev) | `accounts/views.py` |
 | US1-4A: Sesión tras registro (backend) | ✅ En backend | `accounts/views.py` (login automático) |
 | US1-5: Persistencia de usuarios (backend) | ✅ En backend | `accounts/models.py` |
-| US1-6: Verificación integrada | Pendiente QA | — |
+| US1-6: Verificación integrada | ✅ Verificada | 53 tests backend, build/lint y recorrido de ambos roles con recarga en navegador; lint con una advertencia no bloqueante |
 
 ## Responsabilidades del Sprint 0 (estado actualizado)
 
