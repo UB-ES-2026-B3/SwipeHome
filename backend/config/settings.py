@@ -12,6 +12,13 @@ _DEV = os.environ.get("DJANGO_DEV", "").strip() == "1"
 
 DEBUG = _DEV
 ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
+# Render inyecta RENDER_EXTERNAL_HOSTNAME con el dominio publico del servicio.
+# En local no existe y ALLOWED_HOSTS se queda como estaba.
+_RENDER_HOST = os.environ.get("RENDER_EXTERNAL_HOSTNAME")
+if _RENDER_HOST:
+    ALLOWED_HOSTS.append(_RENDER_HOST)
+# Hosts adicionales separados por comas (opcional).
+ALLOWED_HOSTS += [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]
 
 # En modo DEV, el frontend Vite (localhost:5173) hace de proxy hacia Django.
 # El navegador envía Origin: http://localhost:5173, que Django rechaza porque
@@ -20,6 +27,15 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 CSRF_TRUSTED_ORIGINS = (
     ["http://localhost:5173", "http://127.0.0.1:5173"] if _DEV else []
 )
+# En Render el servicio se sirve por HTTPS bajo su propio dominio: hay que
+# confiar en ese origen para que las peticiones POST con CSRF funcionen.
+if _RENDER_HOST:
+    CSRF_TRUSTED_ORIGINS.append(f"https://{_RENDER_HOST}")
+# Render termina el TLS en su proxy y reenvia a Django por HTTP. Sin esto
+# Django cree que la peticion es insegura y rechaza las cookies Secure.
+if _RENDER_HOST:
+    SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
 INSTALLED_APPS = ["django.contrib.auth", "django.contrib.contenttypes", "django.contrib.sessions", "accounts"]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
