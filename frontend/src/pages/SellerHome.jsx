@@ -7,7 +7,7 @@ import { useAuth } from '../hooks/useAuth'
  * El contenido completo de esta pantalla está fuera del alcance del Sprint 0.
  */
 export function SellerHome() {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
   const navigate = useNavigate()
 
   return (
@@ -29,6 +29,10 @@ export function SellerHome() {
           onClick={() => navigate('/publicar')}
         >
           Publicar inmueble
+        </button>
+        {/* Provisional: desbloquea el flujo de logout; libre de mover o rediseñar. */}
+        <button type="button" className="home-page__logout" onClick={logout}>
+          Cerrar sesión
         </button>
       </div>
     </main>
