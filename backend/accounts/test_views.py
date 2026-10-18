@@ -247,8 +247,10 @@ class CurrentUserTests(FirebaseMocks, SimpleTestCase):
             with self.subTest(case=case):
                 self.verify.side_effect = error if where == "verify" else None
                 self.get_profile.side_effect = error if where == "profile" else None
-                with self.assertLogs(level="ERROR") as logs:
+                # "accounts" y no la raíz: LOGGING no propaga sus registros hacia arriba.
+                with self.assertLogs("accounts", level="ERROR") as logs:
                     response = self.get()
+                self.assertTrue(any(line.startswith("ERROR:accounts.views:") for line in logs.output))
                 self.assertEqual(response.status_code, 500)
                 self.assertNotIn("WWW-Authenticate", response)
                 self.assert_safe(response, logs.output)

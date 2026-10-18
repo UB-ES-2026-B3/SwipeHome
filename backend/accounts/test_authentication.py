@@ -44,13 +44,13 @@ class UidFromRequestTests(SimpleTestCase):
 
     def test_missing_header(self, verify, get_app):
         for header in (None, "", "   "):
-            with self.subTest(header=header):
+            with self.subTest(header=header), self.assertLogs("accounts.authentication", level="INFO"):
                 self.assert_fails(request_with(header), MISSING)
         verify.assert_not_called()
 
     def test_malformed_header(self, verify, get_app):
         for header in ("Bearer", "Bearer   ", f"Basic {TOKEN}", f"Token {TOKEN}", TOKEN, f"Bearer {TOKEN} extra"):
-            with self.subTest(header=header):
+            with self.subTest(header=header), self.assertLogs("accounts.authentication", level="WARNING"):
                 self.assert_fails(request_with(header), MALFORMED)
         verify.assert_not_called()
 
