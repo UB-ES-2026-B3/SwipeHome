@@ -360,11 +360,152 @@ si algún día cambia el proyecto.
 4. Frontend: `firebase.js`, `api/auth.js`, `AuthContext.jsx`.
 5. Probar el flujo completo en local: registro → login → recarga de página → logout.
 6. Comprobar en la consola de Firebase que aparecen el usuario y el documento.
-7. Añadir `FIREBASE_SERVICE_ACCOUNT_JSON` en Render y desplegar.
-8. PR a `dev` cuando todo funcione.
+7. PR a `dev` cuando todo funcione.
+8. Desplegar en Render desde `dev`: pasos exactos en §12.
+
+*(Los pasos 7 y 8 se han intercambiado respecto a la primera versión: Render debe
+construir desde `dev` cuando el código ya esté allí, no desde una rama de trabajo.)*
 
 ## 11. Lo que no entra en esta rama
 - Hosting del frontend y CORS (con el proxy de Vite no hace falta todavía).
 - Subida de fotos (Firebase Storage necesita plan de pago).
 - Las colecciones `listings`, `swipes`, `matches`.
 - Arreglar `main`.
+
+## 12. Despliegue en Render (paso 8)
+
+Hacerlo **después** de mergear la PR en `dev`. Todo lo de esta sección se ha
+preparado y comprobado en local, pero **no** se ha ejecutado contra Render.
+
+### Punto de partida
+- El servicio construye hoy desde `deploy/render-bootstrap`, el código antiguo de
+  sesiones y SQLite.
+- La configuración está solo en el panel de Render; no hay `render.yaml` en el repo.
+  Root directory `backend`, build `pip install -r requirements.txt`, start
+  `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT`. **Nada de esto cambia.**
+- Comprobado: las 41 dependencias fijadas tienen wheel para Linux x86_64 con Python
+  3.12 y 3.13, así que Render no compila nada desde el código fuente.
+
+### 1. Generar el JSON en una sola línea (en local)
+Desde `backend/`, en PowerShell, con la ruta real del fichero (fuera del repo):
+
+```powershell
+.\.venv\Scripts\python.exe -I -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1], encoding='utf-8'))))" 'C:\ruta\fuera\del\repo\cuenta-de-servicio.json' | Set-Clipboard
+```
+
+Copia al portapapeles el JSON en **una línea** (unos 2.400 caracteres) sin escribirlo
+en ningún fichero ni mostrarlo en pantalla. Comprobado en local: el backend arranca
+con esa línea en `FIREBASE_SERVICE_ACCOUNT_JSON` y verifica tokens.
+
+**Después de pegarlo en Render**, sobrescribe el portapapeles copiando cualquier otra
+cosa. Si tienes activado el historial del portapapeles de Windows (`Win+V`), borra
+también la entrada desde ahí: es la clave de administrador del proyecto.
+
+### 2. Variables de entorno (Render → el servicio → Environment)
+
+| Variable | Valor | Nota |
+|---|---|---|
+| `FIREBASE_SERVICE_ACCOUNT_JSON` | (pegar el portapapeles) | Secreto. Solo aquí. |
+| `FIREBASE_PROJECT_ID` | `swipehome-a51d7` | No es secreto. |
+| `DJANGO_SECRET_KEY` | (la que ya hay) | No tocar. |
+
+**No deben existir:**
+- `DJANGO_DEV`: activaría `DEBUG` en producción.
+- `GOOGLE_APPLICATION_CREDENTIALS`: confunde. `FIREBASE_SERVICE_ACCOUNT_JSON` tiene
+  prioridad de todos modos.
+
+**Se pueden borrar:** `DATABASE_PATH`, si existe (ya no se usa).
+
+Guardar con **"Save only"** si Render ofrece elegir. El código antiguo ignora estas
+variables, así que guardarlas antes de cambiar la rama no rompe nada.
+
+**Versión de Python:** en el log de build, comprobar qué versión usa Render. Las
+dependencias están comprobadas con 3.12 y 3.13. Si fuera otra, fijar
+`PYTHON_VERSION` (por ejemplo `3.13.14`, la de local).
+
+### 3. Cambiar la rama
+Settings → Build & Deploy → **Branch**: `deploy/render-bootstrap` → `dev`. Después
+Manual Deploy → *Deploy latest commit*.
+
+En el log de build deben aparecer instalados `firebase-admin==7.7.0` y
+`gunicorn==23.0.0`, y el arranque de gunicorn sin errores.
+
+A partir de aquí, con auto-deploy activado, **cada push a `dev` despliega**.
+
+### 4. Verificar (en este orden)
+`BASE=https://<servicio>.onrender.com`. La primera petición puede tardar ~1 minuto
+si el servicio estaba dormido.
+
+**a. El proceso está vivo**
+```bash
+curl -i "$BASE/api/health"
+```
+→ `200 {"status": "ok"}`. No toca Firebase: solo dice que Django arranca.
+
+**b. Es el código nuevo**
+```bash
+curl -i "$BASE/api/auth/me"
+```
+→ `401` **con la cabecera `WWW-Authenticate: Bearer`**. El código antiguo también
+devolvía 401 aquí, pero sin esa cabecera: es lo que distingue un despliegue del otro.
+
+**c. La credencial se ha cargado** (no crea datos)
+```bash
+curl -i -H "Authorization: Bearer no-es-un-jwt" "$BASE/api/auth/me"
+```
+- **`401` → credencial cargada.** Para rechazar el token, Django ha tenido que
+  inicializar el Admin SDK con la credencial y conocer el project id.
+- **`500` → problema con la credencial.** En los logs de Render aparece la causa
+  exacta (`ERROR accounts.firebase: ...`):
+  - `No hay credenciales de Firebase...` → la variable no existe o está vacía.
+  - `FIREBASE_SERVICE_ACCOUNT_JSON no contiene un JSON válido.` → se pegó mal
+    (cortado, con saltos de línea o con comillas de más).
+  - `...no es una cuenta de servicio de Firebase válida.` → es otro JSON (por
+    ejemplo, el `firebaseConfig` del frontend en vez de la clave de servicio).
+
+Comprobado en local: sin credencial da 500 con ese log; con la línea del paso 1 da 401.
+
+**d. Flujo completo** (crea un usuario real; ver el compromiso de §8)
+En Git Bash, con la API key web (`VITE_FIREBASE_API_KEY`, no es secreta):
+
+```bash
+KEY=<VITE_FIREBASE_API_KEY>
+EMAIL="deploy$(date +%m%d%H%M)@example.com"
+PASS="contrasena de prueba de despliegue"
+
+curl -s -w "\n-> %{http_code}\n" -H "Content-Type: application/json" \
+  -d "{\"name\":\"Deploy Check\",\"email\":\"$EMAIL\",\"password\":\"$PASS\",\"role\":\"BUYER\"}" \
+  "$BASE/api/auth/register"
+
+TOKEN=$(curl -s -H "Content-Type: application/json" \
+  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASS\",\"returnSecureToken\":true}" \
+  "https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=$KEY" \
+  | python -c "import json,sys; print(json.load(sys.stdin)['idToken'])")
+
+curl -s -w "\n-> %{http_code}\n" -H "Authorization: Bearer $TOKEN" "$BASE/api/auth/me"
+```
+→ `201` en el registro y `200` con el mismo perfil en `/me`. Esto demuestra que la
+credencial puede crear usuarios en Firebase Auth, escribir en Firestore y leer de
+Firestore.
+
+**Limpieza:** borrar ese usuario en la consola de Firebase en **dos sitios**:
+Authentication → Usuarios, y Firestore → `users/{uid}`. Borrar solo uno deja un
+huérfano (§3) o un documento suelto.
+
+**e. Logs de Render:** tras a–d no debe haber ninguna línea `ERROR`. Sí aparecen un
+`INFO` por (b) y un `WARNING` por (c), que son esperados.
+
+### 5. Si algo falla
+- **(c) da 500:** leer la línea `ERROR accounts.firebase` del log, corregir la
+  variable y volver a desplegar.
+- **(c) da 401 pero (d) da 500 en el registro:** la credencial vale para verificar
+  tokens pero no para crear usuarios o escribir. El log dice qué falló, por ejemplo
+  `No se pudo crear el usuario en Firebase Auth (InsufficientPermissionError)`.
+  Revisar los permisos de la cuenta de servicio en Google Cloud → IAM.
+- **Volver atrás:** Render → Events → deploy anterior → *Rollback*, o devolver la
+  rama a `deploy/render-bootstrap`. Ese código vuelve a funcionar tal cual, con el
+  problema original: SQLite se borra cada vez que el servicio se duerme.
+
+### 6. Lo que este despliegue no incluye
+El frontend no está alojado (§11): en producción solo hay API. La demo de la interfaz
+se hace en local.
