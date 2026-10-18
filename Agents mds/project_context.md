@@ -22,8 +22,9 @@ La identidad y el rol se resuelven desde request.user en el servidor.
 US1-5 centraliza la normalizacion del email en el campo de persistencia.
 La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
 de email canonico; se mantienen UNIQUE de email y CHECK de rol.
-La suite backend pasa 53 pruebas, incluida concurrencia real y HTTPS local.
-Para US1-6 se ejecutaron las 53 pruebas con HTTPS y todas pasaron. El resultado
+Para US1-6 se ejecutaron 53 pruebas con HTTPS y todas pasaron. Tras ampliar
+US2-6, la suite actual cuenta con 56 tests (55 pasan y se omite la prueba HTTPS
+si no se configura certificado). El resultado
 de la integración frontend también consta en el [README backend](../backend/README.md).
 Build, lint y recorrido real de ambos roles con recarga en navegador completados;
 lint deja una advertencia Fast Refresh no bloqueante.
@@ -190,6 +191,32 @@ El formulario permanece en `/login` ante errores. Un acceso correcto crea una se
 
 Reutilizar conceptualmente la estructura de usuarios y el mecanismo de sesión de US1. Dos tareas relacionadas no implican que deban existir dos sistemas de autenticación diferentes.
 
+### Verificación backend de US2-6 (18 octubre 2026)
+
+La prueba directa de `POST /api/auth/login` cubre BUYER y SELLER, respuestas
+indistinguibles ante email inexistente y contraseña incorrecta, campos ausentes
+o vacíos, tipos no admitidos y límites. Verifica normalización de email,
+contraseñas sin modificar, atributos de cookie, aislamiento de dos cuentas
+consultadas mediante `GET /api/auth/me`, fallos simulados al comprobar
+credenciales y persistir la sesión, y respuestas/logs sin datos sensibles.
+Los 11 tests de `accounts.test_login` pasan; la suite `accounts` pasa 55 tests
+y omite solo la prueba HTTPS al ejecutarse sin certificado. Los comandos y el
+resultado detallado están en el [README del backend](../backend/README.md).
+Esta comprobación de API se complementa con la verificación integrada US2-7
+descrita a continuación.
+
+### Verificación integrada de US2-7 (18 octubre 2026)
+
+Con el backend y el frontend conectados en entorno local y una base temporal
+aislada, se completó en navegador el login de SELLER y BUYER, se comprobó el
+destino de cada rol y la restauración de sesión al recargar. Los campos vacíos
+y el email inválido mostraron validaciones sin enviar la solicitud de login;
+las credenciales incorrectas mostraron el mensaje acordado y mantuvieron
+`/login`. Se verificaron el estado de carga, un solo POST ante envíos repetidos,
+errores simulados 500 y de conexión, y el reintento exitoso tras ambos fallos.
+El detalle y la nota de build/lint están en los contextos
+[frontend](frontend_context.md) y [README backend](../backend/README.md).
+
 ## 8. US3: Publicación de inmuebles
 
 **Como** usuario registrado con rol de Vendedor, **quiero** publicar un inmueble indicando sus características, condiciones de alquiler y fotografías, **para** ofrecerlo a las personas que buscan alojamiento en la plataforma.
@@ -319,8 +346,10 @@ No consta una selección definitiva de framework frontend/backend, base de datos
 
 También están pendientes:
 
-1. Contratos de las APIs pendientes y codigo de exito del login. Registro y
-   GET /api/auth/me ya tienen contrato en el README backend.
+1. Contratos de las APIs pendientes. El login implementado devuelve `200` y
+   tiene contrato local documentado en el README backend; la ratificación del
+   código de éxito por el backlog de producto sigue pendiente. Registro y
+   GET /api/auth/me también tienen contrato documentado.
 2. Integracion frontend de GET /api/auth/me (endpoint backend ya implementado).
 3. Nombres técnicos de los campos de publicación y envío de fotografías.
 4. URL del formulario de registro: **`/registro`** (implementado en US1_Registro). URL del formulario de publicación: pendiente.

@@ -248,15 +248,33 @@ Los límites de fotografías del backlog (1–10, hasta 5 MB, JPEG/PNG/WebP) se 
 | Ruta u opción | Uso definido | Estado |
 |---|---|---|
 | `/registro` | Formulario de registro US1 | ✅ Implementado |
-| `/login` | Pantalla de acceso; permanece abierta ante un login fallido. | Pendiente US2 |
+| `/login` | Pantalla de acceso; permanece abierta ante un login fallido. | ✅ Implementado; US2-7 verificada |
 | `/vendedor/inicio` | Destino de un Vendedor tras registro o login exitoso. | ✅ Placeholder implementado |
 | `/comprador/inicio` | Destino de un Comprador tras registro o login exitoso. | ✅ Placeholder implementado |
 | Opción «Publicar» | Abre el formulario para un Vendedor autenticado; su URL no está fijada. | Pendiente US3 |
 
+### Resultado de verificación integrada US2-7 (18 octubre 2026)
+
+Con frontend Vite y backend Django conectados a una SQLite temporal con cuentas
+de prueba aisladas, se verificó en navegador el login real de SELLER y BUYER,
+su destino correspondiente y la recuperación de sesión en ambas recargas mediante
+`GET /api/auth/me`. Los campos vacíos y el email inválido mostraron errores y no
+enviaron `POST /api/auth/login`. Un 401 mostró el mensaje acordado sin salir de
+`/login`. Se interceptaron un 500 y un fallo de conexión: ambos conservaron la
+ruta, informaron del problema y permitieron reintentar.
+
+Durante una solicitud demorada, el botón mostró el estado de carga y quedó
+deshabilitado. Dos eventos de envío casi simultáneos produjeron un solo POST;
+tras el fallo del servidor y el fallo de conexión, el reintento autenticó al
+Vendedor correctamente. No se usó la base SQLite de desarrollo.
+
 ## Decisiones que bloquean el cierre de la integración
 
-Acordar el cuerpo y codigo de exito del login, los nombres tecnicos de campos
-multipart y archivos, las URLs de registro/publicacion y las condiciones de
-cookies del deployment. Registro y consulta de sesion ya tienen contrato. La lista completa de decisiones pendientes está en el apartado 14 de [project_context.md](project_context.md).
+El contrato local de login ya está integrado: acepta email y contraseña y
+devuelve 200 en éxito; la ratificación formal del código de éxito en el backlog
+sigue pendiente. También siguen pendientes los nombres técnicos de campos
+multipart y archivos, la URL de publicación y las condiciones de cookies del
+deployment. Registro y consulta de sesión ya tienen contrato. La lista completa
+de decisiones pendientes está en el apartado 14 de [project_context.md](project_context.md).
 
 Las pantallas de inicio son destinos necesarios; perfiles, historial, exploración, swipes, candidatos, matches, chat y gestión posterior de anuncios no se incorporan al Sprint 0 por estas referencias.
