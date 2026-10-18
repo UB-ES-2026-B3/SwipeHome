@@ -22,7 +22,7 @@ Fuente original: `contexto-proyecto-codex.md` de Descargas, revisada el 14 de oc
 | react-router-dom | 7.x | Enrutamiento SPA |
 | Oxlint | 1.x | Linter |
 
-El frontend reside en `frontend/` en la raíz del repositorio. El backend Django corre en `http://127.0.0.1:8000` en modo HTTP local (`DJANGO_DEV=1`) o en `https://localhost:8443` con `runhttps`; Vite proxifica `/api/*` hacia él en desarrollo mediante `vite.config.js`.
+El frontend reside en `frontend/` en la raíz del repositorio. El backend Django corre en `http://127.0.0.1:8000` en modo HTTP local (`DJANGO_DEV=1`); Vite proxifica `/api/*` hacia él en desarrollo mediante `vite.config.js`.
 
 ### Comandos verificados
 

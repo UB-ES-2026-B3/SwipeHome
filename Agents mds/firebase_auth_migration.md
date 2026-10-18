@@ -214,7 +214,11 @@ Esto borra trabajo reciente de compañeros. Conviene avisar antes, no después.
   `normalize_account_email`. `validation.py` la importa (y no se puede tocar) y
   `repository.py` la usa para guardar el email normalizado, así que hay una sola
   regla de normalización en todo el backend.
-- `management/commands/runhttps.py` — revisar si sigue teniendo sentido.
+- `management/commands/runhttps.py` — **eliminado**, junto con `VITE_API_TARGET` en
+  `vite.config.js`. Servía para probar en local las cookies `Secure` por HTTPS; sin
+  cookies ya no hay motivo, y Firebase Auth funciona sobre `http://localhost`. Se
+  conservan en `.gitignore` las entradas de `.local-tls/` para que nadie suba por
+  error una clave privada que aún tenga en local.
 - Tests que dependen del ORM: `test_persistence.py`, buena parte de `tests.py`,
   `test_login.py`, `test_current_user.py`, `test_development.py`.
 
