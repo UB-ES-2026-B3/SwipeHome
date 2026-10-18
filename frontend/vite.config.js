@@ -6,9 +6,10 @@ export default defineConfig({
   plugins: [react()],
   server: {
     proxy: {
-      // En desarrollo, /api/* va al Django local (runserver con DJANGO_DEV=1).
+      // /api/* va al Django local, o a otro backend con VITE_API_TARGET
+      // (p. ej. el de Render): el proxy corre en el servidor de Vite, sin CORS.
       '/api': {
-        target: 'http://127.0.0.1:8000',
+        target: process.env.VITE_API_TARGET || 'http://127.0.0.1:8000',
         changeOrigin: true,
       },
     },
