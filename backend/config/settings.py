@@ -36,3 +36,13 @@ WSGI_APPLICATION = "config.wsgi.application"
 DATABASES = {}
 USE_TZ = True
 STATIC_URL = "/static/"
+
+# Sin esto solo se imprimen los WARNING o superiores: los INFO de authentication.py
+# (token ausente o caducado) no saldrían ni en local ni en los logs de Render.
+LOGGING = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {"simple": {"format": "%(levelname)s %(name)s: %(message)s"}},
+    "handlers": {"console": {"class": "logging.StreamHandler", "formatter": "simple"}},
+    "loggers": {"accounts": {"handlers": ["console"], "level": "INFO", "propagate": False}},
+}

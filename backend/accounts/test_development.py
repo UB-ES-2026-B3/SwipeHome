@@ -1,4 +1,5 @@
 import importlib.util
+import logging
 import os
 from pathlib import Path
 from unittest.mock import patch
@@ -33,6 +34,14 @@ class DevelopmentSettingsTests(SimpleTestCase):
             self.assertFalse(any(removed in middleware for middleware in config.MIDDLEWARE))
         for setting in ("AUTH_USER_MODEL", "PASSWORD_HASHERS", "CSRF_TRUSTED_ORIGINS", "SESSION_ENGINE"):
             self.assertFalse(hasattr(config, setting), setting)
+
+
+class LoggingSettingsTests(SimpleTestCase):
+    def test_accounts_info_logs_reach_a_handler(self):
+        # Un log que nunca se imprime es peor que no tenerlo: se confía en él.
+        logger = logging.getLogger("accounts.authentication")
+        self.assertTrue(logger.isEnabledFor(logging.INFO))
+        self.assertTrue(logging.getLogger("accounts").handlers)
 
 
 class RenderSettingsTests(SimpleTestCase):
