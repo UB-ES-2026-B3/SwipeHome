@@ -17,7 +17,8 @@ para poder enseñarla al profesor mientras esta rama avanza.
 
 **SÍ se toca:**
 - `backend/accounts/views.py` — reescritura.
-- `backend/accounts/models.py`, `migrations/`, `fields.py` — se eliminan (ver §6).
+- `backend/accounts/models.py`, `migrations/` — se eliminan (ver §6).
+- `backend/accounts/fields.py` — se reduce a `normalize_account_email` (ver §6).
 - `backend/config/settings.py` — fuera ORM, sesiones y CSRF de auth.
 - `frontend/src/api/auth.js` — reescritura.
 - `frontend/src/context/AuthContext.jsx` — pasa a escuchar el estado de Firebase.
@@ -81,6 +82,17 @@ Cabecera: `Authorization: Bearer <ID token de Firebase>`
 - 200 → `{uid, name, email, role}` (perfil leído de Firestore)
 - 401 → token ausente, inválido o caducado
 - 404 → token válido pero sin perfil en Firestore (caso huérfano, §2)
+- 500 → `{error: "..."}` genérico: el servidor no pudo verificar el token o leer
+  el perfil (credencial de Firebase ausente o inválida, fallo al descargar los
+  certificados de Google, Firestore no disponible). **No** significa que la
+  sesión haya terminado. Es la misma convención que el `/api/auth/me` actual.
+
+### Regla para el frontend: 401 frente a 5xx
+- **401** → la sesión no es válida: `signOut(auth)` y mostrar la interfaz sin sesión.
+- **5xx o fallo de red** (el `fetch` lanza una excepción) → mostrar un error y
+  permitir reintentar, **conservando la sesión**: ni `signOut` ni `setUser(null)`.
+
+Un fallo de red o del servidor **nunca** debe parecer un cierre de sesión.
 
 ### `POST /api/auth/login` — **se elimina**
 El login lo hace el frontend contra Firebase (`signInWithEmailAndPassword`).
@@ -142,12 +154,18 @@ Helper que extrae y verifica el token:
   `SECURE_PROXY_SSL_HEADER`, `ALLOWED_HOSTS`): eso sigue haciendo falta.
 - `_DEV` / `DJANGO_DEV` se puede conservar para `DEBUG`, pero ya no controla cookies.
 
-`requirements.txt`: añadir `firebase-admin`. Fijar la versión exacta.
+`requirements.txt`: añadir `firebase-admin`. Fijar la versión exacta de todas las
+dependencias, también las transitivas (como ya se hacía con `asgiref` y `sqlparse`),
+generándolas con `pip freeze` desde un entorno virtual limpio, no a mano.
 
 ## 6. Qué se elimina y a quién afecta
 Esto borra trabajo reciente de compañeros. Conviene avisar antes, no después.
 
-- `models.py` (el modelo `User`), `fields.py`, `migrations/0001`, `0002`, `0003`.
+- `models.py` (el modelo `User`) y `migrations/0001`, `0002`, `0003`.
+- `fields.py` **no se borra**: se elimina `NormalizedEmailField` y se conserva
+  `normalize_account_email`. `validation.py` la importa (y no se puede tocar) y
+  `repository.py` la usa para guardar el email normalizado, así que hay una sola
+  regla de normalización en todo el backend.
 - `management/commands/runhttps.py` — revisar si sigue teniendo sentido.
 - Tests que dependen del ORM: `test_persistence.py`, buena parte de `tests.py`,
   `test_login.py`, `test_current_user.py`, `test_development.py`.
@@ -180,6 +198,8 @@ Desaparecen `getCsrfToken()`, todos los `credentials: 'include'` y la cabecera
 Ahora mismo llama a `fetchCurrentUser()` una vez al montar. Pasa a suscribirse a
 `onAuthStateChanged(auth, ...)`:
 - Si hay usuario de Firebase → pedir el perfil a `/api/auth/me` → `setUser(perfil)`.
+- Si `/api/auth/me` responde 401 → `signOut(auth)`. Si responde 5xx o falla la
+  red → error visible y **se conserva** la sesión (regla de §3).
 - Si no hay → `setUser(null)`.
 - `loading` en `true` hasta la primera respuesta.
 
