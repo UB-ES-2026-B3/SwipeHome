@@ -206,6 +206,37 @@ class CurrentUserTests(FirebaseMocks, SimpleTestCase):
         # El uid sale del token, nunca de la query.
         self.get_profile.assert_called_with(UID)
 
+    def test_two_tokens_identify_only_their_own_account(self):
+        # Equivalente de test_sessions_identify_only_the_account_that_authenticated
+        # (US 2.6), con tokens de Firebase en lugar de cookies de sesión.
+        ana = {"uid": "uid-ana", "name": "Ana García", "email": "ana@example.com", "role": "BUYER"}
+        bea = {"uid": "uid-bea", "name": "Bea Vendedora", "email": "bea@example.com", "role": "SELLER"}
+        uid_by_token = {"token-de-ana": ana["uid"], "token-de-bea": bea["uid"]}
+        profile_by_uid = {ana["uid"]: ana, bea["uid"]: bea}
+        self.verify.side_effect = lambda token, app=None: {"uid": uid_by_token[token]}
+        self.get_profile.side_effect = lambda uid: profile_by_uid[uid]
+        ana_client, bea_client = Client(), Client()
+
+        # Peticiones intercaladas: cada token recibe solo su perfil.
+        for _ in range(2):
+            for client, token, profile, other_token in (
+                (ana_client, "token-de-ana", ana, "token-de-bea"),
+                (bea_client, "token-de-bea", bea, "token-de-ana"),
+            ):
+                response = client.get("/api/auth/me", HTTP_AUTHORIZATION=f"Bearer {token}")
+                self.assertEqual(response.status_code, 200)
+                self.assertEqual(response.json(), profile)
+                self.assertNotIn(token, response.content.decode())
+                self.assertNotIn(other_token, response.content.decode())
+                self.assert_safe(response)
+
+        # Ni la query ni el cliente deciden la identidad: solo el token.
+        tampered = ana_client.get("/api/auth/me?uid=uid-bea&role=SELLER", HTTP_AUTHORIZATION="Bearer token-de-ana")
+        self.assertEqual(tampered.json(), ana)
+        swapped = ana_client.get("/api/auth/me", HTTP_AUTHORIZATION="Bearer token-de-bea")
+        self.assertEqual(swapped.json(), bea)
+        self.assertEqual([c.args[0] for c in self.get_profile.call_args_list].count("uid-bea"), 3)
+
     def test_unauthenticated_requests_are_401(self):
         failures = {
             "ausente": (None, None),
