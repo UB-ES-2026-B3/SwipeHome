@@ -9,12 +9,14 @@ Firebase. Así `manage.py check`, los tests mockeados y /api/health funcionan
 sin credenciales.
 """
 import json
+import logging
 import os
 import threading
 
 import firebase_admin
 from firebase_admin import credentials
 
+logger = logging.getLogger(__name__)
 _init_lock = threading.Lock()
 
 
@@ -33,7 +35,15 @@ def get_app():
         try:
             return firebase_admin.get_app()
         except ValueError:
-            return firebase_admin.initialize_app(_load_credential(), _app_options())
+            pass
+        try:
+            credential = _load_credential()
+        except FirebaseConfigError as error:
+            # Los mensajes de FirebaseConfigError no contienen secretos: se registran
+            # enteros para saber en los logs de Render qué falla exactamente.
+            logger.error("%s", error)
+            raise
+        return firebase_admin.initialize_app(credential, _app_options())
 
 
 def _app_options():

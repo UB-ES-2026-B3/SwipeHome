@@ -24,10 +24,29 @@ def env_without_credentials(**values):
 class GetAppTests(SimpleTestCase):
     def test_without_credentials_fails_with_clear_message(self, get_app, initialize_app):
         with env_without_credentials(), self.assertRaises(FirebaseConfigError) as raised:
-            firebase.get_app()
+            with self.assertLogs("accounts.firebase", level="ERROR"):
+                firebase.get_app()
         self.assertIn("FIREBASE_SERVICE_ACCOUNT_JSON", str(raised.exception))
         self.assertIn("GOOGLE_APPLICATION_CREDENTIALS", str(raised.exception))
         initialize_app.assert_not_called()
+
+    def test_configuration_error_is_logged_with_its_cause_and_no_secret(self, get_app, initialize_app):
+        # En producción el log es lo único que dice qué falla de la credencial.
+        cases = {
+            "ausente": ({}, "No hay credenciales"),
+            "json roto": ({"FIREBASE_SERVICE_ACCOUNT_JSON": '{"private_key": "' + FAKE_SECRET}, "no contiene un JSON válido"),
+            "no es cuenta de servicio": (
+                {"FIREBASE_SERVICE_ACCOUNT_JSON": json.dumps({"type": "authorized_user", "private_key": FAKE_SECRET})},
+                "no es una cuenta de servicio",
+            ),
+        }
+        for case, (env, expected) in cases.items():
+            with self.subTest(case=case), env_without_credentials(**env):
+                with self.assertLogs("accounts.firebase", level="ERROR") as logs, self.assertRaises(FirebaseConfigError):
+                    firebase.get_app()
+                self.assertEqual(len(logs.output), 1)
+                self.assertIn(expected, logs.output[0])
+                self.assertNotIn(FAKE_SECRET, logs.output[0])
 
     def test_blank_variables_count_as_missing(self, get_app, initialize_app):
         with env_without_credentials(FIREBASE_SERVICE_ACCOUNT_JSON="  ", GOOGLE_APPLICATION_CREDENTIALS=""):
