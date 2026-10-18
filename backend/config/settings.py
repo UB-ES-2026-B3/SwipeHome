@@ -20,17 +20,6 @@ if _RENDER_HOST:
 # Hosts adicionales separados por comas (opcional).
 ALLOWED_HOSTS += [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split(",") if h.strip()]
 
-# En modo DEV, el frontend Vite (localhost:5173) hace de proxy hacia Django.
-# El navegador envía Origin: http://localhost:5173, que Django rechaza porque
-# no coincide con su propio host (127.0.0.1:8000).
-# CSRF_TRUSTED_ORIGINS permite ese origen explícitamente en modo local.
-CSRF_TRUSTED_ORIGINS = (
-    ["http://localhost:5173", "http://127.0.0.1:5173"] if _DEV else []
-)
-# En Render el servicio se sirve por HTTPS bajo su propio dominio: hay que
-# confiar en ese origen para que las peticiones POST con CSRF funcionen.
-if _RENDER_HOST:
-    CSRF_TRUSTED_ORIGINS.append(f"https://{_RENDER_HOST}")
 # Render termina el TLS en su proxy y reenvia a Django por HTTP. Sin esto
 # Django cree que la peticion es insegura y rechaza las cookies Secure.
 if _RENDER_HOST:
@@ -41,7 +30,6 @@ MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
-    "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
 ]
 SESSION_ENGINE = "django.contrib.sessions.backends.db"
@@ -49,9 +37,6 @@ SESSION_COOKIE_HTTPONLY = True
 SESSION_COOKIE_SECURE = not _DEV   # False en HTTP local, True en HTTPS/producción
 SESSION_COOKIE_SAMESITE = "Lax"
 SESSION_SAVE_EVERY_REQUEST = False
-CSRF_COOKIE_SECURE = not _DEV      # False en HTTP local, True en HTTPS/producción
-CSRF_COOKIE_SAMESITE = "Lax"
-CSRF_FAILURE_VIEW = "accounts.views.csrf_failure"
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 TEST_DATABASE_DIR = TemporaryDirectory(prefix="swipehome-tests-")

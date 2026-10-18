@@ -3,7 +3,6 @@ import logging
 
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_POST
 from firebase_admin import auth
@@ -39,9 +38,6 @@ def discard_firebase_user(uid):
         )
 
 
-# Sin cookies de sesión no hay nada que proteger con CSRF. Puente hasta que se
-# retire CsrfViewMiddleware de settings.py.
-@csrf_exempt
 @sensitive_post_parameters("password")
 @require_POST
 def register(request):
@@ -106,8 +102,3 @@ def current_user(request):
             {"error": "Tu cuenta está incompleta. Contacta con el equipo de SwipeHome."}, status=404,
         )
     return JsonResponse(profile)
-
-
-def csrf_failure(request, reason=""):
-    # Referenciada por CSRF_FAILURE_VIEW; se elimina junto con el CSRF de settings.py.
-    return JsonResponse({"error": "Verificacion CSRF rechazada."}, status=403)

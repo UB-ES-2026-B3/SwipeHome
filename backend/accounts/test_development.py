@@ -28,9 +28,8 @@ class DevelopmentSettingsTests(SimpleTestCase):
                 spec.loader.exec_module(config)
                 try:
                     self.assertEqual(config.DEBUG, dev)
-                    self.assertEqual(config.CSRF_COOKIE_SECURE, not dev)
                     self.assertEqual(config.SESSION_COOKIE_SECURE, not dev)
-                    self.assertEqual(bool(config.CSRF_TRUSTED_ORIGINS), dev)
+                    self.assertFalse(hasattr(config, "CSRF_TRUSTED_ORIGINS"))
                 finally:
                     config.TEST_DATABASE_DIR.cleanup()
 
