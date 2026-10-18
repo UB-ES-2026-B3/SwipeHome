@@ -282,6 +282,12 @@ si algún día cambia el proyecto.
   (404), registro con email repetido (409), y el caso compensatorio de §2 (si
   Firestore falla, el usuario de Firebase no debe quedarse).
 - El CI (`.github/workflows/ci.yml`) no necesita cambios si los tests están mockeados.
+- Con `DATABASES = {}` todos los tests deben ser `SimpleTestCase` (comprobado en
+  local y en una réplica del CI con Python 3.12: el runner informa de
+  `Skipping setup of unused database(s)`). Un `django.test.TestCase`, aunque esté
+  vacío, falla con `ImproperlyConfigured: settings.DATABASES is improperly
+  configured`. Es lo esperado: un test que pide base de datos está probando algo
+  que ya no existe.
 
 > **Compromiso conocido y deliberado: registros simultáneos con el mismo email.**
 > `test_simultaneous_duplicates_use_database_uniqueness` lanzaba tres registros a la
