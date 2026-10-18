@@ -11,9 +11,13 @@ para poder enseñarla al profesor mientras esta rama avanza.
 
 **NO se toca:**
 - `backend/accounts/validation.py` — no toca modelos ni base de datos. Se queda igual.
-- Los componentes de React: `LoginForm`, `RegisterForm`, `FormField`, las páginas.
-  Consumen `useAuth()`, no la API directamente, así que no se enteran del cambio.
+- Los componentes de React: `LoginForm`, `RegisterForm`, `FormField`.
+  *Corrección:* `LoginForm` y `RegisterForm` **sí** llaman directamente a `login()` y
+  `registerUser()` de `api/auth.js` y usan su respuesta `{ ok, status, data }`. No se
+  enteran del cambio porque `api/auth.js` conserva ese contrato (ver §7).
 - `useAuth.js`.
+- Las páginas, salvo un botón mínimo de "Cerrar sesión" en `SellerHome` y `BuyerHome`
+  (ver §7).
 
 **SÍ se toca:**
 - `backend/accounts/views.py` — reescritura.
@@ -111,6 +115,20 @@ Cabecera: `Authorization: Bearer <ID token de Firebase>`
   permitir reintentar, **conservando la sesión**: ni `signOut` ni `setUser(null)`.
 
 Un fallo de red o del servidor **nunca** debe parecer un cierre de sesión.
+
+> **Por qué este camino se verá a menudo: Render se duerme.** El backend está en el
+> plan gratuito de Render, que se duerme tras 15 minutos sin tráfico y tarda ~1 minuto
+> en despertar. La primera petición tras un rato de calma no falla de inmediato: se
+> queda **colgada** hasta que el servicio despierta, o acaba en error. Por eso el
+> frontend:
+> - muestra el aviso si `/api/auth/me` no ha respondido en unos segundos, sin esperar
+>   a un error, para que nunca haya un spinner sin salida;
+> - redacta el aviso como algo normal ("El servidor está despertando, puede tardar un
+>   momento."), no como un fallo grave;
+> - mantiene el botón **Reintentar** siempre accesible mientras dure.
+>
+> Es decir: este camino de error lo verán usuarios normales en uso normal, no solo
+> cuando algo se rompe de verdad.
 
 ### Usuario huérfano (404): diagnóstico y recuperación
 Un usuario con cuenta en Firebase Auth pero sin documento en `users/{uid}` es un
@@ -217,10 +235,25 @@ Inicializa el SDK con las variables `VITE_FIREBASE_*` (ver §8). El `firebaseCon
 ### `frontend/src/api/auth.js` (reescritura)
 - `registerUser(payload)` → `POST /api/auth/register` (sin CSRF, sin
   `credentials: 'include'`), y si va bien, sign-in con Firebase.
-- `login({email, password})` → `signInWithEmailAndPassword` y nada más.
+- `login({email, password})` → `signInWithEmailAndPassword` **y después**
+  `fetchCurrentUser()`, devolviendo `{ ok, status: 200, data: perfil }`. *Cambio
+  respecto a la primera versión* ("y nada más"): `LoginForm` hace `setUser(data)` y
+  navega según `data.role` con lo que devuelve `login()`, así que sin el perfil habría
+  que modificar `LoginForm` (§0). Los errores de Firebase se traducen a los códigos
+  que el formulario ya maneja: 401 credenciales, 400 datos, 429 demasiados intentos,
+  500 resto; un fallo de red se lanza.
 - `fetchCurrentUser()` → coge el token del usuario actual de Firebase y llama a
-  `GET /api/auth/me` con `Authorization: Bearer`.
+  `GET /api/auth/me` con `Authorization: Bearer`. Devuelve `{ ok, status, data }`
+  y lanza solo si falla la red.
 - `logout()` → `signOut(auth)`. Ahora es trivial; antes no existía.
+
+> **Redundancia conocida, a limpiar cuando el frontend vuelva a su responsable:** en
+> el login el usuario se fija **dos veces**: con lo que devuelve `login()` (en
+> `LoginForm`) y con `onAuthStateChanged` (en `AuthContext`), que vuelve a pedir
+> `/api/auth/me`. Es inofensivo, porque son los mismos datos, pero cuesta una lectura
+> de Firestore de más por login. La limpieza natural: que `LoginForm` deje de usar el
+> perfil devuelto y navegue cuando el contexto tenga `user`, y que `login()` vuelva a
+> ser solo el sign-in.
 
 Desaparecen `getCsrfToken()`, todos los `credentials: 'include'` y la cabecera
 `X-CSRFToken`.
@@ -233,7 +266,23 @@ Ahora mismo llama a `fetchCurrentUser()` una vez al montar. Pasa a suscribirse a
   con un error propio de cuenta incompleta. Si responde 5xx o falla la red → error
   visible y **se conserva** la sesión (regla de §3).
 - Si no hay → `setUser(null)`.
-- `loading` en `true` hasta la primera respuesta.
+- `loading` en `true` hasta que se sabe quién es el usuario. **Sigue en `true`** si el
+  perfil no se pudo cargar por un 5xx o un fallo de red: así `PrivateRoute` no
+  redirige a `/` y el fallo no parece un cierre de sesión.
+- El aviso (5xx, red, respuesta lenta o 404) lo pinta `AuthErrorBanner`, que se
+  renderiza **dentro de `AuthProvider`**, con `retry()` y `dismissAuthError()` en el
+  contexto.
+
+> **Decisión temporal, no un patrón a copiar:** poner un componente visual dentro de
+> `AuthProvider` mezcla estado y presentación. Se ha hecho así solo para no tocar los
+> componentes existentes en esta rama. El responsable del frontend puede mover el
+> aviso a `App.jsx` o al layout y quitarlo del proveedor.
+
+### Botón de cerrar sesión (provisional)
+No existía ninguna forma de cerrar sesión. Se añade un botón mínimo "Cerrar sesión" en
+`SellerHome` y `BuyerHome` que llama a `logout()` del contexto; `onAuthStateChanged`
+limpia el usuario y `PrivateRoute` lleva a `/`. Solo desbloquea el flujo registro →
+login → recarga → logout: el equipo de frontend puede moverlo o rediseñarlo.
 
 Esto es mejor que antes: el SDK renueva el token solo y avisa de los cambios de
 sesión, así que la recarga de página deja de ser un caso especial.
