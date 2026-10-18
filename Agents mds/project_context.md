@@ -202,8 +202,20 @@ credenciales y persistir la sesión, y respuestas/logs sin datos sensibles.
 Los 11 tests de `accounts.test_login` pasan; la suite `accounts` pasa 55 tests
 y omite solo la prueba HTTPS al ejecutarse sin certificado. Los comandos y el
 resultado detallado están en el [README del backend](../backend/README.md).
-Esta comprobación de API no sustituye US2-7 ni certifica el recorrido de login
-desde la interfaz.
+Esta comprobación de API se complementa con la verificación integrada US2-7
+descrita a continuación.
+
+### Verificación integrada de US2-7 (18 octubre 2026)
+
+Con el backend y el frontend conectados en entorno local y una base temporal
+aislada, se completó en navegador el login de SELLER y BUYER, se comprobó el
+destino de cada rol y la restauración de sesión al recargar. Los campos vacíos
+y el email inválido mostraron validaciones sin enviar la solicitud de login;
+las credenciales incorrectas mostraron el mensaje acordado y mantuvieron
+`/login`. Se verificaron el estado de carga, un solo POST ante envíos repetidos,
+errores simulados 500 y de conexión, y el reintento exitoso tras ambos fallos.
+El detalle y la nota de build/lint están en los contextos
+[frontend](frontend_context.md) y [README backend](../backend/README.md).
 
 ## 8. US3: Publicación de inmuebles
 

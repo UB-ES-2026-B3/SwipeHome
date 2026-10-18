@@ -43,9 +43,9 @@ Fuente: `contexto-proyecto-codex.md` , revisada el 14 de octubre de 2026. Los ap
 
 El backend implementado usa Django y SQLite local; el estado vigente y los comandos
 estan en [backend/README.md](../backend/README.md). El login backend esta
-implementado y US2-6 verifica la API y el aislamiento entre usuarios. US2-7
-comprueba por separado el recorrido desde la interfaz; la publicacion sigue en
-el backlog.
+implementado; US2-6 verifica la API y US2-7 confirmó el flujo integrado desde
+la interfaz, incluida la restauración de sesión al recargar. La publicación
+sigue en el backlog.
 
 Las reglas de campos, criterios y tareas se mantienen en [project_context.md](project_context.md):
 

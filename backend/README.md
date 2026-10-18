@@ -486,3 +486,25 @@ Verificacion ejecutada: los 11 tests de login pasan. La suite `accounts` cuenta
 56 tests: 55 pasan y se omite la prueba HTTPS real al no definir
 `LOCAL_TLS_CERT` y `LOCAL_TLS_KEY`. La prueba HTTPS documentada arriba corresponde
 a la verificacion US1-6 del 18 de octubre, con certificado configurado.
+
+## Verificacion integrada del login US2-7 (18 octubre 2026)
+
+Se probó el flujo frontend → Vite proxy → API Django en navegador con Playwright
+y una base SQLite temporal que contenía solamente las cuentas de prueba; la base
+local de desarrollo no se utilizó. BUYER y SELLER iniciaron sesión en sus rutas
+correctas y, tras recargar cada página, el frontend recuperó la identidad con
+`GET /api/auth/me`. Los campos vacíos y un email inválido mostraron errores sin
+enviar `POST /api/auth/login`. Un 401 mantuvo `/login` y presentó
+`Email o contraseña incorrectos.`.
+
+Con la solicitud demorada, el botón mostró «Iniciando sesión…» y permaneció
+deshabilitado; dos envíos casi simultáneos resultaron en un solo POST. Un 500
+simulado y una conexión interrumpida mostraron respectivamente el error del
+servidor y el de conexión, mantuvieron `/login` y permitieron reintentar; el
+reintento completó el login SELLER.
+
+También se ejecutaron desde `frontend` `npm run build` (correcto) y
+`npm run lint` (código 0, con la advertencia preexistente
+`react(only-export-components)` en `src/context/AuthContext.jsx:15`). La
+protección de doble envío usa un bloqueo inmediato en el formulario además del
+estado disabled del botón.
