@@ -372,6 +372,19 @@ si algún día cambia el proyecto.
 - Las colecciones `listings`, `swipes`, `matches`.
 - Arreglar `main`.
 
+### Pendiente para después del merge
+- **Tests del frontend (Vitest).** El frontend no tiene framework de tests, así que lo
+  que antes probaba `test_login.py` en el servidor y ahora vive en `api/auth.js` (mismo
+  mensaje para email desconocido y contraseña incorrecta, la traducción de los códigos
+  de Firebase, la contraseña sin modificar) solo está comprobado a mano y contra
+  Firebase real. Añadir Vitest es una dependencia nueva: tarea aparte.
+- **Reescribir `backend_context.md`, `frontend_context.md` y `project_context.md`**, por
+  sus responsables. Siguen describiendo el login por sesiones y `POST /api/auth/login`
+  como vigentes. Mientras tanto, los dos primeros llevan un aviso arriba.
+- **Confirmar en la consola de Firebase** que la protección contra la enumeración de
+  emails está activada. En la práctica ya está comprobado: un email inexistente devuelve
+  `INVALID_LOGIN_CREDENTIALS`, igual que una contraseña incorrecta.
+
 ## 12. Despliegue en Render, paso a paso (pasos 7 y 9)
 
 Preparado y comprobado en local, pero **no** ejecutado contra Render. Primero se
