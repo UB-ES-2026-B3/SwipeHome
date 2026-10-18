@@ -79,6 +79,15 @@ Body: `{name, email, password, role}` (igual que ahora).
 - 409 → `{error: "El email ya está registrado."}` (de `EmailAlreadyExistsError`)
 - 500 → error genérico
 
+> **Nota para el futuro: políticas de contraseña de Firebase.** Hoy Firebase acepta
+> todo lo que acepta `validate_registration` (comprobado de verdad con 15 espacios y
+> con 128 caracteres de emoji). Si alguien activa una política de contraseñas en la
+> consola de Firebase, el rechazo llega del servidor como
+> `firebase_admin.exceptions.InvalidArgumentError` (no como `ValueError`) y la vista
+> actual lo convierte en un **500** para una contraseña que nuestro validador dio por
+> buena. En ese caso: capturar `InvalidArgumentError` → 400 con error en `password`,
+> o mejor, alinear la regla de `validation.py` con la política.
+
 Ya **no** devuelve cookie de sesión. Ya **no** existe el `GET` que servía el token CSRF.
 
 ### `GET /api/auth/me`
@@ -191,10 +200,11 @@ Esto borra trabajo reciente de compañeros. Conviene avisar antes, no después.
 - Tests que dependen del ORM: `test_persistence.py`, buena parte de `tests.py`,
   `test_login.py`, `test_current_user.py`, `test_development.py`.
 
-> **DECISIÓN PENDIENTE PARA EL EQUIPO:** la migración `0003` se añadió para poder
-> usar `createsuperuser` y el admin de Django. Sin modelo `User` eso desaparece.
-> ¿Alguien lo estaba usando? Si hace falta un panel de administración, hay que
-> decidir otra cosa (la consola de Firebase sirve para ver usuarios y datos).
+> **Decidido: `0003` y `createsuperuser` se eliminan sin sustituto.** La migración
+> `0003` se añadió para poder usar `createsuperuser`, pero `django.contrib.admin`
+> nunca estuvo en `INSTALLED_APPS` ni había ruta `/admin`: los permisos de
+> administrador no tenían dónde usarse. `SuperuserTests` se va con el modelo. Para
+> ver usuarios y datos está la consola de Firebase.
 
 ## 7. Cambios en el frontend
 
@@ -250,6 +260,15 @@ VITE_FIREBASE_APP_ID=
 Valores en la consola de Firebase → Configuración del proyecto → General.
 No son secretos, pero van por variable de entorno para no tener que tocar código
 si algún día cambia el proyecto.
+
+> **Compromiso conocido: un solo proyecto de Firebase.** Solo existe
+> `swipehome-a51d7`. Local, las pruebas manuales y producción escriben en el mismo
+> Firebase Auth y la misma colección `users`, así que los datos de prueba quedan al
+> lado de los reales. Es aceptable a esta escala. Para que se distingan, los usuarios
+> de prueba usan emails con un prefijo reconocible (p. ej. `curl<fecha>-...@example.com`)
+> y se borran desde la consola cuando ya no hacen falta. Los tests automáticos nunca
+> llegan a Firebase (§9). Si el proyecto crece, la solución es un segundo proyecto
+> de Firebase para desarrollo o el Emulator Suite.
 
 ## 9. Tests
 - `validation.py`: **sin cambios**. No tenía tests propios: sus casos se probaban a
