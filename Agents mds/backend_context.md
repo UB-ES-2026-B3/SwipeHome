@@ -22,11 +22,15 @@ La identidad y el rol se resuelven desde request.user en el servidor.
 US1-5 centraliza la normalizacion del email en el campo de persistencia.
 La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
 de email canonico; se mantienen UNIQUE de email y CHECK de rol.
-La suite completa pasa 40 pruebas, incluida concurrencia real y HTTPS.
+La suite backend pasa 53 pruebas, incluida concurrencia real y HTTPS local.
+La verificación ejecutada para US1-6 se registra en
+[backend/README.md](../backend/README.md): las pruebas de API/persistencia y el
+recorrido integrado de ambos roles en navegador pasan.
 GET /api/auth/me esta implementado: 200 con id/name/email/role desde la sesion,
 401 sin autenticacion y 500 generico ante fallo interno, con Cache-Control no-store.
-La consulta se verifica con rutas reales y HTTPS local. La integracion de la
-interfaz y la comprobacion de recarga real en navegador siguen pendientes.
+La consulta se verifica con rutas reales y HTTPS local. El recorrido integrado
+de registro, destino por rol y recarga de sesion se verifico en navegador con
+SELLER y BUYER; el detalle esta en el README backend.
 Los apartados originales siguientes conservan el contexto del backlog;
 el estado implementado actual se describe en este bloque y el README backend.
 
@@ -51,8 +55,15 @@ La referencia principal de las reglas de imágenes está en US3 del contexto del
 
 ## Verificación prevista
 
-La suite actual tiene 40 pruebas ejecutables de registro, persistencia, sesiones
-y consulta de usuario. Antes de dar una implementación por terminada deberán verificarse validación directa de API, unicidad de email bajo concurrencia, protección de credenciales, identidad y separación de sesiones, permisos por rol y reversión de datos/archivos ante fallos. La lista completa de casos está en el apartado 13 del contexto del proyecto.
+La suite actual tiene 53 pruebas ejecutables de registro, persistencia, sesiones
+y consulta de usuario. Para la verificación de US1-6 se ejecutaron las 53 con
+HTTPS local y todas pasaron. Incluyen validación directa de API, unicidad de
+email bajo concurrencia, protección de credenciales, identidad y separación de
+sesiones, y rollback ante fallos de registro. El recorrido del registro desde
+la interfaz no está certificado: falta ejecutar el frontend y comprobar en
+navegador el destino y la recarga. Los permisos de publicación y la reversión
+de archivos corresponden a US3. La lista completa de casos está en el apartado
+13 del contexto del proyecto.
 
 ## 5. Reglas transversales y autenticación
 
