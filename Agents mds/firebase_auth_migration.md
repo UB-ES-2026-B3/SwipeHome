@@ -61,6 +61,10 @@ una **acción compensatoria**: capturar el fallo, borrar el usuario de Firebase
 recién creado (`auth.delete_user(uid)`) y devolver 500. No hay transacciones entre
 Firebase Auth y Firestore, así que esto se gestiona a mano.
 
+Si el borrado compensatorio **también** falla, la vista lo registra a nivel `error`
+con el uid y sigue devolviendo 500. Ese usuario queda huérfano: ver el 404 de
+`/api/auth/me` en §3.
+
 **Ventaja gratis:** Firebase Auth garantiza emails únicos de serie. Desaparece la
 constraint UNIQUE, el `CheckConstraint` de email normalizado y toda la detección de
 duplicados comparando textos de error de SQLite. El 409 pasa a venir de
@@ -81,7 +85,10 @@ Ya **no** devuelve cookie de sesión. Ya **no** existe el `GET` que servía el t
 Cabecera: `Authorization: Bearer <ID token de Firebase>`
 - 200 → `{uid, name, email, role}` (perfil leído de Firestore)
 - 401 → token ausente, inválido o caducado
-- 404 → token válido pero sin perfil en Firestore (caso huérfano, §2)
+- 404 → `{error: "..."}`: token válido pero sin perfil en Firestore (caso huérfano, §2).
+  Es un problema de **integridad de datos**, no de autenticación: significa que
+  falló la escritura del perfil y también el borrado compensatorio. El backend lo
+  registra a nivel `error` con el uid (nunca el token).
 - 500 → `{error: "..."}` genérico: el servidor no pudo verificar el token o leer
   el perfil (credencial de Firebase ausente o inválida, fallo al descargar los
   certificados de Google, Firestore no disponible). **No** significa que la
@@ -89,10 +96,24 @@ Cabecera: `Authorization: Bearer <ID token de Firebase>`
 
 ### Regla para el frontend: 401 frente a 5xx
 - **401** → la sesión no es válida: `signOut(auth)` y mostrar la interfaz sin sesión.
+- **404** → `signOut(auth)` y mostrar un error **distinto** del de sesión caducada:
+  la cuenta está incompleta y el usuario debe contactar con el equipo.
 - **5xx o fallo de red** (el `fetch` lanza una excepción) → mostrar un error y
   permitir reintentar, **conservando la sesión**: ni `signOut` ni `setUser(null)`.
 
 Un fallo de red o del servidor **nunca** debe parecer un cierre de sesión.
+
+### Usuario huérfano (404): diagnóstico y recuperación
+Un usuario con cuenta en Firebase Auth pero sin documento en `users/{uid}` es un
+**callejón sin salida**: no puede entrar (el 404 le cierra la sesión) y tampoco
+puede volver a registrarse, porque Firebase rechaza su email como ya registrado
+(409).
+
+- **Cómo detectarlo:** en los logs del backend, un `error` de `/api/auth/me` con el
+  uid, o un `error` del registro diciendo que falló el borrado compensatorio.
+- **Cómo recuperarlo:** consola de Firebase → Authentication → Usuarios, buscar
+  ese uid y **eliminar el usuario**. Después ya puede registrarse de nuevo con el
+  mismo email.
 
 ### `POST /api/auth/login` — **se elimina**
 El login lo hace el frontend contra Firebase (`signInWithEmailAndPassword`).
@@ -198,8 +219,9 @@ Desaparecen `getCsrfToken()`, todos los `credentials: 'include'` y la cabecera
 Ahora mismo llama a `fetchCurrentUser()` una vez al montar. Pasa a suscribirse a
 `onAuthStateChanged(auth, ...)`:
 - Si hay usuario de Firebase → pedir el perfil a `/api/auth/me` → `setUser(perfil)`.
-- Si `/api/auth/me` responde 401 → `signOut(auth)`. Si responde 5xx o falla la
-  red → error visible y **se conserva** la sesión (regla de §3).
+- Si `/api/auth/me` responde 401 → `signOut(auth)`. Si responde 404 → `signOut(auth)`
+  con un error propio de cuenta incompleta. Si responde 5xx o falla la red → error
+  visible y **se conserva** la sesión (regla de §3).
 - Si no hay → `setUser(null)`.
 - `loading` en `true` hasta la primera respuesta.
 
