@@ -1,61 +1,53 @@
 import importlib.util
-import io
 import os
 from pathlib import Path
 from unittest.mock import patch
 
-from django.core.management import call_command
-from django.test import TestCase, SimpleTestCase
+from django.test import SimpleTestCase
 
-from .models import User
+SETTINGS_FILE = Path(__file__).resolve().parents[1] / "config/settings.py"
 
-VALID = {
-    "name": "Ana García",
-    "email": "ana@example.com",
-    "password": "  contraseña íntegra 🙂  ",
-    "role": "BUYER",
-}
+
+def load_settings(**env):
+    """Ejecuta settings.py con las variables de entorno indicadas."""
+    base = {key: value for key, value in os.environ.items()
+            if key not in ("DJANGO_DEV", "RENDER_EXTERNAL_HOSTNAME", "ALLOWED_HOSTS")}
+    with patch.dict(os.environ, {**base, **env}, clear=True):
+        spec = importlib.util.spec_from_file_location("settings_under_test", SETTINGS_FILE)
+        config = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(config)
+    return config
 
 
 class DevelopmentSettingsTests(SimpleTestCase):
-    def test_dev_flag_and_secure_defaults(self):
+    def test_dev_flag_controls_debug(self):
         for value, dev in (("1", True), (" 1 ", True), ("", False), ("0", False)):
-            with self.subTest(value=value), patch.dict(os.environ, {"DJANGO_DEV": value}):
-                spec = importlib.util.spec_from_file_location(
-                    "development_settings_test", Path(__file__).resolve().parents[1] / "config/settings.py"
-                )
-                config = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(config)
-                try:
-                    self.assertEqual(config.DEBUG, dev)
-                    self.assertEqual(config.SESSION_COOKIE_SECURE, not dev)
-                    self.assertFalse(hasattr(config, "CSRF_TRUSTED_ORIGINS"))
-                finally:
-                    config.TEST_DATABASE_DIR.cleanup()
+            with self.subTest(value=value):
+                self.assertEqual(load_settings(DJANGO_DEV=value).DEBUG, dev)
+
+    def test_no_database_sessions_or_csrf(self):
+        config = load_settings()
+        self.assertEqual(config.DATABASES, {})
+        self.assertEqual(config.INSTALLED_APPS, ["accounts"])
+        for removed in ("SessionMiddleware", "CsrfViewMiddleware", "AuthenticationMiddleware"):
+            self.assertFalse(any(removed in middleware for middleware in config.MIDDLEWARE))
+        for setting in ("AUTH_USER_MODEL", "PASSWORD_HASHERS", "CSRF_TRUSTED_ORIGINS", "SESSION_ENGINE"):
+            self.assertFalse(hasattr(config, setting), setting)
 
 
-class SuperuserTests(TestCase):
-    def test_management_command_creates_authenticatable_superuser(self):
-        with patch.dict(os.environ, {"DJANGO_SUPERUSER_PASSWORD": VALID["password"]}):
-            call_command(
-                "createsuperuser", interactive=False, email="ADMIN@EXAMPLE.COM",
-                name="Admin", role="SELLER", stdout=io.StringIO(),
-            )
-        user = User.objects.get(email="admin@example.com")
-        self.assertTrue(user.is_staff)
-        self.assertTrue(user.is_superuser)
-        self.assertTrue(user.check_password(VALID["password"]))
-        self.assertTrue(user.has_perm("accounts.change_user"))
-        self.assertTrue(self.client.login(email=user.email, password=VALID["password"]))
+class RenderSettingsTests(SimpleTestCase):
+    """El bloque de Render es imprescindible en producción: estos tests lo protegen."""
 
-    def test_regular_users_have_no_admin_permissions(self):
-        user = User.objects.create_user(**VALID)
-        self.assertFalse(user.is_staff)
-        self.assertFalse(user.is_superuser)
-        self.assertFalse(user.has_perm("accounts.change_user"))
+    def test_render_host_is_allowed_and_proxy_https_is_trusted(self):
+        config = load_settings(RENDER_EXTERNAL_HOSTNAME="swipehome.onrender.com")
+        self.assertIn("swipehome.onrender.com", config.ALLOWED_HOSTS)
+        self.assertEqual(config.SECURE_PROXY_SSL_HEADER, ("HTTP_X_FORWARDED_PROTO", "https"))
 
-    def test_rejects_invalid_superuser_flags_and_role(self):
-        for flags in ({"is_staff": False}, {"is_superuser": False}, {"role": "ADMIN"}):
-            with self.subTest(flags=flags), self.assertRaises(ValueError):
-                User.objects.create_superuser(**{**VALID, **flags})
-        self.assertEqual(User.objects.count(), 0)
+    def test_local_has_no_proxy_header(self):
+        config = load_settings()
+        self.assertEqual(config.ALLOWED_HOSTS, ["localhost", "127.0.0.1", "testserver"])
+        self.assertFalse(hasattr(config, "SECURE_PROXY_SSL_HEADER"))
+
+    def test_extra_allowed_hosts_from_env(self):
+        config = load_settings(ALLOWED_HOSTS=" a.example.com, ,b.example.com ")
+        self.assertEqual(config.ALLOWED_HOSTS[-2:], ["a.example.com", "b.example.com"])
