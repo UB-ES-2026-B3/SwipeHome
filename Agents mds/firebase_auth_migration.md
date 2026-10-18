@@ -252,7 +252,10 @@ No son secretos, pero van por variable de entorno para no tener que tocar códig
 si algún día cambia el proyecto.
 
 ## 9. Tests
-- `validation.py` y sus tests: **sin cambios**. Deberían seguir pasando tal cual.
+- `validation.py`: **sin cambios**. No tenía tests propios: sus casos se probaban a
+  través del endpoint de registro en `tests.py`, comprobando el resultado con el ORM.
+  Todos esos casos (tipos, límites, Unicode, email de 254, contraseña solo de
+  espacios, JSON mal formado) se han portado a `test_views.py` con Firebase simulado.
 - Tests de vistas: reescribir simulando (`mock`) `firebase_admin.auth` y el
   repositorio. No se llama a Firebase de verdad desde el CI: sería lento, haría
   falta una credencial en GitHub y gastaría cuota.
@@ -260,6 +263,17 @@ si algún día cambia el proyecto.
   (404), registro con email repetido (409), y el caso compensatorio de §2 (si
   Firestore falla, el usuario de Firebase no debe quedarse).
 - El CI (`.github/workflows/ci.yml`) no necesita cambios si los tests están mockeados.
+
+> **Compromiso conocido y deliberado: registros simultáneos con el mismo email.**
+> `test_simultaneous_duplicates_use_database_uniqueness` lanzaba tres registros a la
+> vez con variantes del mismo email y comprobaba un 201 y dos 409. Se elimina y **no
+> tiene equivalente mockeado**: un mock no puede demostrar la unicidad bajo
+> concurrencia, solo la simularía. A partir de ahora confiamos en la garantía de
+> Firebase Auth (un email por usuario, `EmailAlreadyExistsError` → 409) en vez de en
+> una restricción propia. El email llega a Firebase ya normalizado por
+> `validate_registration`, así que las variantes de mayúsculas y espacios colisionan.
+> Si algún día se cambia de proveedor de autenticación, hay que recuperar esta
+> garantía y su test.
 
 ## 10. Orden de trabajo sugerido
 1. `firebase.py` + `repository.py` + `authentication.py`, con tests mockeados.
