@@ -387,8 +387,10 @@ crear un segundo endpoint para consultar la sesion de login.
 Las pruebas en `accounts/test_login.py` cubren ambos resultados de autenticacion,
 normalizacion, contrasenas de 1-128 caracteres, validacion de tipos y limites,
 errores indistinguibles, cookie segura, sesion asociada, ruta exacta y rollback
-ante un fallo de persistencia. Ejecutar tambien la suite completa para conservar
-registro, persistencia y consulta de usuario.
+ante fallos al verificar credenciales y al guardar la sesion. Tambien comprueban
+que dos sesiones distintas identifican exclusivamente a su cuenta y que las
+respuestas y logs no exponen datos sensibles. Ejecutar tambien la suite completa
+para conservar registro, persistencia y consulta de usuario.
 
 ## Resultado verificado
 
@@ -460,3 +462,27 @@ queda pendiente; los pasos anteriores permiten realizarla.
 Referencias: [sesiones Django](https://docs.djangoproject.com/en/5.2/topics/http/sessions/),
 [login Django](https://docs.djangoproject.com/en/5.2/topics/auth/default/#how-to-log-a-user-in),
 [CSRF Django](https://docs.djangoproject.com/en/5.2/howto/csrf/).
+
+## Verificacion de login US2-6 (18 octubre 2026)
+
+La bateria automatizada en `accounts/test_login.py` verifica el login SELLER y
+BUYER, respuestas 401 iguales para email desconocido y contrasena incorrecta,
+validaciones directas de campos ausentes/vacios, tipos no admitidos y limites.
+Comprueba la normalizacion de emails con mayusculas y espacios exteriores, y que
+una contrasena con espacios solo autentica cuando se conserva exactamente.
+Tambien verifica la cookie `sessionid` (Path=/, HttpOnly, Secure y SameSite=Lax),
+la identidad aislada de dos cuentas mediante `GET /api/auth/me`, fallos simulados
+en la comprobacion de credenciales y en el guardado de la sesion, y ausencia de
+secretos en respuestas y logs.
+
+Desde `backend`:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test accounts.test_login --verbosity 1
+.\.venv\Scripts\python.exe manage.py test accounts --verbosity 1
+```
+
+Verificacion ejecutada: los 11 tests de login pasan. La suite `accounts` cuenta
+56 tests: 55 pasan y se omite la prueba HTTPS real al no definir
+`LOCAL_TLS_CERT` y `LOCAL_TLS_KEY`. La prueba HTTPS documentada arriba corresponde
+a la verificacion US1-6 del 18 de octubre, con certificado configurado.
