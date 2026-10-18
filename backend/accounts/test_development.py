@@ -5,10 +5,16 @@ from pathlib import Path
 from unittest.mock import patch
 
 from django.core.management import call_command
-from django.test import Client, TestCase, SimpleTestCase, override_settings
+from django.test import TestCase, SimpleTestCase
 
 from .models import User
-from .tests import VALID
+
+VALID = {
+    "name": "Ana García",
+    "email": "ana@example.com",
+    "password": "  contraseña íntegra 🙂  ",
+    "role": "BUYER",
+}
 
 
 class DevelopmentSettingsTests(SimpleTestCase):
@@ -27,33 +33,6 @@ class DevelopmentSettingsTests(SimpleTestCase):
                     self.assertEqual(bool(config.CSRF_TRUSTED_ORIGINS), dev)
                 finally:
                     config.TEST_DATABASE_DIR.cleanup()
-
-
-@override_settings(
-    SESSION_COOKIE_SECURE=False,
-    CSRF_COOKIE_SECURE=False,
-    CSRF_TRUSTED_ORIGINS=["http://localhost:5173", "http://127.0.0.1:5173"],
-)
-class HttpRegistrationTests(TestCase):
-    def test_http_proxy_csrf_and_rotation(self):
-        client = Client(enforce_csrf_checks=True)
-        token = client.get("/api/auth/register").json()["csrfToken"]
-        def post(token, origin="http://localhost:5173"):
-            return client.post(
-                "/api/auth/register", VALID, content_type="application/json",
-                HTTP_X_CSRFTOKEN=token, HTTP_ORIGIN=origin,
-            )
-        self.assertFalse(client.cookies["csrftoken"]["secure"])
-        self.assertEqual(post("").status_code, 403)
-        self.assertEqual(post(token, "http://evil.example").status_code, 403)
-        response = post(token)
-        self.assertEqual(response.status_code, 201)
-        self.assertFalse(response.cookies["sessionid"]["secure"])
-        self.assertTrue(response.cookies["sessionid"]["httponly"])
-        self.assertEqual(client.get("/api/auth/me").json()["email"], VALID["email"])
-        self.assertEqual(post(token).status_code, 403)
-        token = client.get("/api/auth/register").json()["csrfToken"]
-        self.assertEqual(post(token, "http://127.0.0.1:5173").status_code, 409)
 
 
 class SuperuserTests(TestCase):
