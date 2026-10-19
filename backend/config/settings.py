@@ -20,7 +20,13 @@ ALLOWED_HOSTS = ["localhost", "127.0.0.1", "testserver"]
 CSRF_TRUSTED_ORIGINS = (
     ["http://localhost:5173", "http://127.0.0.1:5173"] if _DEV else []
 )
-INSTALLED_APPS = ["django.contrib.auth", "django.contrib.contenttypes", "django.contrib.sessions", "accounts"]
+INSTALLED_APPS = [
+    "django.contrib.auth",
+    "django.contrib.contenttypes",
+    "django.contrib.sessions",
+    "accounts",
+    "properties",
+]
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -52,3 +58,5 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 PASSWORD_HASHERS = ["django.contrib.auth.hashers.PBKDF2PasswordHasher"]
 USE_TZ = True
 STATIC_URL = "/static/"
+MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_URL = "/media/"

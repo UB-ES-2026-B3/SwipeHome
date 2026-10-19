@@ -313,6 +313,29 @@ Los casos historicos de US1.4.1 conservan su vista exclusiva de pruebas.
 La recarga real y la consulta de sesion desde la interfaz tambien se
 comprobaron en navegador durante US1-6 para ambos roles, a traves del proxy Vite.
 
+## Publicación de inmuebles (US3-4, US3-5 y US3-6)
+
+`POST /api/inmuebles` recibe `multipart/form-data` y requiere la cookie de
+sesión autenticada. Solo un usuario cuyo rol almacenado sea `SELLER` puede
+publicar; el vendedor se toma de `request.user` y cualquier identificador
+enviado por el cliente se ignora. La respuesta es `201` con `id`, `401` sin
+sesión, `403` para `BUYER`, `400` para datos o fotografías inválidos y `500`
+con un mensaje genérico ante fallos internos.
+
+Los campos son `title`, `street`, `city`, `postal_code`, `description`,
+`price`, `surface`, `bedrooms`, `bathrooms`, `people` y
+`shared_accommodation`. Se admiten también los nombres españoles equivalentes
+para facilitar la integración del formulario. Las fotografías se envían
+repetidamente como `photos` (también se reconocen `fotografias`, `images` y
+`photos[]`). El servidor exige entre 1 y 10 archivos, de 5 MB como máximo cada
+uno, y comprueba el contenido real JPEG, PNG o WebP, no solo la extensión.
+
+El inmueble, sus fotografías y el estado `published` se guardan en una única
+transacción. Las fotografías reciben nombres generados por el servidor y una
+posición explícita. Si falla la base de datos o el almacenamiento, se revierte
+el registro y se eliminan los archivos nuevos. Los archivos locales se guardan
+en `backend/media/`, excluido de Git.
+
 ## Verificación
 
 Desde backend:
