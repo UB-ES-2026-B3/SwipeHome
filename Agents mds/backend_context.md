@@ -1,5 +1,9 @@
 # Contexto backend de SwipeHome
 
+> ⚠️ Partes de este documento describen el login por sesiones y cookies, sustituido
+> por Firebase Auth. Ver `infra_context.md` y `firebase_auth_migration.md`. Pendiente
+> de actualizar.
+
 ## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
 
 DJANGO_DEV=1 activa HTTP local con cookies sin Secure; sin esa variable se conserva

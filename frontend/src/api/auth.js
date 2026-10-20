@@ -1,96 +1,140 @@
 /**
- * Módulo de llamadas a la API de autenticación.
+ * Módulo de llamadas de autenticación (Firebase Auth + backend Django).
  *
- * Todos los fetch incluyen credentials: 'include' para que el navegador
- * envíe y reciba la cookie de sesión (HttpOnly, SameSite=Lax).
+ * - El registro lo hace el backend (POST /api/auth/register), que valida y crea
+ *   el usuario en Firebase. Después se inicia sesión con el SDK para tener token.
+ * - El login lo hace el SDK de Firebase directamente; Django no participa.
+ * - El perfil se pide a GET /api/auth/me con `Authorization: Bearer <ID token>`.
  *
- * El backend Django espera un token CSRF en la cabecera X-CSRFToken para
- * las peticiones mutables. Se obtiene primero con GET /api/auth/register
- * y se reutiliza mientras dure la sesión.
+ * Sin cookies ni CSRF. Todas las funciones devuelven { ok, status, data }, el mismo
+ * contrato que consumen LoginForm y RegisterForm. Los fallos de Firebase se traducen
+ * a los códigos que ya entienden (401 credenciales, 400 datos, 429 demasiados
+ * intentos, 500 resto). Un fallo de red se lanza como excepción.
  */
+import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { auth } from '../firebase'
 
-/**
- * Obtiene el token CSRF del backend (GET /api/auth/register).
- * El valor se cachea en memoria para la sesión del navegador.
- */
-async function getCsrfToken() {
-  const response = await fetch('/api/auth/register', {
-    method: 'GET',
-    credentials: 'include',
-    cache: 'no-store',
-  })
+const NETWORK_ERROR = 'auth/network-request-failed'
 
-  if (!response.ok) {
-    throw new Error('No se pudo obtener el token CSRF.')
+// El SDK puede devolver cualquiera de estos según la protección contra
+// enumeración de emails: todos significan "credenciales incorrectas".
+const INVALID_CREDENTIALS = new Set([
+  'auth/invalid-credential',
+  'auth/invalid-login-credentials',
+  'auth/user-not-found',
+  'auth/wrong-password',
+  'auth/user-disabled',
+])
+
+// Al pedir el token: la sesión de Firebase ya no es válida (equivale a un 401).
+const SESSION_GONE = new Set([
+  'auth/user-token-expired',
+  'auth/invalid-user-token',
+  'auth/user-disabled',
+  'auth/user-not-found',
+])
+
+function signInFailure(error) {
+  const code = error?.code
+  if (code === NETWORK_ERROR) throw error
+  if (INVALID_CREDENTIALS.has(code)) {
+    return { ok: false, status: 401, data: { error: 'Email o contraseña incorrectos.' } }
   }
-
-  const data = await response.json()
-  return data.csrfToken
+  if (code === 'auth/invalid-email') {
+    return { ok: false, status: 400, data: { errors: { email: 'Introduce un email válido.' } } }
+  }
+  if (code === 'auth/missing-password') {
+    return { ok: false, status: 400, data: { errors: { password: 'Introduce la contraseña.' } } }
+  }
+  if (code === 'auth/too-many-requests') {
+    return {
+      ok: false,
+      status: 429,
+      data: { error: 'Demasiados intentos fallidos. Espera unos minutos e inténtalo de nuevo.' },
+    }
+  }
+  return { ok: false, status: 500, data: { error: 'No se pudo iniciar sesión. Inténtalo de nuevo.' } }
 }
 
 /**
- * Envía los datos de registro al backend.
+ * Registra al usuario en el backend y, si va bien, inicia sesión en Firebase.
  *
  * @param {{ name: string, email: string, password: string, role: 'SELLER' | 'BUYER' }} payload
- * @returns {{ ok: boolean, status: number, data: object }}
+ * @returns {Promise<{ ok: boolean, status: number, data: object }>}
  */
 export async function registerUser(payload) {
-  const token = await getCsrfToken()
-
   const response = await fetch('/api/auth/register', {
     method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': token,
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
   })
-
   const data = await response.json()
-  return { ok: response.ok, status: response.status, data }
+  if (!response.ok) return { ok: false, status: response.status, data }
+
+  try {
+    await signInWithEmailAndPassword(auth, payload.email, payload.password)
+  } catch {
+    // La cuenta ya existe: reintentar el registro daría 409. Hay que iniciar sesión.
+    return {
+      ok: false,
+      status: 500,
+      data: { error: 'Tu cuenta se ha creado, pero no se pudo iniciar sesión. Ve a "Iniciar sesión".' },
+    }
+  }
+  return { ok: true, status: response.status, data }
 }
 
 /**
- * Envía las credenciales de acceso y crea la sesión del usuario.
+ * Inicia sesión con Firebase y devuelve el perfil del backend.
  *
  * @param {{ email: string, password: string }} credentials
- * @returns {{ ok: boolean, status: number, data: object }}
+ * @returns {Promise<{ ok: boolean, status: number, data: object }>}
  */
 export async function login(credentials) {
-  const token = await getCsrfToken()
+  let firebaseUser
+  try {
+    const result = await signInWithEmailAndPassword(auth, credentials.email, credentials.password)
+    firebaseUser = result.user
+  } catch (error) {
+    return signInFailure(error)
+  }
 
-  const response = await fetch('/api/auth/login', {
-    method: 'POST',
-    credentials: 'include',
-    headers: {
-      'Content-Type': 'application/json',
-      'X-CSRFToken': token,
-    },
-    body: JSON.stringify({
-      email: credentials.email,
-      password: credentials.password,
-    }),
+  const result = await fetchCurrentUser(firebaseUser)
+  if (result.status === 401) {
+    // Acaba de iniciar sesión: un 401 aquí es un fallo, no unas credenciales malas.
+    return { ok: false, status: 500, data: { error: 'No se pudo iniciar sesión. Inténtalo de nuevo.' } }
+  }
+  return result
+}
+
+/**
+ * Pide el perfil del usuario de Firebase indicado (por defecto, el actual).
+ * Lanza una excepción si falla la red: eso NO es un cierre de sesión.
+ *
+ * @returns {Promise<{ ok: boolean, status: number, data: object | null }>}
+ *   200 perfil { uid, name, email, role } · 401 sin sesión válida ·
+ *   404 cuenta incompleta (sin perfil) · 5xx fallo del servidor
+ */
+export async function fetchCurrentUser(firebaseUser = auth.currentUser) {
+  if (!firebaseUser) return { ok: false, status: 401, data: null }
+
+  let token
+  try {
+    token = await firebaseUser.getIdToken()
+  } catch (error) {
+    if (SESSION_GONE.has(error?.code)) return { ok: false, status: 401, data: null }
+    throw error
+  }
+
+  const response = await fetch('/api/auth/me', {
+    headers: { Authorization: `Bearer ${token}` },
+    cache: 'no-store',
   })
-
   const data = await response.json()
   return { ok: response.ok, status: response.status, data }
 }
 
-/**
- * Consulta la sesión activa para recuperar el usuario autenticado.
- * Utilizado al recargar la página para mantener el estado de autenticación.
- *
- * @returns {{ id: number, name: string, email: string, role: string } | null}
- */
-export async function fetchCurrentUser() {
-  const response = await fetch('/api/auth/me', {
-    method: 'GET',
-    credentials: 'include',
-  })
-
-  if (response.status === 401) return null
-  if (!response.ok) throw new Error('Error al consultar la sesión.')
-
-  return response.json()
+/** Cierra la sesión de Firebase. AuthContext se entera por onAuthStateChanged. */
+export function logout() {
+  return signOut(auth)
 }
