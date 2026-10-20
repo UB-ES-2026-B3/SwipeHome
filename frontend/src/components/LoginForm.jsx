@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { login } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
@@ -35,6 +35,8 @@ export function LoginForm({ onSubmit } = {}) {
   const [fieldErrors, setFieldErrors] = useState({})
   const [serverError, setServerError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  // The ref closes the gap before React renders the disabled button.
+  const submissionInProgress = useRef(false)
 
   function handleChange(e) {
     const { name, value } = e.target
@@ -48,12 +50,14 @@ export function LoginForm({ onSubmit } = {}) {
 
   async function handleSubmit(e) {
     e.preventDefault()
+    if (submissionInProgress.current) return
 
     const errors = validateForm(fields)
     setFieldErrors(errors)
 
     if (Object.keys(errors).length > 0) return
 
+    submissionInProgress.current = true
     setSubmitting(true)
     setServerError(null)
 
@@ -98,6 +102,7 @@ export function LoginForm({ onSubmit } = {}) {
         'No hay conexión con el servidor. Comprueba tu red e inténtalo de nuevo.',
       )
     } finally {
+      submissionInProgress.current = false
       setSubmitting(false)
     }
   }

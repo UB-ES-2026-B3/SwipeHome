@@ -6,7 +6,7 @@ import { useAuth } from '../hooks/useAuth'
  * El contenido completo (swipe, exploración) está fuera del alcance del Sprint 0.
  */
 export function BuyerHome() {
-  const { user } = useAuth()
+  const { user, logout } = useAuth()
 
   return (
     <main className="home-page home-page--buyer">
@@ -32,6 +32,10 @@ export function BuyerHome() {
             </div>
           </div>
         </div>
+        {/* Provisional: desbloquea el flujo de logout; libre de mover o rediseñar. */}
+        <button type="button" className="home-page__logout" onClick={logout}>
+          Cerrar sesión
+        </button>
       </div>
     </main>
   )

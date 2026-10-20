@@ -1,5 +1,9 @@
 # Contexto backend de SwipeHome
 
+> ⚠️ Partes de este documento describen el login por sesiones y cookies, sustituido
+> por Firebase Auth. Ver `infra_context.md` y `firebase_auth_migration.md`. Pendiente
+> de actualizar.
+
 ## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
 
 DJANGO_DEV=1 activa HTTP local con cookies sin Secure; sin esa variable se conserva
@@ -22,11 +26,17 @@ La identidad y el rol se resuelven desde request.user en el servidor.
 US1-5 centraliza la normalizacion del email en el campo de persistencia.
 La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
 de email canonico; se mantienen UNIQUE de email y CHECK de rol.
-La suite completa pasa 40 pruebas, incluida concurrencia real y HTTPS.
+La verificación US1-6 ejecutada en HTTPS local pasó sus 53 tests. Tras ampliar
+la suite para US2-6, ahora cuenta con 56 tests: 55 pasan y se omite la prueba
+HTTPS cuando no se configura un certificado.
+El resultado y los comandos de verificación de US1-6 y US2-6 están en el
+[README del backend](../backend/README.md): las pruebas de API/persistencia y el
+recorrido integrado de ambos roles en navegador pasan.
 GET /api/auth/me esta implementado: 200 con id/name/email/role desde la sesion,
 401 sin autenticacion y 500 generico ante fallo interno, con Cache-Control no-store.
-La consulta se verifica con rutas reales y HTTPS local. La integracion de la
-interfaz y la comprobacion de recarga real en navegador siguen pendientes.
+La consulta se verifica con rutas reales y HTTPS local. El recorrido integrado
+de registro, destino por rol y recarga de sesion se verifico en navegador con
+SELLER y BUYER; el detalle esta en el README backend.
 Los apartados originales siguientes conservan el contexto del backlog;
 el estado implementado actual se describe en este bloque y el README backend.
 
@@ -36,8 +46,10 @@ Fuente: `contexto-proyecto-codex.md` , revisada el 14 de octubre de 2026. Los ap
 ## Estado y responsabilidad
 
 El backend implementado usa Django y SQLite local; el estado vigente y los comandos
-estan en [backend/README.md](../backend/README.md). Login y publicacion siguen
-siendo requisitos del backlog, con sus decisiones pendientes indicadas.
+estan en [backend/README.md](../backend/README.md). El login backend esta
+implementado; US2-6 verifica la API y US2-7 confirmó el flujo integrado desde
+la interfaz, incluida la restauración de sesión al recargar. La publicación
+sigue en el backlog.
 
 Las reglas de campos, criterios y tareas se mantienen en [project_context.md](project_context.md):
 
@@ -51,8 +63,16 @@ La referencia principal de las reglas de imágenes está en US3 del contexto del
 
 ## Verificación prevista
 
-La suite actual tiene 40 pruebas ejecutables de registro, persistencia, sesiones
-y consulta de usuario. Antes de dar una implementación por terminada deberán verificarse validación directa de API, unicidad de email bajo concurrencia, protección de credenciales, identidad y separación de sesiones, permisos por rol y reversión de datos/archivos ante fallos. La lista completa de casos está en el apartado 13 del contexto del proyecto.
+La suite actual tiene 56 pruebas de cuentas; 55 pasan y la prueba HTTPS se omite
+si no se configura un certificado. Para la verificación de US1-6 se ejecutaron
+53 tests con HTTPS local y todos pasaron. Las pruebas incluyen validación directa
+de API, unicidad de email bajo concurrencia, protección de credenciales,
+identidad y separación de sesiones, y rollback ante fallos. La cobertura de
+login US2-6 está descrita en [backend/README.md](../backend/README.md). El recorrido del registro desde
+la interfaz no está certificado: falta ejecutar el frontend y comprobar en
+navegador el destino y la recarga. Los permisos de publicación y la reversión
+de archivos corresponden a US3. La lista completa de casos está en el apartado
+13 del contexto del proyecto.
 
 ## 5. Reglas transversales y autenticación
 
