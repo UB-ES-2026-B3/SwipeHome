@@ -1,0 +1,38 @@
+import { useAuth } from '../hooks/useAuth'
+
+/**
+ * Inicio del Comprador (/comprador/inicio).
+ * Destino de navegación tras un registro o login exitoso con rol BUYER.
+ * El contenido completo (swipe, exploración) está fuera del alcance del Sprint 0.
+ */
+export function BuyerHome() {
+  const { user } = useAuth()
+
+  return (
+    <main className="home-page home-page--buyer">
+      <div className="home-page__content">
+        <div className="home-page__logo" aria-hidden="true">🔍</div>
+        <h1 className="home-page__title">
+          ¡Bienvenido, {user?.name || 'Comprador'}!
+        </h1>
+        <p className="home-page__role-badge home-page__role-badge--buyer">
+          Comprador
+        </p>
+        <p className="home-page__desc">
+          Pronto podrás explorar inmuebles y hacer swipe para encontrar tu
+          hogar ideal. Las funcionalidades completas estarán disponibles
+          próximamente.
+        </p>
+        <div className="home-page__swipe-preview" aria-hidden="true">
+          <div className="mock-card mock-card--preview">
+            <div className="mock-card__img mock-card__img--1" />
+            <div className="mock-card__info">
+              <span className="mock-card__title">Próximamente…</span>
+              <span className="mock-card__price">Empieza a hacer swipe</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+  )
+}
