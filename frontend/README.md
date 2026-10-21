@@ -1,16 +1,53 @@
-# React + Vite
+# Frontend de SwipeHome
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+React + Vite. La autenticación usa el SDK de Firebase Auth en el navegador; el
+perfil del usuario lo da el backend Django (`GET /api/auth/me` con el ID token).
+Contrato y reglas en la
+[especificación de la migración](<../Agents mds/firebase_auth_migration.md>) (§3 y §7).
 
-Currently, two official plugins are available:
+## Configuración
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+Copia `.env.example` a `.env.local` (ignorado por Git) y rellena los valores
+`VITE_FIREBASE_*`. Están en la consola de Firebase → Configuración del proyecto →
+General → Tus apps. No son secretos.
 
-## React Compiler
+```powershell
+npm install
+npm run dev
+```
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+## Backend al que apunta
 
-## Expanding the Oxlint configuration
+Vite reenvía `/api/*` al backend desde su propio servidor, así que no hace falta
+CORS.
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+- **Por defecto:** el Django local en `http://127.0.0.1:8000` (ver `backend/README.md`).
+- **El backend desplegado en Render**, sin arrancar Django en local:
+
+  ```powershell
+  $env:VITE_API_TARGET = 'https://<servicio>.onrender.com'
+  npm run dev
+  ```
+
+  `VITE_API_TARGET` se lee de la terminal, no de `.env.local`. Si Render estaba
+  dormido, la primera carga tarda ~1 minuto y aparece el aviso "El servidor está
+  despertando": es lo esperado.
+
+## Comprobar la sesión en el navegador
+
+Para ver que la sesión es de Firebase y no de cookies hacen falta las DevTools
+(F12) de **Edge, Chrome o Firefox**. El navegador DuckDuckGo no tiene DevTools.
+
+- **Network** → petición a `/api/auth/me`: lleva `Authorization: Bearer ...` y no hay
+  cookies `sessionid` ni `csrftoken`.
+- **Application** (Storage en Firefox): la sesión está en IndexedDB
+  (`firebaseLocalStorageDb`); no hay cookies.
+
+## Comprobaciones
+
+```powershell
+npm run lint
+npm run build
+```
+
+Son las mismas que ejecuta el CI.

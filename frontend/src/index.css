@@ -615,3 +615,46 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
     padding: var(--sp-6);
   }
 }
+
+/* ═══════════════════════════════════════════════════════════════════
+   AVISO DE SESIÓN (temporal, lo renderiza AuthProvider)
+   Fijo arriba y por encima de todo: "Reintentar" debe estar siempre
+   accesible, también sobre el spinner de carga.
+   ═══════════════════════════════════════════════════════════════════ */
+.auth-banner {
+  position: fixed;
+  top: var(--sp-2);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 300;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: max-content;
+  max-width: calc(100vw - 2 * var(--sp-2));
+  padding: 10px 10px 10px 16px;
+  background: var(--c-white);
+  border-left: 3px solid var(--c-red);
+  border-radius: 6px;
+  box-shadow: var(--shadow-card);
+  font-size: 0.875rem;
+  color: var(--c-black);
+}
+.auth-banner__action {
+  flex-shrink: 0;
+  padding: 8px 16px;
+  background: var(--c-black);
+  color: var(--c-white);
+  border-radius: var(--r-btn);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.auth-banner__action:hover { opacity: 0.8; }
+
+/* Botón mínimo de cierre de sesión en las páginas de inicio (provisional). */
+.home-page__logout {
+  margin-top: var(--sp-2);
+  font-size: 0.875rem;
+  color: var(--c-gray-700);
+  text-decoration: underline;
+}

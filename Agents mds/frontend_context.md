@@ -1,5 +1,9 @@
 # Contexto frontend de SwipeHome
 
+> ⚠️ Partes de este documento describen el login por sesiones y cookies, sustituido
+> por Firebase Auth. Ver `infra_context.md` y `firebase_auth_migration.md`. Pendiente
+> de actualizar.
+
 ## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
 
 DJANGO_DEV=1 activa HTTP local con cookies sin Secure; sin esa variable se conserva
@@ -22,7 +26,7 @@ Fuente original: `contexto-proyecto-codex.md` de Descargas, revisada el 14 de oc
 | react-router-dom | 7.x | Enrutamiento SPA |
 | Oxlint | 1.x | Linter |
 
-El frontend reside en `frontend/` en la raíz del repositorio. El backend Django corre en `http://127.0.0.1:8000` en modo HTTP local (`DJANGO_DEV=1`) o en `https://localhost:8443` con `runhttps`; Vite proxifica `/api/*` hacia él en desarrollo mediante `vite.config.js`.
+El frontend reside en `frontend/` en la raíz del repositorio. El backend Django corre en `http://127.0.0.1:8000` en modo HTTP local (`DJANGO_DEV=1`); Vite proxifica `/api/*` hacia él en desarrollo mediante `vite.config.js`.
 
 ### Comandos verificados
 
