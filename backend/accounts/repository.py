@@ -10,6 +10,14 @@ Colección `users`, con el uid de Firebase como id del documento:
       email      string   (normalizado: minúsculas, sin espacios)
       role       string   ("SELLER" | "BUYER")
       created_at timestamp
+
+Colección `listings`, con id generado por Firestore:
+
+    listings/{id}
+      seller_uid string
+      photos     array<string>
+      published  boolean
+      created_at timestamp
 """
 from firebase_admin import firestore
 
@@ -17,10 +25,15 @@ from .fields import normalize_account_email
 from .firebase import get_app
 
 USERS_COLLECTION = "users"
+LISTINGS_COLLECTION = "listings"
 
 
 def _users():
     return firestore.client(app=get_app()).collection(USERS_COLLECTION)
+
+
+def _listings():
+    return firestore.client(app=get_app()).collection(LISTINGS_COLLECTION)
 
 
 def _public_profile(uid, data):
@@ -46,3 +59,28 @@ def get_user_profile(uid) -> dict | None:
     if not snapshot.exists:
         return None
     return _public_profile(uid, snapshot.to_dict())
+
+
+def create_listing(uid, *, values, photo_urls) -> dict:
+    """Crea un anuncio en Firestore asociado al uid autenticado."""
+    stored_values = {
+        **values,
+        "price": str(values["price"]),
+        "surface": str(values["surface"]),
+    }
+    listing = {
+        **stored_values,
+        "seller_uid": uid,
+        "photos": photo_urls,
+        "published": True,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    }
+    reference = _listings().document()
+    reference.create(listing)
+    return {
+        "id": reference.id,
+        **stored_values,
+        "seller_uid": uid,
+        "photos": photo_urls,
+        "published": True,
+    }

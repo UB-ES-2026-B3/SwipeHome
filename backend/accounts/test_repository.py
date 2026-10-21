@@ -1,3 +1,4 @@
+from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
 from django.test import SimpleTestCase
@@ -73,3 +74,37 @@ class GetUserProfileTests(SimpleTestCase):
             "created_at": object(), "campo_interno": "no debe salir",
         })
         self.assertEqual(set(repository.get_user_profile(UID)), {"uid", "name", "email", "role"})
+
+
+@patch("accounts.repository.get_app")
+@patch("accounts.repository.firestore.client")
+class CreateListingTests(SimpleTestCase):
+    def test_writes_listing_to_firestore_with_verified_seller(self, client, get_app):
+        reference = client.return_value.collection.return_value.document.return_value
+        reference.id = "listing-123"
+        values = {
+            "title": "Piso",
+            "street": "Calle 1",
+            "city": "Barcelona",
+            "postal_code": "08001",
+            "description": "Descripción",
+            "price": Decimal("950.50"),
+            "surface": Decimal("65.50"),
+            "bedrooms": 2,
+            "bathrooms": 1,
+            "people": 3,
+            "shared_accommodation": False,
+        }
+        photos = ["https://cdn.example.com/piso.jpg"]
+
+        result = repository.create_listing(UID, values=values, photo_urls=photos)
+
+        client.assert_called_once_with(app=get_app.return_value)
+        client.return_value.collection.assert_called_once_with("listings")
+        reference.create.assert_called_once()
+        written = reference.create.call_args.args[0]
+        self.assertEqual(written["seller_uid"], UID)
+        self.assertEqual(written["price"], "950.50")
+        self.assertEqual(written["surface"], "65.50")
+        self.assertEqual(written["photos"], photos)
+        self.assertEqual(result["id"], "listing-123")

@@ -22,7 +22,8 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-No hay migraciones: `DATABASES = {}`.
+No hay migraciones ni modelos ORM: `DATABASES = {}`. Los perfiles y anuncios
+se almacenan en Firestore.
 
 ## Ejecutar en local
 
@@ -54,6 +55,14 @@ desde la consola de Firebase al terminar.
 | `GET` | `/api/auth/me` | `Authorization: Bearer <ID token>` → 200 / 401 / 404 / 500 |
 
 El login lo hace el frontend directamente contra Firebase; no hay `/api/auth/login`.
+La publicación se realiza mediante `POST /api/inmuebles`.
+La publicación requiere un ID token Firebase válido y un perfil con rol `SELLER`.
+El cuerpo es JSON y admite nombres de campos en inglés o castellano. Las
+fotografías se reciben como una lista de URLs HTTP(S) en `photos`,
+`fotografias` o `images`, con entre 1 y 10 elementos. El anuncio se guarda en
+la colección Firestore `listings` con el `seller_uid` obtenido del token.
+No se guardan archivos en `backend/media`: el sistema de ficheros de Render es
+efímero y Firebase Storage está fuera del alcance actual.
 El contrato completo, el significado de cada código y cómo debe reaccionar el
 frontend están en el §3 de la
 [especificación](<../Agents mds/firebase_auth_migration.md>).
@@ -65,7 +74,7 @@ contraseña de 15–128 caracteres sin recortar y rol `SELLER` o `BUYER`.
 ## Estructura de `accounts/`
 
 - `views.py` — endpoints. No habla con Firestore directamente.
-- `repository.py` — **único** módulo que accede a Firestore (colección `users`).
+- `repository.py` — **único** módulo que accede a Firestore (colecciones `users` y `listings`).
 - `authentication.py` — extrae y verifica el ID token. Nunca lo escribe en los logs.
 - `firebase.py` — inicializa el Admin SDK, de forma perezosa y una sola vez.
 - `validation.py` — validación del registro.
@@ -75,98 +84,63 @@ contraseña de 15–128 caracteres sin recortar y rol `SELLER` o `BUYER`.
 
 ```powershell
 .\.venv\Scripts\python.exe manage.py check
-.\.venv\Scripts\python.exe manage.py test accounts --verbosity 2
+.\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2
 ```
 
-Para incluir HTTPS real, establece LOCAL_TLS_CERT y LOCAL_TLS_KEY como indica
-el apartado de pruebas HTTPS. La suite completa tiene 53 casos. Las nuevas
-pruebas cubren normalizacion por distintas vias ORM, Unicode, restricciones
-SQL directas, actualizaciones duplicadas, hashes, identificadores, errores
-500 aun cuando ya existe el email y migraciones con/sin colisiones.
-La concurrencia utiliza tres hilos y conexiones independientes, con una barrera
-tras el hashing: ningun registro puede insertar hasta que los tres alcanzan
-ese punto. Se comprueban una respuesta 201, dos 409 y exactamente una cuenta.
-Se mantienen las pruebas de atomicidad, CSRF y sesiones de US1.3/US1.4.1.
+La suite cubre el registro y la autenticación Firebase, los permisos de
+publicación, la asociación del anuncio con el uid verificado, la validación de
+campos y URLs, los alias en castellano y el límite de fotografías.
 
 Referencias: [campos Django](https://docs.djangoproject.com/en/5.2/howto/custom-model-fields/),
 [restricciones](https://docs.djangoproject.com/en/5.2/ref/models/constraints/),
 [migraciones de datos](https://docs.djangoproject.com/en/5.2/ref/migration-operations/#runpython).
 
-## Registro con CSRF y comprobacion manual en navegador
+## Comprobación manual de autenticación y publicación
 
-`GET /api/auth/register` devuelve `csrfToken` y establece la cookie CSRF segura.
-No crea una sesion y su respuesta tiene Cache-Control: no-store.
-`POST` requiere esa cookie y `X-CSRFToken`, con origen HTTPS de la misma web.
-Sin proteccion CSRF valida devuelve 403; las validaciones mantienen 400,
-el email duplicado 409 y los fallos internos 500. No se habilita CORS general
-ni se anaden origenes de confianza externos.
-
-Abre `https://localhost:8443/api/auth/register` y, en la consola del navegador,
-ejecuta usando un email nuevo en cada registro exitoso:
+El frontend inicia sesión con Firebase y envía el ID token como
+`Authorization: Bearer <token>`. Para consultar el perfil actual:
 
 ```javascript
-const {csrfToken} = await fetch('/api/auth/register').then(r => r.json());
-const response = await fetch('/api/auth/register', {
+const token = await firebase.auth().currentUser.getIdToken();
+const meResponse = await fetch('/api/auth/me', {
+  headers: {Authorization: `Bearer ${token}`},
+  cache: 'no-store'
+});
+console.log(meResponse.status, await meResponse.json());
+```
+
+Para publicar un inmueble, el usuario debe tener perfil `SELLER`:
+
+```javascript
+const token = await firebase.auth().currentUser.getIdToken();
+const response = await fetch('/api/inmuebles', {
   method: 'POST',
-  headers: {'Content-Type': 'application/json', 'X-CSRFToken': csrfToken},
-  body: JSON.stringify({name: 'Ana Garcia', email: 'ana@example.com',
-    password: 'una contrasena completa', role: 'BUYER'})
+  headers: {
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${token}`,
+  },
+  body: JSON.stringify({
+    title: 'Piso luminoso',
+    street: 'Calle Mayor 1',
+    city: 'Barcelona',
+    postal_code: '08001',
+    description: 'Una descripción válida',
+    price: '950.50',
+    surface: '65.50',
+    bedrooms: 2,
+    bathrooms: 1,
+    people: 3,
+    shared_accommodation: 'No',
+    photos: ['https://example.com/piso-1.jpg'],
+  }),
 });
 console.log(response.status, await response.json());
 ```
 
-Espera 201 con id, name, email y role. Repite con SELLER y otro email.
-En Network revisa los atributos de Set-Cookie, sin copiar su valor a logs.
-En Application > Cookies revisa sessionid con HttpOnly, Secure y SameSite=Lax.
-Recarga la pagina y comprueba que el navegador conserva la cookie y la envia
-al servidor. JavaScript no debe poder leer sessionid mediante document.cookie.
-Login rota tambien el token CSRF: vuelve a obtenerlo antes de otro POST.
-
-## Consultar el usuario actual: GET /api/auth/me
-
-Disponible sin barra final. Reutiliza la cookie de sesion Django creada al
-registrarse y no necesita enviar id, rol ni token de sesion en el cuerpo.
-
-- 200: {"id": 1, "name": "Ana Garcia", "email": "ana@example.com", "role": "BUYER"}.
-- 401: {"error": "No hay una sesion autenticada."}, sin redireccion al login.
-- 500: error generico si no se puede consultar la identidad; no debe tratarse
-  como un cierre de sesion confirmado.
-
-La identidad y el rol se leen del usuario almacenado por el servidor en cada
-solicitud. No se exponen contrasenas, hashes ni identificadores de sesion.
-Las respuestas llevan Cache-Control con no-store y private para evitar que el
-navegador o un intermediario reutilicen datos de otra consulta de identidad.
-El GET no modifica datos de cuenta ni crea una sesion autenticada.
-Una sesion caducada/invalida, una cuenta eliminada o una contrasena cambiada
-devuelven 401. El registro conserva su proteccion CSRF; este GET no necesita
-token CSRF. No se cambia CORS ni la configuracion de origenes.
-
-Tras registrar al usuario con el ejemplo anterior, o al cargar/recargar la
-interfaz, ejecuta desde el mismo origen HTTPS:
-
-```javascript
-const meResponse = await fetch('/api/auth/me', {
-  credentials: 'same-origin',
-  cache: 'no-store'
-});
-if (meResponse.status === 200) {
-  const user = await meResponse.json();
-  console.log(user); // El frontend recupera aqui su estado autenticado.
-} else if (meResponse.status === 401) {
-  // Mostrar la interfaz sin sesion.
-} else {
-  // Mostrar el error y permitir reintentar la consulta.
-}
-```
-
-Para una demo abre https://localhost:8443/api/auth/me despues del registro:
-veras el usuario y puedes recargar para comprobar la consulta en navegador.
-El frontend debe conectar /api al backend con el origen HTTPS/proxy configurado.
-Las pruebas de identidad del nuevo endpoint usan las rutas reales del backend,
-y la prueba HTTPS consulta /api/auth/me tres veces con la cookie recibida.
-Los casos historicos de US1.4.1 conservan su vista exclusiva de pruebas.
-La recarga real y la consulta de sesion desde la interfaz tambien se
-comprobaron en navegador durante US1-6 para ambos roles, a traves del proxy Vite.
+Se espera `201` y un identificador de anuncio. En Firestore debe aparecer un
+documento en `listings` con `seller_uid` igual al uid del token y la lista de
+URLs recibida. Un usuario sin token obtiene `401` y un usuario `BUYER` obtiene
+`403`. El endpoint no acepta archivos ni guarda contenido en el disco local.
 
 ## Dependencias reproducibles
 

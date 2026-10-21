@@ -1,5 +1,6 @@
 from decimal import Decimal, InvalidOperation
 import re
+from urllib.parse import urlparse
 
 
 FIELD_ALIASES = {
@@ -33,11 +34,11 @@ def _required_text(value):
 
 
 def _decimal(value, field, errors, max_decimal_places=2):
-    if not isinstance(value, str) or not value.strip():
+    if isinstance(value, bool) or value is None or (isinstance(value, str) and not value.strip()):
         errors[field] = "Campo obligatorio y numérico."
         return None
     try:
-        parsed = Decimal(value)
+        parsed = Decimal(str(value).strip())
     except (InvalidOperation, ValueError):
         errors[field] = "Debe ser un número mayor que cero."
         return None
@@ -53,15 +54,15 @@ def _decimal(value, field, errors, max_decimal_places=2):
 
 
 def _integer(value, field, minimum, errors):
-    if not isinstance(value, str) or not value.strip():
+    if isinstance(value, bool) or value is None or (isinstance(value, str) and not value.strip()):
         errors[field] = "Campo obligatorio y entero."
         return None
     try:
-        parsed = int(value)
+        parsed = int(str(value).strip())
     except (TypeError, ValueError):
         errors[field] = "Debe ser un número entero válido."
         return None
-    if not re.fullmatch(r"[+]?\d+", value.strip()) or parsed < minimum:
+    if not re.fullmatch(r"[+]?\d+", str(value).strip()) or parsed < minimum:
         errors[field] = f"Debe ser un entero igual o mayor que {minimum}."
         return None
     return parsed
@@ -90,3 +91,22 @@ def validate_property(data):
         values["shared_accommodation"] = shared.lower() in ("sí", "si")
 
     return values, errors
+
+
+def validate_photo_urls(data):
+    """Valida URLs públicas de fotografías almacenadas fuera del backend."""
+    value = data.get("photos", data.get("fotografias", data.get("images")))
+    errors = {}
+    if not isinstance(value, list) or not value:
+        return [], {"photos": "Se requiere al menos una URL de fotografía."}
+    if len(value) > 10:
+        return [], {"photos": "Se permiten como máximo 10 fotografías."}
+
+    urls = []
+    for index, url in enumerate(value):
+        parsed = urlparse(url) if isinstance(url, str) else None
+        if parsed is None or parsed.scheme not in {"http", "https"} or not parsed.netloc:
+            errors[f"photos[{index}]"] = "Debe ser una URL HTTP o HTTPS válida."
+        else:
+            urls.append(url)
+    return urls, errors
