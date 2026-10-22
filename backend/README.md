@@ -57,12 +57,11 @@ desde la consola de Firebase al terminar.
 El login lo hace el frontend directamente contra Firebase; no hay `/api/auth/login`.
 La publicación se realiza mediante `POST /api/inmuebles`.
 La publicación requiere un ID token Firebase válido y un perfil con rol `SELLER`.
-El cuerpo es JSON y admite nombres de campos en inglés o castellano. Las
-fotografías se reciben como una lista de URLs HTTP(S) en `photos`,
-`fotografias` o `images`, con entre 1 y 10 elementos. El anuncio se guarda en
-la colección Firestore `listings` con el `seller_uid` obtenido del token.
-No se guardan archivos en `backend/media`: el sistema de ficheros de Render es
-efímero y Firebase Storage está fuera del alcance actual.
+El cuerpo es `multipart/form-data`, admite nombres de campos en inglés o
+castellano y recibe entre 1 y 10 fotografías en `photos`, `fotografias` o
+`images`. Cada archivo debe ser JPEG, PNG o WebP real y ocupar como máximo 5 MB.
+Las fotografías se suben a Firebase Storage y el anuncio se guarda en la
+colección Firestore `listings` con el `seller_uid` obtenido del token.
 El contrato completo, el significado de cada código y cómo debe reaccionar el
 frontend están en el §3 de la
 [especificación](<../Agents mds/firebase_auth_migration.md>).
@@ -89,7 +88,8 @@ contraseña de 15–128 caracteres sin recortar y rol `SELLER` o `BUYER`.
 
 La suite cubre el registro y la autenticación Firebase, los permisos de
 publicación, la asociación del anuncio con el uid verificado, la validación de
-campos y URLs, los alias en castellano y el límite de fotografías.
+campos y fotografías reales, los alias en castellano, los límites de cantidad y
+tamaño y la compensación del almacenamiento.
 
 Referencias: [campos Django](https://docs.djangoproject.com/en/5.2/howto/custom-model-fields/),
 [restricciones](https://docs.djangoproject.com/en/5.2/ref/models/constraints/),
@@ -109,38 +109,37 @@ const meResponse = await fetch('/api/auth/me', {
 console.log(meResponse.status, await meResponse.json());
 ```
 
-Para publicar un inmueble, el usuario debe tener perfil `SELLER`:
+Para publicar un inmueble, el usuario debe tener perfil `SELLER`. El frontend
+debe construir un `FormData` y no establecer manualmente `Content-Type`:
 
 ```javascript
 const token = await firebase.auth().currentUser.getIdToken();
+const form = new FormData();
+form.append('title', 'Piso luminoso');
+form.append('street', 'Calle Mayor 1');
+form.append('city', 'Barcelona');
+form.append('postal_code', '08001');
+form.append('description', 'Una descripción válida');
+form.append('price', '950.50');
+form.append('surface', '65.50');
+form.append('bedrooms', '2');
+form.append('bathrooms', '1');
+form.append('people', '3');
+form.append('shared_accommodation', 'No');
+form.append('photos', photoFile);
+
 const response = await fetch('/api/inmuebles', {
   method: 'POST',
-  headers: {
-    'Content-Type': 'application/json',
-    Authorization: `Bearer ${token}`,
-  },
-  body: JSON.stringify({
-    title: 'Piso luminoso',
-    street: 'Calle Mayor 1',
-    city: 'Barcelona',
-    postal_code: '08001',
-    description: 'Una descripción válida',
-    price: '950.50',
-    surface: '65.50',
-    bedrooms: 2,
-    bathrooms: 1,
-    people: 3,
-    shared_accommodation: 'No',
-    photos: ['https://example.com/piso-1.jpg'],
-  }),
+  headers: {Authorization: `Bearer ${token}`},
+  body: form,
 });
 console.log(response.status, await response.json());
 ```
 
 Se espera `201` y un identificador de anuncio. En Firestore debe aparecer un
-documento en `listings` con `seller_uid` igual al uid del token y la lista de
-URLs recibida. Un usuario sin token obtiene `401` y un usuario `BUYER` obtiene
-`403`. El endpoint no acepta archivos ni guarda contenido en el disco local.
+documento en `listings` con `seller_uid` igual al uid del token y las URLs de
+Firebase Storage. Un usuario sin token obtiene `401` y un usuario `BUYER`
+obtiene `403`.
 
 ## Dependencias reproducibles
 
@@ -154,6 +153,7 @@ más el paquete nuevo con su versión fijada y sustituye el fichero por la salid
 
 Build `pip install -r requirements.txt`, start
 `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT`. Variables:
-`DJANGO_SECRET_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON` y `FIREBASE_PROJECT_ID`. Render
+`DJANGO_SECRET_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_PROJECT_ID` y
+`FIREBASE_STORAGE_BUCKET`. Render
 inyecta `RENDER_EXTERNAL_HOSTNAME`, y `settings.py` lo añade a `ALLOWED_HOSTS` y
 activa `SECURE_PROXY_SSL_HEADER`. Ver `infra_context.md` §3.

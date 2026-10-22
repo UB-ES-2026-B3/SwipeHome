@@ -1,6 +1,7 @@
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
 
+from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
 from firebase_admin import firestore
 from google.api_core.exceptions import AlreadyExists, ServiceUnavailable
@@ -78,10 +79,13 @@ class GetUserProfileTests(SimpleTestCase):
 
 @patch("accounts.repository.get_app")
 @patch("accounts.repository.firestore.client")
+@patch("accounts.repository._storage_bucket")
 class CreateListingTests(SimpleTestCase):
-    def test_writes_listing_to_firestore_with_verified_seller(self, client, get_app):
+    def test_writes_listing_to_firestore_with_verified_seller(self, bucket, client, get_app):
         reference = client.return_value.collection.return_value.document.return_value
         reference.id = "listing-123"
+        blob = bucket.return_value.blob.return_value
+        bucket.return_value.name = "swipehome-a51d7.firebasestorage.app"
         values = {
             "title": "Piso",
             "street": "Calle 1",
@@ -95,16 +99,48 @@ class CreateListingTests(SimpleTestCase):
             "people": 3,
             "shared_accommodation": False,
         }
-        photos = ["https://cdn.example.com/piso.jpg"]
+        photos = [SimpleUploadedFile("piso.jpg", b"data", content_type="image/jpeg")]
 
-        result = repository.create_listing(UID, values=values, photo_urls=photos)
+        result = repository.create_listing(UID, values=values, photos=photos)
 
         client.assert_called_once_with(app=get_app.return_value)
         client.return_value.collection.assert_called_once_with("listings")
         reference.create.assert_called_once()
         written = reference.create.call_args.args[0]
         self.assertEqual(written["seller_uid"], UID)
-        self.assertEqual(written["price"], "950.50")
-        self.assertEqual(written["surface"], "65.50")
-        self.assertEqual(written["photos"], photos)
+        self.assertEqual(written["price_cents"], 95050)
+        self.assertEqual(written["surface_hundredths"], 6550)
+        self.assertTrue(written["photos"][0].startswith(
+            "https://firebasestorage.googleapis.com/v0/b/"
+        ))
+        blob.patch.assert_called_once()
         self.assertEqual(result["id"], "listing-123")
+
+    def test_storage_failure_deletes_already_uploaded_photos(self, bucket, client, get_app):
+        first_blob = MagicMock()
+        second_blob = MagicMock()
+        second_blob.upload_from_file.side_effect = OSError("storage failure")
+        bucket.return_value.blob.side_effect = [first_blob, second_blob]
+        values = {
+            "title": "Piso",
+            "street": "Calle 1",
+            "city": "Barcelona",
+            "postal_code": "08001",
+            "description": "Descripción",
+            "price": Decimal("950.50"),
+            "surface": Decimal("65.50"),
+            "bedrooms": 2,
+            "bathrooms": 1,
+            "people": 3,
+            "shared_accommodation": False,
+        }
+        photos = [
+            SimpleUploadedFile("one.jpg", b"one", content_type="image/jpeg"),
+            SimpleUploadedFile("two.jpg", b"two", content_type="image/jpeg"),
+        ]
+
+        with self.assertRaises(OSError):
+            repository.create_listing(UID, values=values, photos=photos)
+
+        first_blob.delete.assert_called_once_with()
+        client.return_value.collection.return_value.document.return_value.create.assert_not_called()

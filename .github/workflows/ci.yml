@@ -38,7 +38,7 @@ jobs:
         run: python manage.py check
 
       - name: Tests
-        run: python manage.py test accounts --verbosity 2
+        run: python manage.py test accounts properties --verbosity 2
 
   frontend:
     name: Frontend (React)

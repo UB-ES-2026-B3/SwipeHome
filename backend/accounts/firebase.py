@@ -48,7 +48,13 @@ def get_app():
 
 def _app_options():
     project_id = os.environ.get("FIREBASE_PROJECT_ID", "").strip()
-    return {"projectId": project_id} if project_id else None
+    storage_bucket = os.environ.get("FIREBASE_STORAGE_BUCKET", "").strip()
+    options = {}
+    if project_id:
+        options["projectId"] = project_id
+    if storage_bucket:
+        options["storageBucket"] = storage_bucket
+    return options or None
 
 
 def _load_credential():

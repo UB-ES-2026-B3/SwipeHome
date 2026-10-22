@@ -1,4 +1,3 @@
-import json
 import logging
 
 from django.http import JsonResponse
@@ -6,22 +5,13 @@ from django.views.decorators.http import require_POST
 
 from accounts import repository
 from accounts.authentication import AuthenticationFailed, TokenVerificationUnavailable, uid_from_request
-from .validation import validate_photo_urls, validate_property
+from .validation import photo_uploads, validate_photos, validate_property
 
 logger = logging.getLogger(__name__)
 
 
 @require_POST
 def create_property(request):
-    if request.content_type != "application/json":
-        return JsonResponse({"error": "Se requiere application/json."}, status=400)
-    try:
-        data = json.loads(request.body)
-    except (ValueError, UnicodeDecodeError):
-        return JsonResponse({"error": "JSON inválido."}, status=400)
-    if not isinstance(data, dict):
-        return JsonResponse({"error": "El cuerpo debe ser un objeto JSON."}, status=400)
-
     try:
         uid = uid_from_request(request)
     except AuthenticationFailed:
@@ -43,14 +33,16 @@ def create_property(request):
     if profile["role"] != "SELLER":
         return JsonResponse({"error": "Solo los vendedores pueden publicar inmuebles."}, status=403)
 
-    values, errors = validate_property(data)
-    photos, photo_errors = validate_photo_urls(data)
-    errors.update(photo_errors)
+    if not request.content_type.startswith("multipart/form-data"):
+        return JsonResponse({"error": "Se requiere multipart/form-data."}, status=400)
+    values, errors = validate_property(request.POST)
+    photos = photo_uploads(request.FILES)
+    errors.update(validate_photos(photos))
     if errors:
         return JsonResponse({"errors": errors}, status=400)
 
     try:
-        listing = repository.create_listing(uid, values=values, photo_urls=photos)
+        listing = repository.create_listing(uid, values=values, photos=photos)
     except Exception as error:
         logger.error("No se pudo guardar la publicación del vendedor %s (%s).", uid, type(error).__name__)
         return JsonResponse(

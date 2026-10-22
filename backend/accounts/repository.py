@@ -1,4 +1,4 @@
-"""Único módulo del proyecto que habla con Firestore.
+"""Único módulo del proyecto que habla con Firestore y Firebase Storage.
 
 Las vistas llaman aquí, nunca a Firestore directamente. Si algún día se cambia
 de base de datos, se reescribe este fichero y nada más.
@@ -19,10 +19,16 @@ Colección `listings`, con id generado por Firestore:
       published  boolean
       created_at timestamp
 """
-from firebase_admin import firestore
+import logging
+from urllib.parse import quote
+from uuid import uuid4
+
+from firebase_admin import firestore, storage
 
 from .fields import normalize_account_email
 from .firebase import get_app
+
+logger = logging.getLogger(__name__)
 
 USERS_COLLECTION = "users"
 LISTINGS_COLLECTION = "listings"
@@ -61,26 +67,54 @@ def get_user_profile(uid) -> dict | None:
     return _public_profile(uid, snapshot.to_dict())
 
 
-def create_listing(uid, *, values, photo_urls) -> dict:
-    """Crea un anuncio en Firestore asociado al uid autenticado."""
+def _storage_bucket():
+    return storage.bucket(app=get_app())
+
+
+def create_listing(uid, *, values, photos) -> dict:
+    """Sube fotografías y crea el anuncio, compensando cualquier fallo."""
     stored_values = {
         **values,
-        "price": str(values["price"]),
-        "surface": str(values["surface"]),
+        "price_cents": int(values["price"] * 100),
+        "surface_hundredths": int(values["surface"] * 100),
     }
+    stored_values.pop("price")
+    stored_values.pop("surface")
+    bucket = _storage_bucket()
+    uploaded = []
+    reference = _listings().document()
     listing = {
         **stored_values,
         "seller_uid": uid,
-        "photos": photo_urls,
+        "photos": [],
         "published": True,
         "created_at": firestore.SERVER_TIMESTAMP,
     }
-    reference = _listings().document()
-    reference.create(listing)
-    return {
-        "id": reference.id,
-        **stored_values,
-        "seller_uid": uid,
-        "photos": photo_urls,
-        "published": True,
-    }
+    try:
+        for photo in photos:
+            name = f"listings/{uid}/{uuid4().hex}"
+            blob = bucket.blob(name)
+            photo.seek(0)
+            blob.upload_from_file(photo, content_type=photo.content_type)
+            uploaded.append(blob)
+            token = uuid4().hex
+            blob.metadata = {"firebaseStorageDownloadTokens": token}
+            blob.patch()
+            bucket_name = bucket.name
+            url = (
+                f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/"
+                f"{quote(name, safe='')}?alt=media&token={token}"
+            )
+            listing["photos"].append(url)
+        reference.create(listing)
+    except Exception:
+        for blob in uploaded:
+            try:
+                blob.delete()
+            except Exception as cleanup_error:
+                logger.error(
+                    "No se pudo limpiar una fotografía de la publicación (%s).",
+                    type(cleanup_error).__name__,
+                )
+        raise
+    return {"id": reference.id, **listing, "price": str(values["price"]), "surface": str(values["surface"])}

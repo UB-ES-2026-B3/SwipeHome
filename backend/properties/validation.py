@@ -1,6 +1,6 @@
 from decimal import Decimal, InvalidOperation
 import re
-from urllib.parse import urlparse
+from pathlib import Path
 
 
 FIELD_ALIASES = {
@@ -93,20 +93,51 @@ def validate_property(data):
     return values, errors
 
 
-def validate_photo_urls(data):
-    """Valida URLs públicas de fotografías almacenadas fuera del backend."""
-    value = data.get("photos", data.get("fotografias", data.get("images")))
-    errors = {}
-    if not isinstance(value, list) or not value:
-        return [], {"photos": "Se requiere al menos una URL de fotografía."}
-    if len(value) > 10:
-        return [], {"photos": "Se permiten como máximo 10 fotografías."}
+MAX_PHOTOS = 10
+MAX_PHOTO_SIZE = 5 * 1024 * 1024
+ALLOWED_CONTENT_TYPES = {"image/jpeg", "image/png", "image/webp"}
+ALLOWED_EXTENSIONS = {".jpg", ".jpeg", ".png", ".webp"}
 
-    urls = []
-    for index, url in enumerate(value):
-        parsed = urlparse(url) if isinstance(url, str) else None
-        if parsed is None or parsed.scheme not in {"http", "https"} or not parsed.netloc:
-            errors[f"photos[{index}]"] = "Debe ser una URL HTTP o HTTPS válida."
-        else:
-            urls.append(url)
-    return urls, errors
+
+def photo_uploads(data):
+    """Devuelve las fotografías multipart usando aliases de integración."""
+    for name in ("photos", "fotografias", "images", "photos[]", "fotografias[]"):
+        photos = data.getlist(name)
+        if photos:
+            return photos
+    return []
+
+
+def validate_photos(photos):
+    errors = {}
+    if not photos:
+        return {"photos": "Se requiere al menos una fotografía."}
+    if len(photos) > MAX_PHOTOS:
+        return {"photos": "Se permiten como máximo 10 fotografías."}
+    for index, photo in enumerate(photos):
+        if getattr(photo, "size", 0) > MAX_PHOTO_SIZE:
+            errors[f"photos[{index}]"] = "Cada fotografía puede ocupar como máximo 5 MB."
+            continue
+        if Path(getattr(photo, "name", "")).suffix.lower() not in ALLOWED_EXTENSIONS:
+            errors[f"photos[{index}]"] = "La extensión de la fotografía no está permitida."
+            continue
+        content = photo.read()
+        photo.seek(0)
+        content_type = getattr(photo, "content_type", None)
+        valid = (
+            content_type == "image/jpeg"
+            and content.startswith(b"\xff\xd8\xff")
+            and content.endswith(b"\xff\xd9")
+        ) or (
+            content_type == "image/png"
+            and content.startswith(b"\x89PNG\r\n\x1a\n")
+            and b"IEND" in content[-32:]
+        ) or (
+            content_type == "image/webp"
+            and content.startswith(b"RIFF")
+            and content[8:12] == b"WEBP"
+            and content[12:16] in (b"VP8 ", b"VP8L", b"VP8X")
+        )
+        if not valid:
+            errors[f"photos[{index}]"] = "El contenido de la fotografía no es válido."
+    return errors
