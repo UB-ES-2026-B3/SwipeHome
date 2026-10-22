@@ -31,3 +31,17 @@ Por instrucción del usuario, esta tarea no realiza commits, push ni PR; los rea
 ## Verificación
 
 Para documentación: comprobar enlaces locales, reglas de exclusión, ramas, estado de Git y formato del diff. Para futuras implementaciones: usar los casos de verificación de cada US y ejecutar los controles que realmente existan. Los desarrolladores verifican su trabajo antes de QA; una historia se termina cuando sus tareas y criterios integrados están comprobados.
+
+## Continuidad US6 backend (22 octubre 2026)
+
+La rama de esta tarea es `US6-backend`. El usuario autorizó expresamente adaptar
+US6 a Firebase y actualizar estos MDs. La restricción histórica de no escribir
+código durante la tarea documental no corresponde a esta implementación.
+No se han realizado commits, push ni PR.
+
+Leer [us6_backend.md](us6_backend.md) antes de continuar el perfil o logout.
+No volver a introducir ORM, cookies o sesiones Django. Auth es la fuente de
+nombre/email editable; Firestore conserva rol y relaciones. Reutilizar
+`repository.get_user_profile` y la verificación con revocación persistente.
+Nunca tratar los emails históricos de Firestore como el perfil vigente.
+Las nuevas pruebas de integración usan solo Firebase Auth Emulator demo.

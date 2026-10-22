@@ -1,5 +1,11 @@
 # Contexto del proyecto SwipeHome
 
+> Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
+> El contrato vigente de edición del perfil, contraseña y logout está en
+> [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
+> rol y relaciones permanecen en Firestore. Los apartados anteriores a esta
+> adaptación que describen sesiones Django son históricos.
+
 ## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
 
 DJANGO_DEV=1 activa HTTP local con cookies sin Secure; sin esa variable se conserva

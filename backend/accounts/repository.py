@@ -3,6 +3,9 @@
 Las vistas llaman aquí, nunca a Firestore directamente. Si algún día se cambia
 de base de datos, se reescribe este fichero y nada más.
 
+Los campos name/email del documento son la instantánea del registro.
+El nombre y email vigentes proceden de Firebase Auth.
+
 Colección `users`, con el uid de Firebase como id del documento:
 
     users/{uid}
@@ -19,11 +22,13 @@ Colección `listings`, con id generado por Firestore:
       published  boolean
       created_at timestamp
 """
+import hashlib
+import json
 import logging
 from urllib.parse import quote
 from uuid import uuid4
 
-from firebase_admin import firestore, storage
+from firebase_admin import auth, firestore, storage
 
 from .fields import normalize_account_email
 from .firebase import get_app
@@ -60,11 +65,17 @@ def create_user_profile(uid, *, name, email, role) -> dict:
 
 
 def get_user_profile(uid) -> dict | None:
-    """Devuelve el perfil del usuario, o None si no tiene documento en Firestore."""
+    """Combina identidad Auth y rol Firestore; None si no existe el perfil."""
     snapshot = _users().document(uid).get()
     if not snapshot.exists:
         return None
-    return _public_profile(uid, snapshot.to_dict())
+    data = snapshot.to_dict()
+    user = auth.get_user(uid, app=get_app())
+    # Auth es la fuente de email y nombre vigente. Los perfiles anteriores
+    # sin display_name conservan el nombre del documento hasta su primera edición.
+    data["email"] = normalize_account_email(user.email)
+    data["name"] = user.display_name or data["name"]
+    return _public_profile(uid, data)
 
 
 def _storage_bucket():
@@ -144,3 +155,44 @@ def _cleanup_uploaded(uploaded):
                 "No se pudo limpiar una fotografía de la publicación (%s).",
                 type(cleanup_error).__name__,
             )
+
+
+def update_user_profile(uid, values):
+    """Una sola escritura en Auth: nombre/email comparten la misma operación.
+
+    Auth es la fuente vigente de campos editables; Firestore conserva únicamente
+    el rol, relaciones y los datos históricos del registro. No hay dual write.
+    """
+    profile = get_user_profile(uid)
+    if profile is None:
+        return None
+    if not values or set(values) - {"name", "email"}:
+        raise ValueError("Campos no editables.")
+    changes = {}
+    if "name" in values:
+        changes["display_name"] = values["name"]
+    if "email" in values:
+        changes["email"] = normalize_account_email(values["email"])
+        if changes["email"] != profile["email"]:
+            changes["email_verified"] = False
+    updated = auth.update_user(uid, app=get_app(), **changes)
+    return {
+        "uid": uid, "name": updated.display_name or profile["name"],
+        "email": normalize_account_email(updated.email), "role": profile["role"],
+    }
+
+
+def _revocation_document(uid, auth_time):
+    # ID opaco, determinista y seguro aunque el uid contenga separadores.
+    key = hashlib.sha256(json.dumps([uid, auth_time]).encode("utf-8")).hexdigest()
+    return firestore.client(app=get_app()).collection("revoked_sessions").document(key)
+
+
+def is_session_revoked(uid, auth_time):
+    return _revocation_document(uid, auth_time).get().exists
+
+
+def revoke_session(uid, auth_time):
+    # set() hace la operación idempotente; no se almacena ningún token.
+    # No caducar estos documentos: un refresh token conserva auth_time.
+    _revocation_document(uid, auth_time).set({"revoked": True})

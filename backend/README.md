@@ -1,8 +1,10 @@
 # Backend de SwipeHome
 
-Django sin base de datos propia: los usuarios viven en **Firebase Auth** y los
-perfiles en **Firestore**. Django crea usuarios en el registro, verifica el ID token
-de Firebase y lee los perfiles.
+Django sin base de datos propia: las cuentas y sus campos editables
+(nombre/email) viven en **Firebase Auth**; Firestore conserva el rol y las
+relaciones. Django crea usuarios, verifica ID tokens y compone el perfil vigente.
+El documento Firestore conserva una instantánea de nombre/email del registro;
+las lecturas actuales pasan por `repository.get_user_profile`.
 
 Documentación de referencia:
 [migración a Firebase (contrato de la API)](<../Agents mds/firebase_auth_migration.md>),
@@ -53,6 +55,9 @@ desde la consola de Firebase al terminar.
 | `GET` | `/api/health` | Comprobación de vida. No toca Firebase. |
 | `POST` | `/api/auth/register` | `{name, email, password, role}` → 201 / 400 / 409 / 500 |
 | `GET` | `/api/auth/me` | `Authorization: Bearer <ID token>` → 200 / 401 / 404 / 500 |
+| `PATCH/PUT` | `/api/auth/me` | JSON parcial `name/email` → 200 / 400 / 401 / 404 / 409 / 500 |
+| `POST` | `/api/auth/me/password` | `current_password/new_password` → 200 / 400 / 401 / 404 / 500 |
+| `POST` | `/api/auth/logout` | Revocación persistente e idempotente → 204 / 500; GET → 405 |
 
 El login lo hace el frontend directamente contra Firebase; no hay `/api/auth/login`.
 La publicación se realiza mediante `POST /api/inmuebles`.
@@ -159,3 +164,25 @@ Build `pip install -r requirements.txt`, start
 `FIREBASE_STORAGE_BUCKET`. Render
 inyecta `RENDER_EXTERNAL_HOSTNAME`, y `settings.py` lo añade a `ALLOWED_HOSTS` y
 activa `SECURE_PROXY_SSL_HEADER`. Ver `infra_context.md` §3.
+
+## US6: perfil, contraseña y logout
+
+Contrato, decisiones de atomicidad, configuración y comandos del emulador:
+[US6 backend](<../Agents mds/us6_backend.md>).
+
+Configura también `FIREBASE_WEB_API_KEY` (Web API key pública del mismo proyecto)
+para comprobar la contraseña actual. Auth gestiona hashing y unicidad.
+Email y nombre se actualizan juntos en una sola operación Auth; Firestore
+conserva rol y relaciones. Las lecturas usan datos Auth actuales.
+
+El logout escribe una revocación por `uid/auth_time`; todos los endpoints
+protegidos la consultan además de verificar Firebase con `check_revoked=True`.
+No usa cookies ni CSRF Django. Las revocaciones no deben caducar automáticamente.
+Una revocación afecta a los logins de la misma cuenta en el mismo segundo;
+no es una revocación exacta por dispositivo ni invalida directamente el refresh
+token del proveedor. Los límites y la recuperación ante respuestas perdidas
+están descritos en el contrato.
+
+El cliente intercambia `custom_token` tras cambiar email/contraseña.
+Si el intercambio falla tras guardar, indica `reauthentication_required`.
+Los consumidores deben pedir iniciar sesión de nuevo en ese caso.
