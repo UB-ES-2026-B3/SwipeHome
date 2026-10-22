@@ -1,13 +1,17 @@
+from io import BytesIO
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
+from PIL import Image
 
 from accounts.authentication import AuthenticationFailed
 
 
 def jpeg(name="one.jpg"):
-    return SimpleUploadedFile(name, b"\xff\xd8\xffdata\xff\xd9", content_type="image/jpeg")
+    output = BytesIO()
+    Image.new("RGB", (2, 2), color="white").save(output, format="JPEG")
+    return SimpleUploadedFile(name, output.getvalue(), content_type="image/jpeg")
 
 
 VALID = {
@@ -84,9 +88,16 @@ class PropertyPublicationTests(SimpleTestCase):
         self.assertEqual(response.status_code, 400)
         self.assertIn("title", response.json()["errors"])
 
+    def test_contradictory_aliases_are_rejected(self):
+        response = self.publish(values={**VALID, "title": "Piso A", "titulo": "Piso B"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("title", response.json()["errors"])
+        self.create_listing.assert_not_called()
+
     def test_invalid_photo_content_is_rejected(self):
         response = self.publish(
-            photos=[SimpleUploadedFile("bad.jpg", b"not an image", content_type="image/jpeg")]
+            photos=[SimpleUploadedFile("bad.jpg", b"\xff\xd8\xffdata\xff\xd9", content_type="image/jpeg")]
         )
 
         self.assertEqual(response.status_code, 400)

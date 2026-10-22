@@ -1,7 +1,11 @@
 from decimal import Decimal, InvalidOperation
+from io import BytesIO
 import re
+import warnings
 from pathlib import Path
 
+from PIL import Image, UnidentifiedImageError
+from PIL.Image import DecompressionBombError, DecompressionBombWarning
 
 FIELD_ALIASES = {
     "title": ("title", "titulo"),
@@ -23,10 +27,16 @@ FIELD_ALIASES = {
 
 
 def _value(data, names):
-    for name in names:
-        if name in data:
-            return data[name]
+    present = [data[name] for name in names if name in data]
+    if present:
+        first = present[0]
+        if any(value != first for value in present[1:]):
+            return _CONFLICT
+        return first
     return None
+
+
+_CONFLICT = object()
 
 
 def _required_text(value):
@@ -71,6 +81,10 @@ def _integer(value, field, minimum, errors):
 def validate_property(data):
     errors = {}
     values = {field: _value(data, aliases) for field, aliases in FIELD_ALIASES.items()}
+    for field, value in values.items():
+        if value is _CONFLICT:
+            errors[field] = "No se pueden mezclar valores contradictorios."
+            values[field] = None
 
     for field in ("title", "street", "city", "postal_code", "description"):
         if not _required_text(values[field]):
@@ -124,20 +138,22 @@ def validate_photos(photos):
         content = photo.read()
         photo.seek(0)
         content_type = getattr(photo, "content_type", None)
-        valid = (
-            content_type == "image/jpeg"
-            and content.startswith(b"\xff\xd8\xff")
-            and content.endswith(b"\xff\xd9")
-        ) or (
-            content_type == "image/png"
-            and content.startswith(b"\x89PNG\r\n\x1a\n")
-            and b"IEND" in content[-32:]
-        ) or (
-            content_type == "image/webp"
-            and content.startswith(b"RIFF")
-            and content[8:12] == b"WEBP"
-            and content[12:16] in (b"VP8 ", b"VP8L", b"VP8X")
-        )
+        valid = False
+        try:
+            with warnings.catch_warnings():
+                warnings.simplefilter("error", DecompressionBombWarning)
+                with Image.open(BytesIO(content)) as image:
+                    valid = image.format in {"JPEG", "PNG", "WEBP"} and image.format == {
+                        "image/jpeg": "JPEG",
+                        "image/png": "PNG",
+                        "image/webp": "WEBP",
+                    }.get(content_type)
+                    if valid:
+                        image.verify()
+        except (DecompressionBombError, UnidentifiedImageError, OSError, ValueError):
+            valid = False
+        except DecompressionBombWarning:
+            valid = False
         if not valid:
             errors[f"photos[{index}]"] = "El contenido de la fotografía no es válido."
     return errors

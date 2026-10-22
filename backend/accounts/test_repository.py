@@ -115,6 +115,7 @@ class CreateListingTests(SimpleTestCase):
         ))
         blob.patch.assert_called_once()
         self.assertEqual(result["id"], "listing-123")
+        self.assertNotIn("created_at", result)
 
     def test_storage_failure_deletes_already_uploaded_photos(self, bucket, client, get_app):
         first_blob = MagicMock()
@@ -144,3 +145,65 @@ class CreateListingTests(SimpleTestCase):
 
         first_blob.delete.assert_called_once_with()
         client.return_value.collection.return_value.document.return_value.create.assert_not_called()
+
+    def test_firestore_confirmation_error_does_not_delete_confirmed_listing_photos(
+        self, bucket, client, get_app
+    ):
+        reference = client.return_value.collection.return_value.document.return_value
+        reference.id = "listing-ambiguous"
+        reference.create.side_effect = OSError("respuesta perdida")
+        reference.get.return_value.exists = True
+        blob = bucket.return_value.blob.return_value
+        values = {
+            "title": "Piso",
+            "street": "Calle 1",
+            "city": "Barcelona",
+            "postal_code": "08001",
+            "description": "Descripción",
+            "price": Decimal("950.50"),
+            "surface": Decimal("65.50"),
+            "bedrooms": 2,
+            "bathrooms": 1,
+            "people": 3,
+            "shared_accommodation": False,
+        }
+
+        result = repository.create_listing(
+            UID,
+            values=values,
+            photos=[SimpleUploadedFile("one.jpg", b"data", content_type="image/jpeg")],
+        )
+
+        self.assertEqual(result, {"id": "listing-ambiguous"})
+        blob.delete.assert_not_called()
+
+    def test_firestore_probe_failure_preserves_photos_for_reconciliation(
+        self, bucket, client, get_app
+    ):
+        reference = client.return_value.collection.return_value.document.return_value
+        reference.id = "listing-unknown"
+        reference.create.side_effect = OSError("respuesta perdida")
+        reference.get.side_effect = OSError("Firestore sigue caído")
+        blob = bucket.return_value.blob.return_value
+        values = {
+            "title": "Piso",
+            "street": "Calle 1",
+            "city": "Barcelona",
+            "postal_code": "08001",
+            "description": "Descripción",
+            "price": Decimal("950.50"),
+            "surface": Decimal("65.50"),
+            "bedrooms": 2,
+            "bathrooms": 1,
+            "people": 3,
+            "shared_accommodation": False,
+        }
+
+        with self.assertRaises(OSError):
+            repository.create_listing(
+                UID,
+                values=values,
+                photos=[SimpleUploadedFile("one.jpg", b"data", content_type="image/jpeg")],
+            )
+
+        blob.delete.assert_not_called()

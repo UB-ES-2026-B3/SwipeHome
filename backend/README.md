@@ -89,7 +89,9 @@ contraseña de 15–128 caracteres sin recortar y rol `SELLER` o `BUYER`.
 La suite cubre el registro y la autenticación Firebase, los permisos de
 publicación, la asociación del anuncio con el uid verificado, la validación de
 campos y fotografías reales, los alias en castellano, los límites de cantidad y
-tamaño y la compensación del almacenamiento.
+tamaño, la detección de alias contradictorios, la serialización de respuestas y
+la compensación segura del almacenamiento cuando el resultado de Firestore es
+ambiguo.
 
 Referencias: [campos Django](https://docs.djangoproject.com/en/5.2/howto/custom-model-fields/),
 [restricciones](https://docs.djangoproject.com/en/5.2/ref/models/constraints/),

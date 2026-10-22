@@ -72,7 +72,7 @@ def _storage_bucket():
 
 
 def create_listing(uid, *, values, photos) -> dict:
-    """Sube fotografías y crea el anuncio, compensando cualquier fallo."""
+    """Sube fotografías y crea el anuncio, compensando fallos confirmados."""
     stored_values = {
         **values,
         "price_cents": int(values["price"] * 100),
@@ -90,13 +90,13 @@ def create_listing(uid, *, values, photos) -> dict:
         "published": True,
         "created_at": firestore.SERVER_TIMESTAMP,
     }
-    try:
-        for photo in photos:
-            name = f"listings/{uid}/{uuid4().hex}"
-            blob = bucket.blob(name)
+    for photo in photos:
+        name = f"listings/{uid}/{uuid4().hex}"
+        blob = bucket.blob(name)
+        uploaded.append(blob)
+        try:
             photo.seek(0)
             blob.upload_from_file(photo, content_type=photo.content_type)
-            uploaded.append(blob)
             token = uuid4().hex
             blob.metadata = {"firebaseStorageDownloadTokens": token}
             blob.patch()
@@ -106,15 +106,41 @@ def create_listing(uid, *, values, photos) -> dict:
                 f"{quote(name, safe='')}?alt=media&token={token}"
             )
             listing["photos"].append(url)
+        except Exception:
+            _cleanup_uploaded(uploaded)
+            raise
+
+    try:
         reference.create(listing)
     except Exception:
-        for blob in uploaded:
-            try:
-                blob.delete()
-            except Exception as cleanup_error:
-                logger.error(
-                    "No se pudo limpiar una fotografía de la publicación (%s).",
-                    type(cleanup_error).__name__,
-                )
+        try:
+            snapshot = reference.get()
+        except Exception as probe_error:
+            logger.error(
+                "No se pudo determinar si la publicación %s se guardó (%s); "
+                "se conservan sus fotografías para conciliación.",
+                reference.id,
+                type(probe_error).__name__,
+            )
+            raise
+        if snapshot.exists:
+            logger.warning(
+                "La publicación %s existe pese al error de confirmación; "
+                "no se borran sus fotografías.",
+                reference.id,
+            )
+            return {"id": reference.id}
+        _cleanup_uploaded(uploaded)
         raise
-    return {"id": reference.id, **listing, "price": str(values["price"]), "surface": str(values["surface"])}
+    return {"id": reference.id}
+
+
+def _cleanup_uploaded(uploaded):
+    for blob in uploaded:
+        try:
+            blob.delete()
+        except Exception as cleanup_error:
+            logger.error(
+                "No se pudo limpiar una fotografía de la publicación (%s).",
+                type(cleanup_error).__name__,
+            )
