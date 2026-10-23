@@ -11,7 +11,7 @@
  * a los códigos que ya entienden (401 credenciales, 400 datos, 429 demasiados
  * intentos, 500 resto). Un fallo de red se lanza como excepción.
  */
-import { signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import { signInWithCustomToken, signInWithEmailAndPassword, signOut } from 'firebase/auth'
 import { auth } from '../firebase'
 
 const NETWORK_ERROR = 'auth/network-request-failed'
@@ -135,6 +135,60 @@ export async function fetchCurrentUser(firebaseUser = auth.currentUser) {
 }
 
 /** Cierra la sesión de Firebase. AuthContext se entera por onAuthStateChanged. */
-export function logout() {
+export async function logout() {
+  const user = auth.currentUser
+  if (!user) return signOut(auth)
+  let token
+  try {
+    token = await user.getIdToken()
+  } catch (error) {
+    if (SESSION_GONE.has(error?.code)) return signOut(auth)
+    throw error
+  }
+  const response = await fetch('/api/auth/logout', {
+    method: 'POST', headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
+  })
+  if (!response.ok) throw new Error('No se pudo cerrar la sesión. Inténtalo de nuevo.')
   return signOut(auth)
+}
+
+/** Actualiza campos editables y renueva la sesión cuando cambia el email. */
+export async function updateProfile(values) {
+  return accountMutation('/api/auth/me', 'PATCH', values)
+}
+
+/** Reautentica en el backend y conserva acceso con el SDK tras cambiar la contraseña. */
+export async function changePassword(currentPassword, newPassword) {
+  return accountMutation('/api/auth/me/password', 'POST', {
+    current_password: currentPassword,
+    new_password: newPassword,
+  })
+}
+
+async function accountMutation(path, method, values) {
+  const user = auth.currentUser
+  if (!user) return { ok: false, status: 401, data: null }
+  const token = await user.getIdToken()
+  const response = await fetch(path, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(values),
+    cache: 'no-store',
+  })
+  const data = await response.json()
+  if (!response.ok) return { ok: false, status: response.status, data }
+  if (data.custom_token) {
+    const continuity = data.custom_token
+    delete data.custom_token
+    try {
+      await signInWithCustomToken(auth, continuity)
+    } catch {
+      // El cambio ya persistió: nunca presentarlo como una operación fallida.
+      return {
+        ok: true, status: response.status,
+        data: { ...data, reauthentication_required: true },
+      }
+    }
+  }
+  return { ok: true, status: response.status, data }
 }

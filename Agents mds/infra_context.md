@@ -1,5 +1,11 @@
 # Contexto de infraestructura (base de datos, despliegue y autenticación)
 
+> Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
+> El contrato vigente de edición del perfil, contraseña y logout está en
+> [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
+> rol y relaciones permanecen en Firestore. Los apartados anteriores a esta
+> adaptación que describen sesiones Django son históricos.
+
 Responsable: Arnau (DevOps). Última actualización: 18 de octubre de 2026.
 
 **Este documento es la referencia vigente para base de datos, despliegue y

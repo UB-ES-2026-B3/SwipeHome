@@ -51,3 +51,12 @@ npm run build
 ```
 
 Son las mismas que ejecuta el CI.
+
+## Integración US6
+
+`api/auth.js` ofrece `updateProfile`, `changePassword` y logout con revocación
+en servidor antes de limpiar el SDK. Contrato y límites:
+[US6 backend](<../Agents mds/us6_backend.md>).
+El consumidor debe tratar `reauthentication_required` como cambio guardado con
+necesidad de iniciar sesión de nuevo. Ejecutar `npm test` para los tests Node
+del cliente de API, además de `npm run lint` y `npm run build`.

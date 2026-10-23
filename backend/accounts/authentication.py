@@ -1,16 +1,12 @@
-"""Extrae y verifica el ID token de Firebase de la cabecera Authorization.
-
-El token nunca se escribe en los logs. Tampoco el mensaje de las excepciones
-de firebase_admin: algunos incluyen el propio token.
-"""
+"""Verificación Firebase y revocación persistente de la sesión de SwipeHome."""
 import logging
 
 from firebase_admin import auth
 
+from . import repository
 from .firebase import get_app
 
 logger = logging.getLogger(__name__)
-
 MISSING = "missing"
 MALFORMED = "malformed"
 INVALID = "invalid"
@@ -18,47 +14,45 @@ EXPIRED = "expired"
 
 
 class AuthenticationFailed(Exception):
-    """El cliente no está autenticado: token ausente, mal formado, inválido o caducado (401)."""
-
     def __init__(self, reason):
         super().__init__(reason)
         self.reason = reason
 
 
 class TokenVerificationUnavailable(Exception):
-    """No se pudo verificar el token por un fallo del servidor, no del cliente.
-
-    No debe tratarse como 401: el frontend lo interpretaría como un cierre de sesión.
-    """
+    """Fallo del servidor: nunca debe convertirse en cierre de sesión (401)."""
 
 
-def uid_from_request(request) -> str:
-    """Devuelve el uid de Firebase del token `Authorization: Bearer <token>`.
-
-    Lanza AuthenticationFailed o TokenVerificationUnavailable. Los errores de
-    configuración (FirebaseConfigError, project id ausente) se propagan tal cual.
-    """
+def verified_session(request, *, allow_revoked=False):
     header = request.headers.get("Authorization", "").strip()
     if not header:
         logger.info("Petición sin cabecera Authorization.")
         raise AuthenticationFailed(MISSING)
-
     scheme, _, token = header.partition(" ")
     token = token.strip()
-    if scheme.lower() != "bearer" or not token or any(char.isspace() for char in token):
-        logger.warning("Cabecera Authorization mal formada: se esperaba 'Bearer <token>'.")
+    if scheme.lower() != "bearer" or not token or any(c.isspace() for c in token):
+        logger.warning("Cabecera Authorization mal formada.")
         raise AuthenticationFailed(MALFORMED)
-
     try:
-        decoded = auth.verify_id_token(token, app=get_app())
-    # ExpiredIdTokenError hereda de InvalidIdTokenError: debe ir antes.
+        decoded = auth.verify_id_token(token, app=get_app(), check_revoked=True)
     except auth.ExpiredIdTokenError:
-        logger.info("ID token de Firebase caducado.")
+        logger.info("ID token caducado.")
         raise AuthenticationFailed(EXPIRED) from None
-    except auth.InvalidIdTokenError as error:
-        logger.warning("ID token de Firebase inválido (%s).", type(error).__name__)
+    except (auth.InvalidIdTokenError, auth.UserDisabledError, auth.UserNotFoundError):
+        logger.warning("ID token inválido o cuenta deshabilitada.")
         raise AuthenticationFailed(INVALID) from None
     except auth.CertificateFetchError:
-        logger.error("No se pudieron descargar los certificados de Google para verificar el token.")
+        logger.error("No se pudieron descargar los certificados de Google.")
         raise TokenVerificationUnavailable() from None
-    return decoded["uid"]
+    if (
+        not isinstance(decoded.get("uid"), str) or not decoded["uid"]
+        or type(decoded.get("auth_time")) is not int or decoded["auth_time"] < 0
+    ):
+        raise AuthenticationFailed(INVALID)
+    if not allow_revoked and repository.is_session_revoked(decoded["uid"], decoded["auth_time"]):
+        raise AuthenticationFailed(INVALID)
+    return decoded
+
+
+def uid_from_request(request):
+    return verified_session(request)["uid"]

@@ -52,6 +52,13 @@ class CreateUserProfileTests(SimpleTestCase):
 @patch("accounts.repository.get_app")
 @patch("accounts.repository.firestore.client")
 class GetUserProfileTests(SimpleTestCase):
+    def setUp(self):
+        from types import SimpleNamespace
+        self.user = self.enterContext(patch(
+            "accounts.repository.auth.get_user",
+            return_value=SimpleNamespace(display_name=None, email="ana@example.com"),
+        ))
+
     def snapshot(self, client, exists, data=None):
         snapshot = MagicMock(exists=exists)
         snapshot.to_dict.return_value = data

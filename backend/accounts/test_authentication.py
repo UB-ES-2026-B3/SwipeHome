@@ -26,6 +26,9 @@ def request_with(authorization=None):
 @patch("accounts.authentication.get_app")
 @patch("accounts.authentication.auth.verify_id_token")
 class UidFromRequestTests(SimpleTestCase):
+    def setUp(self):
+        self.enterContext(patch("accounts.repository.is_session_revoked", return_value=False))
+
     def assert_fails(self, request, reason):
         with self.assertRaises(AuthenticationFailed) as raised:
             uid_from_request(request)
@@ -33,14 +36,14 @@ class UidFromRequestTests(SimpleTestCase):
         return raised.exception
 
     def test_valid_token_returns_uid(self, verify, get_app):
-        verify.return_value = {"uid": UID, "email": "ana@example.com"}
+        verify.return_value = {"uid": UID, "auth_time": 100, "email": "ana@example.com"}
         self.assertEqual(uid_from_request(request_with(f"Bearer {TOKEN}")), UID)
-        verify.assert_called_once_with(TOKEN, app=get_app.return_value)
+        verify.assert_called_once_with(TOKEN, app=get_app.return_value, check_revoked=True)
 
     def test_scheme_is_case_insensitive_and_outer_spaces_are_ignored(self, verify, get_app):
-        verify.return_value = {"uid": UID}
+        verify.return_value = {"uid": UID, "auth_time": 100}
         self.assertEqual(uid_from_request(request_with(f"  bearer   {TOKEN}  ")), UID)
-        verify.assert_called_once_with(TOKEN, app=get_app.return_value)
+        verify.assert_called_once_with(TOKEN, app=get_app.return_value, check_revoked=True)
 
     def test_missing_header(self, verify, get_app):
         for header in (None, "", "   "):

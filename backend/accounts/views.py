@@ -52,7 +52,7 @@ def register(request):
         return JsonResponse({"errors": errors}, status=400)
 
     try:
-        firebase_user = auth.create_user(email=values["email"], password=values["password"], app=get_app())
+        firebase_user = auth.create_user(email=values["email"], password=values["password"], display_name=values["name"], app=get_app())
     except auth.EmailAlreadyExistsError:
         # Firebase Auth garantiza la unicidad del email; no hay nada que deshacer.
         return JsonResponse({"error": "El email ya está registrado."}, status=409)

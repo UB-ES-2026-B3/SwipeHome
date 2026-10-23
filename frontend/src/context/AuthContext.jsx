@@ -1,4 +1,4 @@
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { createContext, useCallback, useEffect, useRef, useState } from 'react'
 import { fetchCurrentUser, logout as firebaseLogout } from '../api/auth'
 import { AuthErrorBanner } from '../components/AuthErrorBanner'
@@ -69,10 +69,10 @@ export function AuthProvider({ children }) {
         setLoading(false)
       } else if (status === 401) {
         setAuthError(null)
-        await firebaseLogout()
+        await signOut(auth)
       } else if (status === 404) {
         setAuthError(ACCOUNT_INCOMPLETE)
-        await firebaseLogout()
+        await signOut(auth)
       } else {
         setAuthError(SERVER_UNAVAILABLE)
       }
@@ -111,7 +111,13 @@ export function AuthProvider({ children }) {
 
   const clearUser = useCallback(() => setUser(null), [])
   const dismissAuthError = useCallback(() => setAuthError(null), [])
-  const logout = useCallback(() => firebaseLogout(), [])
+  const logout = useCallback(async () => {
+    try {
+      await firebaseLogout()
+    } catch {
+      setAuthError({ kind: 'logout', message: 'No se pudo cerrar la sesión. Vuelve a pulsar Cerrar sesión.' })
+    }
+  }, [])
 
   return (
     <AuthContext.Provider

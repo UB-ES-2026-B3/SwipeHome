@@ -34,11 +34,19 @@ jobs:
       - name: Instalar dependencias
         run: pip install -r requirements.txt
 
+      - name: Node para Firebase Auth Emulator
+        uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+
       - name: Comprobaciones de Django
         run: python manage.py check
 
       - name: Tests
         run: python manage.py test accounts properties --verbosity 2
+
+      - name: Integración US6 con Firebase Auth Emulator
+        run: npx --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us6 --only auth --config tests/firebase.json "python manage.py test accounts.test_profile.EmailRaceIntegrationTests --verbosity 2"
 
   frontend:
     name: Frontend (React)
@@ -58,6 +66,9 @@ jobs:
 
       - name: Instalar dependencias
         run: npm ci
+
+      - name: Tests del cliente de autenticación
+        run: npm test
 
       - name: Lint
         run: npm run lint
