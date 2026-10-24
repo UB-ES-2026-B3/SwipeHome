@@ -503,20 +503,8 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   box-shadow: 0 0 0 3px rgba(232,0,28,0.1);
 }
 
-/* Wrapper del select + flecha */
+/* Wrapper para campos personalizados */
 .form-field__input-wrapper { position: relative; }
-.form-field__input-wrapper::after {
-  content: '';
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-  width: 0; height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 6px solid var(--c-gray-700);
-  pointer-events: none;
-}
 .form-field__select { padding-right: 36px; cursor: pointer; }
 
 /* Mensaje de error */
@@ -781,6 +769,14 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   border-radius: 6px;
   font-size: 0.875rem;
 }
+.publish-form__server-error {
+  padding: 10px 14px;
+  color: var(--c-error);
+  background: var(--c-error-bg);
+  border-left: 3px solid var(--c-error);
+  border-radius: 6px;
+  font-size: 0.8125rem;
+}
 .publish-form__submit {
   width: 100%;
   padding: 11px;
@@ -791,6 +787,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   font-weight: 700;
 }
 .publish-form__submit:hover { background: var(--c-gray-700); }
+.publish-form__submit:disabled { opacity: 0.5; cursor: not-allowed; }
 
 @media (max-width: 640px) {
   .seller-dashboard__header { padding: 12px var(--sp-2); }

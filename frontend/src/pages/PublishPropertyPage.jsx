@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { publishProperty } from '../api/properties'
 import { FormField } from '../components/FormField'
 import { Logo } from '../components/Logo'
 
@@ -70,13 +71,29 @@ function validatePhotos(photos) {
   return null
 }
 
+const FIELD_ALIASES = {
+  title: 'title',
+  street: 'address',
+  city: 'locality',
+  postal_code: 'postalCode',
+  description: 'description',
+  price: 'price',
+  surface: 'area',
+  bedrooms: 'bedrooms',
+  bathrooms: 'bathrooms',
+  people: 'tenants',
+  shared_accommodation: 'shared',
+}
+
 export function PublishPropertyPage() {
   const navigate = useNavigate()
   const [fields, setFields] = useState(initialFields)
   const [photos, setPhotos] = useState([])
   const [photoError, setPhotoError] = useState(null)
   const [fieldErrors, setFieldErrors] = useState({})
-  const [submitted, setSubmitted] = useState(false)
+  const [serverError, setServerError] = useState(null)
+  const [publishing, setPublishing] = useState(false)
+  const [published, setPublished] = useState(false)
   const photosRef = useRef(photos)
 
   useEffect(() => {
@@ -94,7 +111,8 @@ export function PublishPropertyPage() {
     const { name, value } = event.target
     setFields((current) => ({ ...current, [name]: value }))
     setFieldErrors((current) => ({ ...current, [name]: undefined }))
-    setSubmitted(false)
+    setServerError(null)
+    setPublished(false)
   }
 
   function handlePhotoChange(event) {
@@ -120,6 +138,8 @@ export function PublishPropertyPage() {
     }
     setPhotos((current) => [...current, ...nextPhotos])
     setPhotoError(error)
+    setServerError(null)
+    setPublished(false)
     event.target.value = ''
   }
 
@@ -129,21 +149,53 @@ export function PublishPropertyPage() {
       return current.filter((_, photoIndex) => photoIndex !== index)
     })
     setPhotoError(null)
-    setSubmitted(false)
+    setServerError(null)
+    setPublished(false)
   }
 
-  function handleSubmit(event) {
+  async function handleSubmit(event) {
     event.preventDefault()
+    if (publishing) return
     const errors = validateFields(fields)
     const photosError = validatePhotos(photos)
     setFieldErrors(errors)
     setPhotoError(photosError)
-    setSubmitted(false)
+    setServerError(null)
+    setPublished(false)
 
     if (Object.keys(errors).length > 0 || photosError) return
 
-    // El envío multipart al backend pertenece a US3-3.
-    setSubmitted(true)
+    setPublishing(true)
+    try {
+      const result = await publishProperty(fields, photos)
+      if (result.ok && result.status === 201) {
+        setPublished(true)
+        return
+      }
+      if (result.status === 400) {
+        const errorsByField = {}
+        let nextPhotoError = null
+        for (const [field, message] of Object.entries(result.data.errors || {})) {
+          if (field.startsWith('photos')) nextPhotoError = message
+          else if (FIELD_ALIASES[field]) errorsByField[FIELD_ALIASES[field]] = message
+        }
+        setFieldErrors(errorsByField)
+        setPhotoError(nextPhotoError || result.data.error || null)
+        if (!nextPhotoError && !Object.keys(errorsByField).length) {
+          setServerError(result.data.error || 'Revisa los datos y las fotografías.')
+        }
+      } else if (result.status === 401) {
+        setServerError(result.data.error || 'Necesitas iniciar sesión para publicar un inmueble.')
+      } else if (result.status === 403) {
+        setServerError(result.data.error || 'Tu cuenta no tiene permiso para publicar inmuebles.')
+      } else {
+        setServerError(result.data.error || 'No se pudo publicar el inmueble. Inténtalo de nuevo.')
+      }
+    } catch {
+      setServerError('No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.')
+    } finally {
+      setPublishing(false)
+    }
   }
 
   return (
@@ -260,8 +312,11 @@ export function PublishPropertyPage() {
             {photoError && <p className="form-field__error" role="alert">{photoError}</p>}
           </fieldset>
 
-          {submitted && <p className="publish-form__success" role="status">Datos válidos. La publicación estará disponible al conectar el envío con el servidor.</p>}
-          <button type="submit" className="publish-form__submit">Publicar</button>
+          {serverError && <p className="publish-form__server-error" role="alert">{serverError}</p>}
+          {published && <p className="publish-form__success" role="status">El anuncio se ha publicado correctamente.</p>}
+          <button type="submit" className="publish-form__submit" disabled={publishing}>
+            {publishing ? 'Publicando…' : published ? 'Publicado' : 'Publicar'}
+          </button>
         </form>
       </div>
     </main>
