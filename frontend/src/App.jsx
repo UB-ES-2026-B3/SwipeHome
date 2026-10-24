@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth'
 import { BuyerHome } from './pages/BuyerHome'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
+import { PublishPropertyPage } from './pages/PublishPropertyPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { SellerHome } from './pages/SellerHome'
 
@@ -53,6 +54,15 @@ export default function App() {
         element={
           <PrivateRoute requiredRole="SELLER">
             <SellerHome />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/publicar"
+        element={
+          <PrivateRoute requiredRole="SELLER">
+            <PublishPropertyPage />
           </PrivateRoute>
         }
       />

@@ -574,6 +574,237 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .home-page__cta:hover { opacity: 0.8; }
 
 /* ═══════════════════════════════════════════════════════════════════
+   PANEL DEL VENDEDOR
+   ═══════════════════════════════════════════════════════════════════ */
+.seller-dashboard {
+  min-height: 100vh;
+  background: var(--c-gray-50);
+}
+.seller-dashboard__header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 72px;
+  padding: 14px var(--sp-6);
+  background: var(--c-white);
+  border-bottom: 1px solid var(--c-gray-100);
+}
+.seller-dashboard__account {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.seller-dashboard__account-name {
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.seller-dashboard__role {
+  padding: 4px 10px;
+  color: var(--c-red);
+  background: var(--c-error-bg);
+  border-radius: var(--r-btn);
+  font-size: 0.7rem;
+  font-weight: 700;
+}
+.seller-dashboard__logout {
+  padding: 9px 16px;
+  color: var(--c-white);
+  background: var(--c-black);
+  border-radius: var(--r-btn);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+.seller-dashboard__logout:hover { background: var(--c-gray-700); }
+.seller-dashboard__content {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: var(--sp-6);
+}
+.seller-dashboard__publish {
+  padding: 13px 28px;
+  color: var(--c-white);
+  background: var(--c-red);
+  border-radius: var(--r-btn);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
+.seller-dashboard__publish:hover { background: var(--c-red-dark); }
+.seller-dashboard__list { margin-top: var(--sp-6); }
+.seller-dashboard__list h1 {
+  margin-bottom: var(--sp-3);
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+.seller-dashboard__list ul {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  list-style: none;
+}
+.seller-dashboard__property,
+.seller-dashboard__empty {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  padding: var(--sp-3);
+  background: var(--c-white);
+  border: 1px solid var(--c-gray-100);
+  border-radius: var(--r-card);
+}
+.seller-dashboard__property span:first-child,
+.seller-dashboard__empty strong { font-weight: 700; }
+.seller-dashboard__property span:last-child,
+.seller-dashboard__empty span {
+  color: var(--c-gray-400);
+  font-size: 0.875rem;
+}
+
+/* ═══════════════════════════════════════════════════════════════════
+   PUBLICACIÓN DE INMUEBLE
+   ═══════════════════════════════════════════════════════════════════ */
+.publish-page {
+  min-height: 100vh;
+  padding: 0 var(--sp-4) var(--sp-6);
+  background: var(--c-gray-50);
+}
+.publish-page__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  max-width: 960px;
+  min-height: 72px;
+  margin: 0 auto var(--sp-4);
+}
+.publish-page__inner {
+  width: 100%;
+  max-width: 700px;
+  margin: 0 auto;
+  padding: var(--sp-4);
+  background: var(--c-white);
+  border: 1px solid var(--c-gray-100);
+  border-radius: 14px;
+}
+.publish-page__back {
+  color: var(--c-gray-700);
+  font-size: 0.75rem;
+  margin-bottom: var(--sp-2);
+}
+.publish-page__back:hover { color: var(--c-black); }
+.publish-page__title {
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+.publish-page__subtitle {
+  color: var(--c-gray-400);
+  font-size: 0.8rem;
+  margin: 4px 0 var(--sp-4);
+}
+.publish-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+.publish-form__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+.publish-form__grid--three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.publish-form .form-field__label { font-size: 0.65rem; }
+.publish-form .form-field__input,
+.publish-form .form-field__select {
+  padding: 9px 11px;
+  font-size: 0.8125rem;
+  border-radius: 7px;
+}
+.publish-form__textarea { min-height: 90px; resize: vertical; }
+.publish-form__photos {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border: 1px solid var(--c-gray-100);
+  border-radius: 7px;
+  padding: var(--sp-2);
+}
+.publish-form__photos legend {
+  padding: 0 6px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  font-size: 0.75rem;
+}
+.publish-form__hint { color: var(--c-gray-400); font-size: 0.8125rem; }
+.publish-form__file-button {
+  width: fit-content;
+  padding: 8px 13px;
+  border: 1px solid var(--c-black);
+  border-radius: var(--r-btn);
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.publish-form__file-button input { display: none; }
+.publish-form__photo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+  gap: var(--sp-2);
+}
+.publish-form__photo { position: relative; }
+.publish-form__photo img {
+  display: block;
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: var(--r-input);
+}
+.publish-form__photo button {
+  position: absolute;
+  right: 4px;
+  bottom: 4px;
+  padding: 4px 8px;
+  color: var(--c-white);
+  background: rgba(17,17,17,0.85);
+  border-radius: 4px;
+  font-size: 0.7rem;
+}
+.publish-form__success {
+  padding: 10px 14px;
+  color: #176b38;
+  background: #eefaf2;
+  border-left: 3px solid #176b38;
+  border-radius: 6px;
+  font-size: 0.875rem;
+}
+.publish-form__submit {
+  width: 100%;
+  padding: 11px;
+  color: var(--c-white);
+  background: var(--c-black);
+  border-radius: var(--r-btn);
+  font-size: 0.8125rem;
+  font-weight: 700;
+}
+.publish-form__submit:hover { background: var(--c-gray-700); }
+
+@media (max-width: 640px) {
+  .seller-dashboard__header { padding: 12px var(--sp-2); }
+  .seller-dashboard__content { padding: var(--sp-4) var(--sp-2); }
+  .seller-dashboard__account-name { display: none; }
+  .seller-dashboard__role { font-size: 0.65rem; }
+  .publish-page { padding-inline: var(--sp-2); }
+  .publish-page__header { min-height: 64px; }
+  .publish-page__inner { padding: var(--sp-3); }
+  .publish-form__grid,
+  .publish-form__grid--three { grid-template-columns: 1fr; }
+}
+
+/* ═══════════════════════════════════════════════════════════════════
    AUTH PAGE (registro standalone /registro)
    ═══════════════════════════════════════════════════════════════════ */
 .auth-page {
