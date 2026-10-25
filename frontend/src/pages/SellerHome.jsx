@@ -1,4 +1,5 @@
 import { useNavigate } from 'react-router-dom'
+import { Logo } from '../components/Logo'
 import { useAuth } from '../hooks/useAuth'
 
 /**
@@ -7,33 +8,51 @@ import { useAuth } from '../hooks/useAuth'
  * El contenido completo de esta pantalla está fuera del alcance del Sprint 0.
  */
 export function SellerHome() {
-  const { user, logout } = useAuth()
+  const { logout } = useAuth()
   const navigate = useNavigate()
+  const publishedProperties = []
 
   return (
-    <main className="home-page home-page--seller">
-      <div className="home-page__content">
-        <div className="home-page__logo" aria-hidden="true">🏠</div>
-        <h1 className="home-page__title">
-          ¡Bienvenido, {user?.name || 'Vendedor'}!
-        </h1>
-        <p className="home-page__role-badge home-page__role-badge--seller">
-          Vendedor
-        </p>
-        <p className="home-page__desc">
-          Desde aquí podrás publicar tus inmuebles y gestionar tus anuncios.
-          Las funcionalidades completas estarán disponibles próximamente.
-        </p>
+    <main className="seller-dashboard">
+      <header className="seller-dashboard__header">
+        <Logo size="sm" />
+        <div className="seller-dashboard__account">
+          <span className="seller-dashboard__role">Vendedor</span>
+          <button type="button" className="seller-dashboard__logout" onClick={logout}>
+            LogOut
+          </button>
+        </div>
+      </header>
+
+      <div className="seller-dashboard__content">
         <button
-          className="home-page__cta"
+          type="button"
+          className="seller-dashboard__publish"
           onClick={() => navigate('/publicar')}
         >
-          Publicar inmueble
+          Publicar
         </button>
-        {/* Provisional: desbloquea el flujo de logout; libre de mover o rediseñar. */}
-        <button type="button" className="home-page__logout" onClick={logout}>
-          Cerrar sesión
-        </button>
+
+        <section className="seller-dashboard__list" aria-labelledby="published-properties-title">
+          <h1 id="published-properties-title">Mis inmuebles publicados</h1>
+          {publishedProperties.length > 0 ? (
+            <ul>
+              {publishedProperties.map((property) => (
+                <li className="seller-dashboard__property" key={property.id}>
+                  <span>{property.name}</span>
+                  <span>
+                    {property.requests} {property.requests === 1 ? 'solicitud' : 'solicitudes'}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="seller-dashboard__empty">
+              <strong>Sin inmuebles publicados</strong>
+              <span>0 solicitudes</span>
+            </div>
+          )}
+        </section>
       </div>
     </main>
   )
