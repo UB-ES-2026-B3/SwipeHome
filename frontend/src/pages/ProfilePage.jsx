@@ -62,6 +62,11 @@ export function ProfilePage() {
   const [passwordErrors, setPasswordErrors] = useState({})
   const [passwordMessage, setPasswordMessage] = useState(null)
   const [savingPassword, setSavingPassword] = useState(false)
+  const [visiblePasswords, setVisiblePasswords] = useState({
+    current: false,
+    new: false,
+    confirmation: false,
+  })
 
   if (loading) {
     return <div className="page-loading" aria-label="Cargando perfil"><div className="page-loading__spinner" /></div>
@@ -120,6 +125,7 @@ export function ProfilePage() {
       const result = await changePassword(passwords.currentPassword, passwords.newPassword)
       if (result.ok) {
         setPasswords({ currentPassword: '', newPassword: '', confirmation: '' })
+        setVisiblePasswords({ current: false, new: false, confirmation: false })
         setPasswordMessage('Contraseña actualizada correctamente.')
       } else if (result.status === 400) {
         setPasswordErrors(result.data?.errors || {})
@@ -137,6 +143,7 @@ export function ProfilePage() {
     const success = await logout()
     if (success) {
       setPasswords({ currentPassword: '', newPassword: '', confirmation: '' })
+      setVisiblePasswords({ current: false, new: false, confirmation: false })
       navigate('/', { replace: true })
     }
   }
@@ -186,18 +193,40 @@ export function ProfilePage() {
           <h2 id="password-title">Cambiar contraseña</h2>
           <form onSubmit={handlePasswordSubmit} noValidate>
             {passwordMessage && <div className="profile-message" role="status">{passwordMessage}</div>}
-            <FormField id="current-password" label="Contraseña actual" type="password"
-              value={passwords.currentPassword}
-              onChange={(event) => setPasswords({ ...passwords, currentPassword: event.target.value })}
-              error={passwordErrors.current_password} autoComplete="current-password" disabled={loggingOut} />
-            <FormField id="new-password" label="Nueva contraseña" type="password"
-              value={passwords.newPassword}
-              onChange={(event) => setPasswords({ ...passwords, newPassword: event.target.value })}
-              error={passwordErrors.new_password} autoComplete="new-password" disabled={loggingOut} />
-            <FormField id="password-confirmation" label="Confirmar nueva contraseña" type="password"
-              value={passwords.confirmation}
-              onChange={(event) => setPasswords({ ...passwords, confirmation: event.target.value })}
-              error={passwordErrors.confirmation} autoComplete="new-password" disabled={loggingOut} />
+            <FormField id="current-password" label="Contraseña actual"
+              error={passwordErrors.current_password}>
+              <input id="current-password" className={`form-field__input ${passwordErrors.current_password ? 'form-field__input--error' : ''}`}
+                type={visiblePasswords.current ? 'text' : 'password'} value={passwords.currentPassword}
+                onChange={(event) => setPasswords({ ...passwords, currentPassword: event.target.value })}
+                autoComplete="current-password" disabled={loggingOut} aria-invalid={!!passwordErrors.current_password} />
+              <button type="button" className="password-visibility" aria-label={visiblePasswords.current ? 'Ocultar contraseña actual' : 'Mostrar contraseña actual'}
+                onClick={() => setVisiblePasswords({ ...visiblePasswords, current: !visiblePasswords.current })}
+                disabled={loggingOut} aria-pressed={visiblePasswords.current}>
+                {visiblePasswords.current ? 'Ocultar' : 'Mostrar'}
+              </button>
+            </FormField>
+            <FormField id="new-password" label="Nueva contraseña" error={passwordErrors.new_password}>
+              <input id="new-password" className={`form-field__input ${passwordErrors.new_password ? 'form-field__input--error' : ''}`}
+                type={visiblePasswords.new ? 'text' : 'password'} value={passwords.newPassword}
+                onChange={(event) => setPasswords({ ...passwords, newPassword: event.target.value })}
+                autoComplete="new-password" disabled={loggingOut} aria-invalid={!!passwordErrors.new_password} />
+              <button type="button" className="password-visibility" aria-label={visiblePasswords.new ? 'Ocultar nueva contraseña' : 'Mostrar nueva contraseña'}
+                onClick={() => setVisiblePasswords({ ...visiblePasswords, new: !visiblePasswords.new })}
+                disabled={loggingOut} aria-pressed={visiblePasswords.new}>
+                {visiblePasswords.new ? 'Ocultar' : 'Mostrar'}
+              </button>
+            </FormField>
+            <FormField id="password-confirmation" label="Confirmar nueva contraseña" error={passwordErrors.confirmation}>
+              <input id="password-confirmation" className={`form-field__input ${passwordErrors.confirmation ? 'form-field__input--error' : ''}`}
+                type={visiblePasswords.confirmation ? 'text' : 'password'} value={passwords.confirmation}
+                onChange={(event) => setPasswords({ ...passwords, confirmation: event.target.value })}
+                autoComplete="new-password" disabled={loggingOut} aria-invalid={!!passwordErrors.confirmation} />
+              <button type="button" className="password-visibility" aria-label={visiblePasswords.confirmation ? 'Ocultar confirmación' : 'Mostrar confirmación'}
+                onClick={() => setVisiblePasswords({ ...visiblePasswords, confirmation: !visiblePasswords.confirmation })}
+                disabled={loggingOut} aria-pressed={visiblePasswords.confirmation}>
+                {visiblePasswords.confirmation ? 'Ocultar' : 'Mostrar'}
+              </button>
+            </FormField>
             <button type="submit" className="btn btn--dark" disabled={savingPassword || savingProfile || loggingOut}>
               {savingPassword ? 'Actualizando…' : 'Cambiar contraseña'}
             </button>
