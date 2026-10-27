@@ -31,8 +31,14 @@ function validatePassword({ currentPassword, newPassword, confirmation }) {
   const errors = {}
   if (!currentPassword) errors.current_password = 'Introduce tu contraseña actual.'
   if (!newPassword) errors.new_password = 'Introduce una nueva contraseña.'
-  else if (newPassword.length < 15 || newPassword.length > 128) {
-    errors.new_password = 'La nueva contraseña debe tener entre 15 y 128 caracteres.'
+  else if (newPassword.length < 8 || newPassword.length > 128) {
+    errors.new_password = 'La nueva contraseña debe tener entre 8 y 128 caracteres.'
+  } else if (!/[A-Z]/.test(newPassword)) {
+    errors.new_password = 'La nueva contraseña debe incluir al menos una mayúscula.'
+  } else if (!/\d/.test(newPassword)) {
+    errors.new_password = 'La nueva contraseña debe incluir al menos un número.'
+  } else if (!/[^\w\s]/.test(newPassword)) {
+    errors.new_password = 'La nueva contraseña debe incluir al menos un símbolo.'
   } else if (newPassword === currentPassword) {
     errors.new_password = 'La nueva contraseña debe ser diferente de la actual.'
   }

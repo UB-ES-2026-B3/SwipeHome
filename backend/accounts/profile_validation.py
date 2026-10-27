@@ -1,5 +1,5 @@
 """Validación de US6; mantiene intactas las reglas históricas del registro."""
-from django.contrib.auth.password_validation import CommonPasswordValidator, NumericPasswordValidator
+from django.contrib.auth.password_validation import CommonPasswordValidator
 from django.core.exceptions import ValidationError
 
 from .validation import validate_registration
@@ -25,16 +25,21 @@ def validate_password_change(data):
     current, new = data["current_password"], data["new_password"]
     if not isinstance(current, str) or not 1 <= len(current) <= 128:
         errors["current_password"] = "Introduce la contraseña actual (1–128 caracteres)."
-    # Política US6: longitud, contenido no vacío y distinta de la actual.
+    # La nueva contraseña sigue las mismas reglas que el registro (US1).
     # No se modifica ningún carácter de la contraseña.
-    if not isinstance(new, str) or not 15 <= len(new) <= 128 or not new.strip():
-        errors["new_password"] = "La nueva contraseña debe tener entre 15 y 128 caracteres y no ser solo espacios."
+    if not isinstance(new, str) or not 8 <= len(new) <= 128:
+        errors["new_password"] = "La nueva contraseña debe tener entre 8 y 128 caracteres."
     elif new == current:
         errors["new_password"] = "La nueva contraseña debe ser diferente de la actual."
+    elif not any(char.isupper() for char in new):
+        errors["new_password"] = "La nueva contraseña debe incluir al menos una mayúscula."
+    elif not any(char.isdigit() for char in new):
+        errors["new_password"] = "La nueva contraseña debe incluir al menos un número."
+    elif not any(not char.isalnum() and not char.isspace() for char in new):
+        errors["new_password"] = "La nueva contraseña debe incluir al menos un símbolo."
     if "new_password" not in errors:
         try:
             CommonPasswordValidator().validate(new)
-            NumericPasswordValidator().validate(new)
         except ValidationError:
-            errors["new_password"] = "Evita contraseñas comunes o formadas únicamente por números."
+            errors["new_password"] = "Evita contraseñas comunes."
     return errors
