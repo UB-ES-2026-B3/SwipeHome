@@ -1,4 +1,6 @@
 import { useAuth } from '../hooks/useAuth'
+import { useNavigate } from 'react-router-dom'
+import { Logo } from '../components/Logo'
 
 /**
  * Inicio del Comprador (/comprador/inicio).
@@ -7,9 +9,16 @@ import { useAuth } from '../hooks/useAuth'
  */
 export function BuyerHome() {
   const { user, logout } = useAuth()
+  const navigate = useNavigate()
 
   return (
     <main className="home-page home-page--buyer">
+      <header className="home-page__header">
+        <Logo size="sm" />
+        <button type="button" className="home-page__profile" onClick={() => navigate('/mi-perfil')}>
+          Mi perfil
+        </button>
+      </header>
       <div className="home-page__content">
         <div className="home-page__logo" aria-hidden="true">🔍</div>
         <h1 className="home-page__title">
@@ -33,9 +42,7 @@ export function BuyerHome() {
           </div>
         </div>
         {/* Provisional: desbloquea el flujo de logout; libre de mover o rediseñar. */}
-        <button type="button" className="home-page__logout" onClick={logout}>
-          Cerrar sesión
-        </button>
+        <button type="button" className="home-page__logout" onClick={logout}>Cerrar sesión</button>
       </div>
     </main>
   )
