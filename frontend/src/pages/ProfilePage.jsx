@@ -48,7 +48,7 @@ function apiError(data, fallback) {
 }
 
 export function ProfilePage() {
-  const { user, loading, setUser, logout } = useAuth()
+  const { user, loading, setUser, logout, loggingOut } = useAuth()
   const navigate = useNavigate()
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '' })
   const [profileErrors, setProfileErrors] = useState({})
@@ -82,6 +82,7 @@ export function ProfilePage() {
     setProfileMessage(null)
     if (Object.keys(errors).length) return
 
+    if (loggingOut) return
     setSavingProfile(true)
     try {
       const result = await updateProfile({
@@ -113,6 +114,7 @@ export function ProfilePage() {
     setPasswordMessage(null)
     if (Object.keys(errors).length) return
 
+    if (loggingOut) return
     setSavingPassword(true)
     try {
       const result = await changePassword(passwords.currentPassword, passwords.newPassword)
@@ -131,6 +133,14 @@ export function ProfilePage() {
     }
   }
 
+  async function handleLogout() {
+    const success = await logout()
+    if (success) {
+      setPasswords({ currentPassword: '', newPassword: '', confirmation: '' })
+      navigate('/', { replace: true })
+    }
+  }
+
   return (
     <main className="profile-page">
       <header className="profile-page__header">
@@ -138,8 +148,8 @@ export function ProfilePage() {
           Volver
         </button>
         <Logo size="sm" />
-        <button type="button" className="profile-page__logout" onClick={logout}>
-          Cerrar sesión
+        <button type="button" className="profile-page__logout" onClick={handleLogout} disabled={loggingOut}>
+          {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
         </button>
       </header>
 
@@ -153,19 +163,19 @@ export function ProfilePage() {
             {profileMessage && <div className="profile-message" role="status">{profileMessage}</div>}
             <FormField id="profile-name" label="Nombre" name="name" value={profile.name}
               onChange={(event) => setProfile({ ...profile, name: event.target.value })}
-              error={profileErrors.name} maxLength={80} />
+              error={profileErrors.name} maxLength={80} disabled={loggingOut} />
             <FormField id="profile-email" label="Email" type="email" name="email" value={profile.email}
               onChange={(event) => setProfile({ ...profile, email: event.target.value })}
-              error={profileErrors.email} maxLength={254} />
+              error={profileErrors.email} maxLength={254} disabled={loggingOut} />
             <div className="profile-role">
               <span className="form-field__label">Rol</span>
               <strong>{ROLE_LABELS[user.role]}</strong>
             </div>
             <div className="profile-actions">
-              <button type="submit" className="btn btn--red" disabled={savingProfile}>
+              <button type="submit" className="btn btn--red" disabled={savingProfile || savingPassword || loggingOut}>
                 {savingProfile ? 'Guardando…' : 'Guardar cambios'}
               </button>
-              <button type="button" className="btn btn--ghost" onClick={resetProfile} disabled={savingProfile}>
+              <button type="button" className="btn btn--ghost" onClick={resetProfile} disabled={savingProfile || savingPassword || loggingOut}>
                 Cancelar
               </button>
             </div>
@@ -179,16 +189,16 @@ export function ProfilePage() {
             <FormField id="current-password" label="Contraseña actual" type="password"
               value={passwords.currentPassword}
               onChange={(event) => setPasswords({ ...passwords, currentPassword: event.target.value })}
-              error={passwordErrors.current_password} autoComplete="current-password" />
+              error={passwordErrors.current_password} autoComplete="current-password" disabled={loggingOut} />
             <FormField id="new-password" label="Nueva contraseña" type="password"
               value={passwords.newPassword}
               onChange={(event) => setPasswords({ ...passwords, newPassword: event.target.value })}
-              error={passwordErrors.new_password} autoComplete="new-password" />
+              error={passwordErrors.new_password} autoComplete="new-password" disabled={loggingOut} />
             <FormField id="password-confirmation" label="Confirmar nueva contraseña" type="password"
               value={passwords.confirmation}
               onChange={(event) => setPasswords({ ...passwords, confirmation: event.target.value })}
-              error={passwordErrors.confirmation} autoComplete="new-password" />
-            <button type="submit" className="btn btn--dark" disabled={savingPassword}>
+              error={passwordErrors.confirmation} autoComplete="new-password" disabled={loggingOut} />
+            <button type="submit" className="btn btn--dark" disabled={savingPassword || savingProfile || loggingOut}>
               {savingPassword ? 'Actualizando…' : 'Cambiar contraseña'}
             </button>
           </form>

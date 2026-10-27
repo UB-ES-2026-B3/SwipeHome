@@ -50,6 +50,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState(null)
+  const [loggingOut, setLoggingOut] = useState(false)
+  const logoutInProgress = useRef(false)
   // Cada petición de perfil tiene un id: solo se aplica la respuesta de la última.
   const requestId = useRef(0)
 
@@ -112,16 +114,24 @@ export function AuthProvider({ children }) {
   const clearUser = useCallback(() => setUser(null), [])
   const dismissAuthError = useCallback(() => setAuthError(null), [])
   const logout = useCallback(async () => {
+    if (logoutInProgress.current) return false
+    logoutInProgress.current = true
+    setLoggingOut(true)
     try {
       await firebaseLogout()
+      return true
     } catch {
       setAuthError({ kind: 'logout', message: 'No se pudo cerrar la sesión. Vuelve a pulsar Cerrar sesión.' })
+      return false
+    } finally {
+      logoutInProgress.current = false
+      setLoggingOut(false)
     }
   }, [])
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, authError, setUser, clearUser, logout, retry, dismissAuthError }}
+      value={{ user, loading, authError, setUser, clearUser, logout, loggingOut, retry, dismissAuthError }}
     >
       {/* Solución temporal: el aviso vive aquí para no tocar los componentes existentes. */}
       <AuthErrorBanner />
