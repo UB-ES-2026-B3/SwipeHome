@@ -27,7 +27,7 @@ function validateProfile({ name, email }) {
   return errors
 }
 
-function validatePassword({ currentPassword, newPassword }) {
+function validatePassword({ currentPassword, newPassword, confirmation }) {
   const errors = {}
   if (!currentPassword) errors.current_password = 'Introduce tu contraseña actual.'
   if (!newPassword) errors.new_password = 'Introduce una nueva contraseña.'
@@ -35,6 +35,10 @@ function validatePassword({ currentPassword, newPassword }) {
     errors.new_password = 'La nueva contraseña debe tener entre 15 y 128 caracteres.'
   } else if (newPassword === currentPassword) {
     errors.new_password = 'La nueva contraseña debe ser diferente de la actual.'
+  }
+  if (!confirmation) errors.confirmation = 'Confirma la nueva contraseña.'
+  else if (confirmation !== newPassword) {
+    errors.confirmation = 'La confirmación debe coincidir con la nueva contraseña.'
   }
   return errors
 }
@@ -50,7 +54,11 @@ export function ProfilePage() {
   const [profileErrors, setProfileErrors] = useState({})
   const [profileMessage, setProfileMessage] = useState(null)
   const [savingProfile, setSavingProfile] = useState(false)
-  const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '' })
+  const [passwords, setPasswords] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmation: '',
+  })
   const [passwordErrors, setPasswordErrors] = useState({})
   const [passwordMessage, setPasswordMessage] = useState(null)
   const [savingPassword, setSavingPassword] = useState(false)
@@ -109,7 +117,7 @@ export function ProfilePage() {
     try {
       const result = await changePassword(passwords.currentPassword, passwords.newPassword)
       if (result.ok) {
-        setPasswords({ currentPassword: '', newPassword: '' })
+        setPasswords({ currentPassword: '', newPassword: '', confirmation: '' })
         setPasswordMessage('Contraseña actualizada correctamente.')
       } else if (result.status === 400) {
         setPasswordErrors(result.data?.errors || {})
@@ -176,6 +184,10 @@ export function ProfilePage() {
               value={passwords.newPassword}
               onChange={(event) => setPasswords({ ...passwords, newPassword: event.target.value })}
               error={passwordErrors.new_password} autoComplete="new-password" />
+            <FormField id="password-confirmation" label="Confirmar nueva contraseña" type="password"
+              value={passwords.confirmation}
+              onChange={(event) => setPasswords({ ...passwords, confirmation: event.target.value })}
+              error={passwordErrors.confirmation} autoComplete="new-password" />
             <button type="submit" className="btn btn--dark" disabled={savingPassword}>
               {savingPassword ? 'Actualizando…' : 'Cambiar contraseña'}
             </button>
