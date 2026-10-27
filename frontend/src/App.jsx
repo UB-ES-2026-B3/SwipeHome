@@ -4,6 +4,7 @@ import { BuyerHome } from './pages/BuyerHome'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { PublishPropertyPage } from './pages/PublishPropertyPage'
+import { ProfilePage } from './pages/ProfilePage'
 import { RegisterPage } from './pages/RegisterPage'
 import { SellerHome } from './pages/SellerHome'
 
@@ -73,6 +74,15 @@ export default function App() {
         element={
           <PrivateRoute requiredRole="BUYER">
             <BuyerHome />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/mi-perfil"
+        element={
+          <PrivateRoute>
+            <ProfilePage />
           </PrivateRoute>
         }
       />
