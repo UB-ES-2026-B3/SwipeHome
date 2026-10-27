@@ -214,7 +214,10 @@ class CurrentUserTests(FirebaseMocks, SimpleTestCase):
         bea = {"uid": "uid-bea", "name": "Bea Vendedora", "email": "bea@example.com", "role": "SELLER"}
         uid_by_token = {"token-de-ana": ana["uid"], "token-de-bea": bea["uid"]}
         profile_by_uid = {ana["uid"]: ana, bea["uid"]: bea}
-        self.verify.side_effect = lambda token, app=None, check_revoked=False: {"uid": uid_by_token[token], "auth_time": 100}
+        self.verify.side_effect = lambda token, app=None, check_revoked=False, clock_skew_seconds=0: {
+            "uid": uid_by_token[token],
+            "auth_time": 100,
+        }
         self.get_profile.side_effect = lambda uid: profile_by_uid[uid]
         ana_client, bea_client = Client(), Client()
 
