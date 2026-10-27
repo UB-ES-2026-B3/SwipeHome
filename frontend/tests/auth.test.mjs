@@ -6,7 +6,10 @@ import vm from 'node:vm'
 // Ejecuta el módulo real con sus dos imports sustituidos por dobles.
 // Sin dependencias nuevas; fetch y Firebase nunca acceden a la red.
 const source = readFileSync(new URL('../src/api/auth.js', import.meta.url), 'utf8')
-  .replace(/^import .* from 'firebase\/auth'$/m, 'const { signInWithCustomToken, signInWithEmailAndPassword, signOut } = sdk')
+  .replace(
+    /^import \{[\s\S]*?\} from 'firebase\/auth'$/m,
+    'const { sendPasswordResetEmail, signInWithCustomToken, signInWithEmailAndPassword, signOut } = sdk',
+  )
   .replace(/^import .* from '..\/firebase'$/m, '')
   .replace(/^export /gm, '')
 
@@ -15,6 +18,7 @@ function harness({ status = 200, data = {}, exchangeFailure = false, networkFail
   const user = { getIdToken: async () => 'id-token' }
   const auth = { currentUser: user }
   const sdk = {
+    sendPasswordResetEmail: async () => {},
     signInWithCustomToken: async (_auth, token) => {
       calls.push(['exchange', token])
       if (exchangeFailure) throw new Error('unavailable')
