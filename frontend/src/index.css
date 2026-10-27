@@ -447,6 +447,20 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 .register-form__submit:hover:not(:disabled) { background: var(--c-gray-700); }
 .register-form__submit:disabled { opacity: 0.5; cursor: not-allowed; }
+.register-choice { display: flex; flex-direction: column; gap: var(--sp-2); }
+.register-choice__secondary {
+  width: 100%;
+  padding: 14px;
+  background: var(--c-white);
+  color: var(--c-black);
+  border: 1.5px solid var(--c-black);
+  font-size: 0.9375rem;
+  font-weight: 700;
+  border-radius: var(--r-btn);
+  cursor: pointer;
+}
+.register-choice__secondary:hover,
+.register-choice__secondary:focus-visible { background: var(--c-gray-50); }
 
 .register-form__login-link {
   text-align: center;
@@ -505,6 +519,28 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 
 /* Wrapper para campos personalizados */
 .form-field__input-wrapper { position: relative; }
+.form-field__input--password { padding-right: 68px; }
+.form-field__password-toggle {
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  transform: translateY(-50%);
+  padding: 3px 0;
+  border: 0;
+  color: var(--c-gray-700);
+  background: transparent;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+.form-field__password-toggle:hover,
+.form-field__password-toggle:focus-visible { color: var(--c-black); }
+.form-field__password-toggle:focus-visible {
+  outline: 2px solid var(--c-black);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 .form-field__select { padding-right: 36px; cursor: pointer; }
 
 /* Mensaje de error */

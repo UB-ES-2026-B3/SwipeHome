@@ -103,7 +103,7 @@ export function RegisterForm({ onSuccess, role } = {}) {
     e.preventDefault()
 
     // Validación local antes de enviar (US1-1 / CA-03)
-    const errors = validateForm(fields)
+    const errors = validateForm({ ...fields, role })
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors)
       return
