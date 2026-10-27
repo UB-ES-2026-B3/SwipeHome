@@ -9,7 +9,7 @@ import { useAuth } from '../hooks/useAuth'
  * Se usa cuando el usuario accede directamente a la URL.
  * El registro desde la landing usa el overlay en LandingPage.
  */
-export function RegisterPage() {
+export function RegisterPage({ role }) {
   const { user, loading } = useAuth()
   const navigate = useNavigate()
 
@@ -36,10 +36,12 @@ export function RegisterPage() {
         <div style={{ marginBottom: '24px' }}>
           <Logo size="sm" />
         </div>
-        <h1 className="auth-page__title">Crea tu cuenta</h1>
+        <h1 className="auth-page__title">
+          Regístrate como {role === 'SELLER' ? 'vendedor' : 'comprador'}
+        </h1>
         <p className="auth-page__subtitle">Únete a SwipeHome. Es gratis.</p>
 
-        <RegisterForm />
+        <RegisterForm role={role} />
 
         <p className="register-form__login-link" style={{ marginTop: '16px' }}>
           ¿Ya tienes cuenta?{' '}

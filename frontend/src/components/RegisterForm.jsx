@@ -14,8 +14,8 @@ import { FormField } from './FormField'
  * Reglas según la US1 (project_context.md §6):
  *  - name:     2–80 caracteres tras eliminar espacios exteriores
  *  - email:    formato válido, sin espacios interiores, ≤ 254 chars (normalizado)
- *  - password: 15–128 caracteres; admite espacios y Unicode; sin recortes
- *  - role:     obligatorio, 'SELLER' o 'BUYER'
+ *  - password: 8–128 caracteres, con mayúscula, número y símbolo
+ *  - role:     'SELLER' o 'BUYER', recibido por la página de registro
  */
 function validateForm({ name, email, password, role }) {
   const errors = {}
@@ -45,16 +45,20 @@ function validateForm({ name, email, password, role }) {
   // Contraseña: NO se recorta ni se modifica
   if (!password) {
     errors.password = 'La contraseña es obligatoria.'
-  } else if (password.length < 15) {
-    errors.password = 'La contraseña debe tener al menos 15 caracteres.'
+  } else if (password.length < 8) {
+    errors.password = 'La contraseña debe tener al menos 8 caracteres.'
+  } else if (!/[A-Z]/.test(password)) {
+    errors.password = 'La contraseña debe incluir al menos una mayúscula.'
+  } else if (!/\d/.test(password)) {
+    errors.password = 'La contraseña debe incluir al menos un número.'
+  } else if (!/[^\w\s]/.test(password)) {
+    errors.password = 'La contraseña debe incluir al menos un símbolo.'
   } else if (password.length > 128) {
     errors.password = 'La contraseña no puede superar los 128 caracteres.'
   }
 
   // Rol
-  if (!role) {
-    errors.role = 'Selecciona un rol.'
-  } else if (role !== 'SELLER' && role !== 'BUYER') {
+  if (role !== 'SELLER' && role !== 'BUYER') {
     errors.role = 'Rol no válido.'
   }
 
@@ -68,7 +72,7 @@ function validateForm({ name, email, password, role }) {
  *  - onSuccess: función opcional a llamar después de un registro exitoso
  *    (p.ej. para cerrar el overlay). La redirección de rol la hace siempre.
  */
-export function RegisterForm({ onSuccess } = {}) {
+export function RegisterForm({ onSuccess, role } = {}) {
   const navigate = useNavigate()
   const { setUser } = useAuth()
 
@@ -76,7 +80,6 @@ export function RegisterForm({ onSuccess } = {}) {
     name: '',
     email: '',
     password: '',
-    role: '',
   })
 
   // Errores de validación local (campo a campo)
@@ -100,7 +103,7 @@ export function RegisterForm({ onSuccess } = {}) {
     e.preventDefault()
 
     // Validación local antes de enviar (US1-1 / CA-03)
-    const errors = validateForm(fields)
+    const errors = validateForm({ ...fields, role })
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors)
       return
@@ -116,7 +119,7 @@ export function RegisterForm({ onSuccess } = {}) {
         name: fields.name.trim(),
         email: fields.email.trim().toLowerCase(),
         password: fields.password,
-        role: fields.role,
+        role,
       }
 
       const { ok, status, data } = await registerUser(payload)
@@ -222,33 +225,8 @@ export function RegisterForm({ onSuccess } = {}) {
         autoComplete="new-password"
         required
         error={fieldErrors.password}
-        placeholder="Mínimo 15 caracteres"
+        placeholder="Mínimo 8 caracteres, mayúscula, número y símbolo"
       />
-
-      {/* Rol */}
-      <FormField
-        id="role"
-        label="Rol"
-        error={fieldErrors.role}
-      >
-        <select
-          id="role"
-          name="role"
-          value={fields.role}
-          onChange={handleChange}
-          required
-          className={`form-field__select ${fieldErrors.role ? 'form-field__input--error' : ''}`}
-          aria-invalid={!!fieldErrors.role}
-          aria-describedby={fieldErrors.role ? 'role-error' : undefined}
-        >
-          {/* Sin selección por defecto (US1 CA) */}
-          <option value="" disabled>
-            Selecciona un rol
-          </option>
-          <option value="SELLER">Vendedor</option>
-          <option value="BUYER">Comprador</option>
-        </select>
-      </FormField>
 
       <button
         type="submit"

@@ -34,7 +34,9 @@ def verified_session(request, *, allow_revoked=False):
         logger.warning("Cabecera Authorization mal formada.")
         raise AuthenticationFailed(MALFORMED)
     try:
-        decoded = auth.verify_id_token(token, app=get_app(), check_revoked=True)
+        decoded = auth.verify_id_token(
+            token, app=get_app(), check_revoked=True, clock_skew_seconds=10,
+        )
     except auth.ExpiredIdTokenError:
         logger.info("ID token caducado.")
         raise AuthenticationFailed(EXPIRED) from None

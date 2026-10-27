@@ -1,8 +1,9 @@
 """Validación de US6; mantiene intactas las reglas históricas del registro."""
 from django.contrib.auth.password_validation import CommonPasswordValidator, NumericPasswordValidator
 from django.core.exceptions import ValidationError
+from django.core.validators import validate_email
 
-from .validation import validate_registration
+from .fields import normalize_account_email
 
 
 def validate_profile_update(data):
@@ -10,12 +11,30 @@ def validate_profile_update(data):
         return None, {"body": "Debe ser un objeto JSON."}
     if not data or set(data) - {"name", "email"}:
         return None, {"body": "Envía name o email; no se permiten otros campos."}
-    # Reutiliza exactamente las reglas vigentes, sin guardar campos artificiales.
-    values, errors = validate_registration({
-        "name": "Nombre válido", "email": "valid@example.com",
-        "password": "contraseña válida de prueba", "role": "BUYER", **data,
-    })
-    return ({key: values[key] for key in data} if not errors else None), errors
+    values, errors = {}, {}
+    if "name" in data:
+        if not isinstance(data["name"], str):
+            errors["name"] = "El nombre debe ser texto."
+        else:
+            name = data["name"].strip()
+            if not 2 <= len(name) <= 80:
+                errors["name"] = "El nombre debe tener entre 2 y 80 caracteres."
+            else:
+                values["name"] = name
+    if "email" in data:
+        if not isinstance(data["email"], str):
+            errors["email"] = "El email debe ser texto."
+        else:
+            email = normalize_account_email(data["email"])
+            try:
+                validate_email(email)
+            except ValidationError:
+                errors["email"] = "Introduce un email válido."
+            if len(email) > 254 or any(char.isspace() for char in email):
+                errors["email"] = "Introduce un email válido."
+            else:
+                values["email"] = email
+    return (values if not errors else None), errors
 
 
 def validate_password_change(data):

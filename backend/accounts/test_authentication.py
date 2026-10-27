@@ -38,12 +38,16 @@ class UidFromRequestTests(SimpleTestCase):
     def test_valid_token_returns_uid(self, verify, get_app):
         verify.return_value = {"uid": UID, "auth_time": 100, "email": "ana@example.com"}
         self.assertEqual(uid_from_request(request_with(f"Bearer {TOKEN}")), UID)
-        verify.assert_called_once_with(TOKEN, app=get_app.return_value, check_revoked=True)
+        verify.assert_called_once_with(
+            TOKEN, app=get_app.return_value, check_revoked=True, clock_skew_seconds=10,
+        )
 
     def test_scheme_is_case_insensitive_and_outer_spaces_are_ignored(self, verify, get_app):
         verify.return_value = {"uid": UID, "auth_time": 100}
         self.assertEqual(uid_from_request(request_with(f"  bearer   {TOKEN}  ")), UID)
-        verify.assert_called_once_with(TOKEN, app=get_app.return_value, check_revoked=True)
+        verify.assert_called_once_with(
+            TOKEN, app=get_app.return_value, check_revoked=True, clock_skew_seconds=10,
+        )
 
     def test_missing_header(self, verify, get_app):
         for header in (None, "", "   "):

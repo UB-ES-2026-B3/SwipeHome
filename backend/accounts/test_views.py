@@ -14,7 +14,7 @@ from .firebase import FirebaseConfigError
 VALID = {
     "name": "Ana García",
     "email": "ana@example.com",
-    "password": "  contraseña íntegra 🙂  ",
+    "password": "  Contraseña íntegra 2026!  ",
     "role": "BUYER",
 }
 UID = "uid-de-prueba-123"
@@ -114,15 +114,15 @@ class RegisterTests(FirebaseMocks, SimpleTestCase):
     def test_boundary_lengths_and_unicode_password_are_sent_untouched(self):
         for length, name in ((15, " ab "), (128, "ñ" * 80)):
             with self.subTest(length=length):
-                password = " " + "🙂" * (length - 2) + " "
+                password = "A1!" + "🙂" * (length - 3)
                 response = self.post({**VALID, "name": name, "password": password, "email": f"a{length}@example.com"})
                 self.assertEqual(response.status_code, 201)
                 self.assertEqual(self.create_user.call_args.kwargs["password"], password)
                 self.assertEqual(self.create_profile.call_args.kwargs["name"], name.strip())
 
     def test_password_composed_only_of_spaces_is_preserved(self):
-        self.assertEqual(self.post({**VALID, "password": " " * 15}).status_code, 201)
-        self.assertEqual(self.create_user.call_args.kwargs["password"], " " * 15)
+        self.assertEqual(self.post({**VALID, "password": " " * 15}).status_code, 400)
+        self.create_user.assert_not_called()
 
     def test_email_254_boundary(self):
         email = "a" * 64 + "@" + "b" * 63 + "." + "c" * 63 + "." + "d" * 57 + ".com"
@@ -162,11 +162,20 @@ class RegisterTests(FirebaseMocks, SimpleTestCase):
         self.create_profile.assert_not_called()
         self.delete_user.assert_not_called()
 
-    def test_missing_credentials_is_500(self):
+    def test_missing_credentials_is_503_with_specific_error(self):
         self.get_app.side_effect = FirebaseConfigError("No hay credenciales de Firebase.")
         with self.assertLogs("accounts.views", level="ERROR"):
             response = self.post(VALID)
-        self.assertEqual(response.status_code, 500)
+        self.assertEqual(response.status_code, 503)
+        self.assertEqual(
+            response.json(),
+            {
+                "error": (
+                    "El servidor no está configurado para crear cuentas. "
+                    "Falta la credencial de Firebase en el entorno local."
+                )
+            },
+        )
 
     def test_firestore_failure_deletes_firebase_user(self):
         self.create_profile.side_effect = ServiceUnavailable("secret_backend_detail")
@@ -214,7 +223,10 @@ class CurrentUserTests(FirebaseMocks, SimpleTestCase):
         bea = {"uid": "uid-bea", "name": "Bea Vendedora", "email": "bea@example.com", "role": "SELLER"}
         uid_by_token = {"token-de-ana": ana["uid"], "token-de-bea": bea["uid"]}
         profile_by_uid = {ana["uid"]: ana, bea["uid"]: bea}
-        self.verify.side_effect = lambda token, app=None, check_revoked=False: {"uid": uid_by_token[token], "auth_time": 100}
+        self.verify.side_effect = (
+            lambda token, app=None, check_revoked=False, clock_skew_seconds=0:
+            {"uid": uid_by_token[token], "auth_time": 100}
+        )
         self.get_profile.side_effect = lambda uid: profile_by_uid[uid]
         ana_client, bea_client = Client(), Client()
 
