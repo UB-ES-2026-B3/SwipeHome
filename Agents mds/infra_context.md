@@ -29,7 +29,7 @@ autenticación.** Donde contradiga a `backend_context.md` o a
 | Hosting backend | **Render**, plan gratuito |
 | Hosting frontend | Firebase Hosting o Vercel (pendiente) |
 | Docker | **No se usa.** Solo si el profesor lo exige. |
-| Fotos de anuncios | Aplazado: Firebase Storage exige plan de pago. Usar URLs por ahora. |
+| Fotos de anuncios | El código de US3 sube a Firebase Storage; habilitar/usar el bucket en el proyecto sigue condicionado por el plan y coste. Los tests de US3-7 mockean Storage y no prueban una subida real. |
 
 Restricción dura del proyecto: **coste cero, sin tarjeta de crédito.**
 Cualquier propuesta que requiera un servicio de pago queda descartada.

@@ -372,10 +372,15 @@ si algún día cambia el proyecto.
 8. PR a `dev` cuando todo funcione.
 9. Tras el merge, volver a apuntar Render a `dev` (último paso de §12).
 
-## 11. Lo que no entra en esta rama
+## 11. Alcance original de esta rama de migración
+
+Esta sección registra el alcance original de `feature/firebase-auth`, no el
+estado actual del repositorio. La publicación y subida a Storage se añadieron
+después; su verificación vigente de API y repositorio está en el
+[README backend](../backend/README.md) (US3-7).
+
 - Hosting del frontend y CORS (con el proxy de Vite no hace falta todavía).
-- Subida de fotos (Firebase Storage necesita plan de pago).
-- Las colecciones `listings`, `swipes`, `matches`.
+- Swipes y matches.
 - Arreglar `main`.
 
 ### Pendiente para después del merge

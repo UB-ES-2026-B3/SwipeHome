@@ -98,6 +98,54 @@ tamaño, la detección de alias contradictorios, la serialización de respuestas
 la compensación segura del almacenamiento cuando el resultado de Firestore es
 ambiguo.
 
+### Resultado de US3-7: API, permisos e integridad del anuncio
+
+Ejecutado localmente el 1 de noviembre de 2026:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py test properties accounts.test_repository --verbosity 2
+.\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2
+```
+
+La suite focalizada pasó **33 tests**. Sin emulador, la suite completa ejecuta
+103 tests y omite las 2 integraciones que requieren Firebase Auth Emulator.
+Con el emulador, los **103 tests pasan sin omisiones**. `manage.py check` y
+`pip check` también pasaron. No se usaron credenciales ni se escribieron datos
+en Firebase real.
+
+Comando para ejecutar toda la suite con el emulador Auth local (desde `backend`):
+
+```powershell
+npx --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us6 --only auth --config tests/firebase.json ".\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2"
+```
+
+La integración Auth usa el proyecto demo `demo-swipehome-us6` y el emulador
+limitado a loopback. `emulators:exec` inicia y detiene el emulador; los tests
+crean y eliminan sus cuentas sintéticas. No configura ni requiere credenciales
+de servicio de Firebase.
+
+Los tests de API verifican publicación con una y varias fotografías, ausencia
+de fotos (400 y sin llamada de persistencia), autenticación requerida y rechazo
+de BUYER, propietario derivado del uid verificado aunque el multipart incluya
+otros identificadores, campos obligatorios/vacíos, valores numéricos y roles
+de alojamiento compartido, formatos JPEG/PNG/WebP reales, tipo MIME y contenido,
+límites inclusivos de 10 fotografías y 5 MiB por foto, y errores 500 sin
+detalles internos. Los tests del repositorio verifican el documento Firestore
+con el vendedor autenticado, las URLs de Storage en el mismo orden de subida,
+la eliminación de archivos tras fallos confirmados de Storage o Firestore y el
+trato conservador de escrituras de resultado ambiguo.
+
+Los servicios Firebase están simulados en estos tests, de acuerdo con la
+configuración de CI: `backend/tests/firebase.json` solo declara Auth Emulator,
+no Firestore ni Storage. Por tanto se verifica el contrato y la compensación
+entre capas, no una escritura real contra Firebase. Si Firestore devuelve un
+error y la lectura de conciliación también falla, el resultado es
+indeterminado: el repositorio conserva los objetos subidos y devuelve error,
+para no dejar un posible anuncio guardado apuntando a fotos borradas. Esos
+objetos requieren conciliación operativa; no se puede afirmar rollback
+distribuido absoluto ante una respuesta remota ambigua.
+
 Referencias: [campos Django](https://docs.djangoproject.com/en/5.2/howto/custom-model-fields/),
 [restricciones](https://docs.djangoproject.com/en/5.2/ref/models/constraints/),
 [migraciones de datos](https://docs.djangoproject.com/en/5.2/ref/migration-operations/#runpython).

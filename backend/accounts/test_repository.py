@@ -1,5 +1,6 @@
 from decimal import Decimal
 from unittest.mock import MagicMock, patch
+from urllib.parse import quote
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import SimpleTestCase
@@ -124,6 +125,46 @@ class CreateListingTests(SimpleTestCase):
         self.assertEqual(result["id"], "listing-123")
         self.assertNotIn("created_at", result)
 
+    def test_multiple_photo_urls_keep_upload_order_and_listing_association(
+        self, bucket, client, get_app
+    ):
+        reference = client.return_value.collection.return_value.document.return_value
+        reference.id = "listing-with-ordered-photos"
+        bucket.return_value.name = "swipehome-a51d7.firebasestorage.app"
+        first_blob, second_blob = MagicMock(), MagicMock()
+        bucket.return_value.blob.side_effect = [first_blob, second_blob]
+        values = {
+            "title": "Piso",
+            "street": "Calle 1",
+            "city": "Barcelona",
+            "postal_code": "08001",
+            "description": "Descripción",
+            "price": Decimal("950.50"),
+            "surface": Decimal("65.50"),
+            "bedrooms": 2,
+            "bathrooms": 1,
+            "people": 1,
+            "shared_accommodation": False,
+        }
+
+        repository.create_listing(
+            UID,
+            values=values,
+            photos=[
+                SimpleUploadedFile("first.jpg", b"first", content_type="image/jpeg"),
+                SimpleUploadedFile("second.jpg", b"second", content_type="image/jpeg"),
+            ],
+        )
+
+        paths = [call.args[0] for call in bucket.return_value.blob.call_args_list]
+        saved = reference.create.call_args.args[0]
+        self.assertEqual(saved["seller_uid"], UID)
+        self.assertEqual(len(saved["photos"]), 2)
+        self.assertTrue(all(path.startswith(f"listings/{UID}/") for path in paths))
+        self.assertIn(quote(paths[0], safe=""), saved["photos"][0])
+        self.assertIn(quote(paths[1], safe=""), saved["photos"][1])
+        self.assertNotEqual(paths[0], paths[1])
+
     def test_storage_failure_deletes_already_uploaded_photos(self, bucket, client, get_app):
         first_blob = MagicMock()
         second_blob = MagicMock()
@@ -151,7 +192,43 @@ class CreateListingTests(SimpleTestCase):
             repository.create_listing(UID, values=values, photos=photos)
 
         first_blob.delete.assert_called_once_with()
+        second_blob.delete.assert_called_once_with()
         client.return_value.collection.return_value.document.return_value.create.assert_not_called()
+
+    def test_confirmed_firestore_failure_deletes_uploaded_photos(self, bucket, client, get_app):
+        reference = client.return_value.collection.return_value.document.return_value
+        reference.create.side_effect = ServiceUnavailable("private firestore details")
+        reference.get.return_value.exists = False
+        first_blob, second_blob = MagicMock(), MagicMock()
+        bucket.return_value.blob.side_effect = [first_blob, second_blob]
+        values = {
+            "title": "Piso",
+            "street": "Calle 1",
+            "city": "Barcelona",
+            "postal_code": "08001",
+            "description": "Descripción",
+            "price": Decimal("950.50"),
+            "surface": Decimal("65.50"),
+            "bedrooms": 2,
+            "bathrooms": 1,
+            "people": 3,
+            "shared_accommodation": False,
+        }
+
+        with self.assertRaises(ServiceUnavailable):
+            repository.create_listing(
+                UID,
+                values=values,
+                photos=[
+                    SimpleUploadedFile("one.jpg", b"one", content_type="image/jpeg"),
+                    SimpleUploadedFile("two.jpg", b"two", content_type="image/jpeg"),
+                ],
+            )
+
+        reference.create.assert_called_once()
+        first_blob.delete.assert_called_once_with()
+        second_blob.delete.assert_called_once_with()
+        self.assertFalse(reference.get.return_value.exists)
 
     def test_firestore_confirmation_error_does_not_delete_confirmed_listing_photos(
         self, bucket, client, get_app

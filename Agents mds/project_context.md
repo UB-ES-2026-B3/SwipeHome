@@ -282,7 +282,7 @@ Estas son garantías de comportamiento. No imponen una tecnología de base de da
 ### Propiedad y permisos
 
 - Solo un usuario autenticado con rol `SELLER` puede publicar.
-- El vendedor se obtiene de la sesión, no de un identificador de propietario elegido por el cliente.
+- El vendedor se obtiene del uid del ID token Firebase verificado, no de un identificador de propietario elegido por el cliente.
 - Cada anuncio tiene un identificador único, un único vendedor y fecha de publicación.
 - Un vendedor puede publicar varios inmuebles.
 - El menú de un Comprador no muestra «Publicar», pero ocultar la opción no sustituye la comprobación de permisos del servidor.
@@ -301,6 +301,25 @@ Estas son garantías de comportamiento. No imponen una tecnología de base de da
 | US3-8 | Verificar el recorrido completo de publicación desde la interfaz | Testing | Flujo de menú a confirmación, imágenes, validación, carga, conservación de datos y reintentos. CA-01 a CA-06. |
 
 La interfaz conserva los datos y las fotografías seleccionadas cuando ocurre un error para permitir reintentar. No se ha definido un sistema de borradores ni persistencia del formulario al cerrar el navegador.
+
+### Resultado de verificación de US3-7 (1 noviembre 2026)
+
+La suite `properties` y `accounts.test_repository` pasó 33 tests; la suite
+completa `accounts properties` pasó 103 tests con Firebase Auth Emulator
+activo, sin omisiones. Sin emulador se omiten explícitamente las 2 pruebas
+de integración Auth. Se cubrieron publicaciones de una y varias
+fotos, autenticación/rol, uid de vendedor, campos y valores inválidos, personas
+y alojamiento compartido, contenido/formato de imagen, límites, orden y
+asociación de URLs, compensación ante fallos confirmados y errores genéricos.
+También pasan las integraciones Auth de concurrencia de email y continuidad de
+cambio de contraseña. El comando y la limitación ante escrituras Firestore
+ambiguas constan en el [README del backend](../backend/README.md).
+
+La suite utiliza servicios Firebase simulados; no verifica escritura real en
+Firestore/Storage. Si no puede confirmarse el resultado de una creación en
+Firestore, el repositorio conserva los objetos y registra el caso para
+conciliación, porque eliminarlos podría romper un anuncio que sí se guardó.
+No se declara atomicidad distribuida en ese escenario ambiguo.
 
 ## 12. Tablero Kanban y límites de trabajo
 
