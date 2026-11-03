@@ -11,7 +11,12 @@
  * a los códigos que ya entienden (401 credenciales, 400 datos, 429 demasiados
  * intentos, 500 resto). Un fallo de red se lanza como excepción.
  */
-import { signInWithCustomToken, signInWithEmailAndPassword, signOut } from 'firebase/auth'
+import {
+  sendPasswordResetEmail,
+  signInWithCustomToken,
+  signInWithEmailAndPassword,
+  signOut,
+} from 'firebase/auth'
 import { auth } from '../firebase'
 
 const NETWORK_ERROR = 'auth/network-request-failed'
@@ -105,6 +110,20 @@ export async function login(credentials) {
     return { ok: false, status: 500, data: { error: 'No se pudo iniciar sesión. Inténtalo de nuevo.' } }
   }
   return result
+}
+
+/** Solicita a Firebase un correo para restablecer la contraseña. */
+export async function sendPasswordReset(email) {
+  try {
+    await sendPasswordResetEmail(auth, email)
+    return { ok: true }
+  } catch (error) {
+    if (error?.code === 'auth/invalid-email') {
+      return { ok: false, status: 400, data: { error: 'Introduce un email válido.' } }
+    }
+    if (error?.code === NETWORK_ERROR) throw error
+    return { ok: false, status: 500, data: { error: 'No se pudo enviar el correo de recuperación.' } }
+  }
 }
 
 /**

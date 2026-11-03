@@ -18,6 +18,9 @@ export function SellerHome() {
         <Logo size="sm" />
         <div className="seller-dashboard__account">
           <span className="seller-dashboard__role">Vendedor</span>
+          <button type="button" className="seller-dashboard__profile" onClick={() => navigate('/mi-perfil')}>
+            Mi perfil
+          </button>
           <button type="button" className="seller-dashboard__logout" onClick={logout}>
             LogOut
           </button>

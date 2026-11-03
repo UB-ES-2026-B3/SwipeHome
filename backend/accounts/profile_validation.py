@@ -25,7 +25,7 @@ def validate_password_change(data):
     current, new = data["current_password"], data["new_password"]
     if not isinstance(current, str) or not 1 <= len(current) <= 128:
         errors["current_password"] = "Introduce la contraseña actual (1–128 caracteres)."
-    # Política US6: longitud, contenido no vacío y distinta de la actual.
+    # La nueva contraseña sigue las mismas reglas que el registro (US1).
     # No se modifica ningún carácter de la contraseña.
     if not isinstance(new, str) or not 15 <= len(new) <= 128 or not new.strip():
         errors["new_password"] = "La nueva contraseña debe tener entre 15 y 128 caracteres y no ser solo espacios."
