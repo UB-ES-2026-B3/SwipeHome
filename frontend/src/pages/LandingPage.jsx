@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Logo } from '../components/Logo'
-import { RegisterForm } from '../components/RegisterForm'
 import { useAuth } from '../hooks/useAuth'
 
 /* ── Icono X ─────────────────────────────────────────────────────── */
@@ -61,6 +60,7 @@ function CardDeck() {
 /* ── Overlay de registro ─────────────────────────────────────────── */
 function RegisterOverlay({ onClose }) {
   const panelRef = useRef(null)
+  const navigate = useNavigate()
 
   // Cerrar con Escape
   useEffect(() => {
@@ -94,12 +94,26 @@ function RegisterOverlay({ onClose }) {
         {/* Tirador */}
         <div className="register-panel__handle" aria-hidden="true" />
 
-        <h2 className="register-panel__title">Crea tu cuenta</h2>
+        <h2 className="register-panel__title">¿Qué quieres hacer?</h2>
         <p className="register-panel__subtitle">
-          Únete a SwipeHome. Es gratis.
+          Elige el tipo de cuenta que necesitas.
         </p>
-
-        <RegisterForm onSuccess={onClose} />
+        <div className="cta-group">
+          <button
+            type="button"
+            className="btn btn--ghost"
+            onClick={() => navigate('/registro/comprador')}
+          >
+            Buscar vivienda
+          </button>
+          <button
+            type="button"
+            className="btn btn--dark"
+            onClick={() => navigate('/registro/vendedor')}
+          >
+            Publicar vivienda
+          </button>
+        </div>
 
         <p className="register-form__login-link">
           ¿Ya tienes cuenta?{' '}

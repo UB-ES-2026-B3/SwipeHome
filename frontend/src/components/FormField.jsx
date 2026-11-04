@@ -7,8 +7,10 @@
  *  - error: string | undefined (mensaje de error)
  *  - [resto de props de input/select pasados directamente]
  */
-export function FormField({ id, label, error, children, ...inputProps }) {
+export function FormField({ id, label, error, children, type, ...inputProps }) {
+  const [passwordVisible, setPasswordVisible] = useState(false)
   const errorId = error ? `${id}-error` : undefined
+  const isPassword = type === 'password'
 
   return (
     <div className="form-field">
@@ -25,13 +27,27 @@ export function FormField({ id, label, error, children, ...inputProps }) {
           {children}
         </div>
       ) : (
-        <input
-          id={id}
-          className={`form-field__input ${error ? 'form-field__input--error' : ''}`}
-          aria-invalid={!!error}
-          aria-describedby={errorId}
-          {...inputProps}
-        />
+        <div className="form-field__input-wrapper">
+          <input
+            id={id}
+            className={`form-field__input ${isPassword ? 'form-field__input--password' : ''} ${error ? 'form-field__input--error' : ''}`}
+            aria-invalid={!!error}
+            aria-describedby={errorId}
+            type={isPassword && passwordVisible ? 'text' : type}
+            {...inputProps}
+          />
+          {isPassword && (
+            <button
+              type="button"
+              className="form-field__password-toggle"
+              onClick={() => setPasswordVisible((visible) => !visible)}
+              aria-label={passwordVisible ? 'Ocultar contraseña' : 'Mostrar contraseña'}
+              aria-pressed={passwordVisible}
+            >
+              {passwordVisible ? 'Ocultar' : 'Ver'}
+            </button>
+          )}
+        </div>
       )}
 
       {error && (
@@ -42,3 +58,4 @@ export function FormField({ id, label, error, children, ...inputProps }) {
     </div>
   )
 }
+import { useState } from 'react'
