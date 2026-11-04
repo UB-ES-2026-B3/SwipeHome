@@ -35,7 +35,10 @@ def verified_session(request, *, allow_revoked=False):
         raise AuthenticationFailed(MALFORMED)
     try:
         decoded = auth.verify_id_token(
-            token, app=get_app(), check_revoked=True, clock_skew_seconds=10,
+            token,
+            app=get_app(),
+            check_revoked=True,
+            clock_skew_seconds=10,
         )
     except auth.ExpiredIdTokenError:
         logger.info("ID token caducado.")

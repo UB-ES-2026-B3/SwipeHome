@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { login } from '../api/auth'
+import { login, sendPasswordReset } from '../api/auth'
 import { useAuth } from '../hooks/useAuth'
 import { FormField } from './FormField'
 
@@ -35,6 +35,9 @@ export function LoginForm({ onSubmit } = {}) {
   const [fieldErrors, setFieldErrors] = useState({})
   const [serverError, setServerError] = useState(null)
   const [submitting, setSubmitting] = useState(false)
+  const [resetMode, setResetMode] = useState(false)
+  const [resetSubmitting, setResetSubmitting] = useState(false)
+  const [resetMessage, setResetMessage] = useState(null)
   // The ref closes the gap before React renders the disabled button.
   const submissionInProgress = useRef(false)
 
@@ -46,6 +49,29 @@ export function LoginForm({ onSubmit } = {}) {
       setFieldErrors((prev) => ({ ...prev, [name]: undefined }))
     }
     if (serverError) setServerError(null)
+  }
+
+  async function handleResetSubmit(e) {
+    e.preventDefault()
+    const email = fields.email.trim().toLowerCase()
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      setResetMessage({ error: EMAIL_ERROR })
+      return
+    }
+    setResetSubmitting(true)
+    setResetMessage(null)
+    try {
+      const result = await sendPasswordReset(email)
+      if (result.ok) {
+        setResetMessage({ success: 'Si el email está registrado, recibirás un correo para restablecer la contraseña.' })
+      } else {
+        setResetMessage({ error: result.data?.error || 'No se pudo enviar el correo de recuperación.' })
+      }
+    } catch {
+      setResetMessage({ error: 'No hay conexión con el servidor. Inténtalo de nuevo.' })
+    } finally {
+      setResetSubmitting(false)
+    }
   }
 
   async function handleSubmit(e) {
@@ -66,6 +92,7 @@ export function LoginForm({ onSubmit } = {}) {
         email: fields.email.trim().toLowerCase(),
         password: fields.password,
       }
+
       const { ok, status, data } = await login(credentials)
 
       if (ok && status === 200) {
@@ -154,6 +181,26 @@ export function LoginForm({ onSubmit } = {}) {
       >
         {submitting ? 'Iniciando sesión…' : 'Iniciar sesión'}
       </button>
+      <button
+        type="button"
+        className="login-form__forgot"
+        onClick={() => {
+          setResetMode((current) => !current)
+          setResetMessage(null)
+        }}
+      >
+        {resetMode ? 'Volver al inicio de sesión' : '¿Has olvidado tu contraseña?'}
+      </button>
+      {resetMode && (
+        <div className="login-form__reset">
+          <p>Introduce tu email y te enviaremos un enlace de recuperación.</p>
+          <button type="button" className="btn btn--ghost" onClick={handleResetSubmit} disabled={resetSubmitting}>
+            {resetSubmitting ? 'Enviando…' : 'Enviar correo de recuperación'}
+          </button>
+          {resetMessage?.success && <div className="profile-message" role="status">{resetMessage.success}</div>}
+          {resetMessage?.error && <div className="register-form__server-error" role="alert">{resetMessage.error}</div>}
+        </div>
+      )}
     </form>
   )
 }
