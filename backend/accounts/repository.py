@@ -196,3 +196,36 @@ def revoke_session(uid, auth_time):
     # set() hace la operación idempotente; no se almacena ningún token.
     # No caducar estos documentos: un refresh token conserva auth_time.
     _revocation_document(uid, auth_time).set({"revoked": True})
+
+
+# Única colección de avisos; US4 podrá escribir aquí en una implementación futura.
+NOTIFICATIONS_COLLECTION = "notifications"
+
+
+def get_notifications(uid, *, limit, position=None):
+    """Solo lectura, con filtro de destinatario y paginación en Firestore."""
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    collection = firestore.client(app=get_app()).collection(NOTIFICATIONS_COLLECTION)
+    query = (
+        collection.where(filter=FieldFilter("recipient_uid", "==", uid))
+        .order_by("created_at", direction=firestore.Query.DESCENDING)
+        .order_by("__name__", direction=firestore.Query.DESCENDING)
+    )
+    if position is not None:
+        created_at, identifier = position
+        query = query.start_after({
+            "created_at": created_at, "__name__": collection.document(identifier),
+        })
+    records = []
+    for snapshot in query.limit(limit).stream():
+        data = snapshot.to_dict()
+        if data["recipient_uid"] != uid:
+            raise ValueError("Destinatario inconsistente.")
+        if not all(isinstance(data[field], str) for field in ("type", "message")):
+            raise ValueError("Contenido de aviso inconsistente.")
+        records.append({
+            "id": snapshot.id, "type": data["type"],
+            "message": data["message"], "created_at": data["created_at"],
+        })
+    return records

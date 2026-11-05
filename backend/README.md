@@ -52,6 +52,7 @@ desde la consola de Firebase al terminar.
 
 | Método | Ruta | Resumen |
 |---|---|---|
+| `GET` | `/api/notificaciones` | Avisos propios, paginados y de solo lectura: 200 / 400 / 401 / 403 / 500 |
 | `GET` | `/api/health` | Comprobación de vida. No toca Firebase. |
 | `POST` | `/api/auth/register` | `{name, email, password, role}` → 201 / 400 / 409 / 500 |
 | `GET` | `/api/auth/me` | `Authorization: Bearer <ID token>` → 200 / 401 / 404 / 500 |
@@ -78,7 +79,7 @@ contraseña de 15–128 caracteres sin recortar y rol `SELLER` o `BUYER`.
 ## Estructura de `accounts/`
 
 - `views.py` — endpoints. No habla con Firestore directamente.
-- `repository.py` — **único** módulo que accede a Firestore (colecciones `users` y `listings`).
+- `repository.py` — **único** módulo que accede a Firestore (colecciones `users`, `listings`, `notifications` y `revoked_sessions`).
 - `authentication.py` — extrae y verifica el ID token. Nunca lo escribe en los logs.
 - `firebase.py` — inicializa el Admin SDK, de forma perezosa y una sola vez.
 - `validation.py` — validación del registro.
@@ -186,3 +187,110 @@ están descritos en el contrato.
 El cliente intercambia `custom_token` tras cambiar email/contraseña.
 Si el intercambio falla tras guardar, indica `reauthentication_required`.
 Los consumidores deben pedir iniciar sesión de nuevo en ese caso.
+
+
+## GET /api/notificaciones
+
+Consulta de solo lectura para usuarios BUYER y SELLER. Reutiliza la autenticación
+Firebase existente: `Authorization: Bearer <ID token>`, incluida la comprobación
+de revocación. La vista construye `request.user` con la identidad verificada y el
+rol del perfil; el destinatario de la consulta procede exclusivamente de ese objeto.
+Las cookies por sí solas no autentican esta API.
+
+| Query | Contrato |
+|---|---|
+| `limit` | Entero decimal entre 1 y 50, ambos incluidos. Predeterminado: 20. |
+| `cursor` | Cadena opaca devuelta en `next_cursor`. Omitir en la primera consulta; enviar con codificación URL en las siguientes. |
+
+Se rechazan con 400 los parámetros desconocidos (incluidos `uid`, `recipient_uid`
+y cualquier selector de cuenta), repetidos, vacíos o inválidos. Un cursor está
+firmado y vinculado a su usuario; no puede reutilizarse para otra cuenta ni
+modificarse. Es opaco, no cifrado: el consumidor no debe interpretar su contenido.
+El servidor usa `DJANGO_SECRET_KEY`, que debe ser estable y secreto en producción;
+al rotarlo, los cursores anteriores dejan de ser válidos y se debe empezar de nuevo.
+
+Orden fijo: `created_at DESC`, identificador de documento `DESC` como desempate.
+Se consultan como máximo `limit + 1` registros para detectar otra página.
+El cursor conserva la precisión de nanosegundos de Firestore y no depende de que
+el documento de la página anterior siga existiendo. La paginación no representa
+una instantánea: los avisos nuevos anteriores al cursor se verán al actualizar
+desde la primera página. El escritor futuro debe mantener inmutables destinatario
+y fecha de creación para conservar un recorrido estable.
+
+Ejemplo de respuesta 200:
+
+```json
+{
+  "items": [
+    {
+      "id": "notification-123",
+      "type": "MATCH",
+      "message": "Tienes un nuevo match.",
+      "created_at": "2026-11-06T12:30:00.123456789Z"
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+`MATCH` es un ejemplo de tipo, no un catálogo cerrado. Cada elemento contiene
+únicamente `id`, `type`, `message` y `created_at` (RFC 3339 en UTC).
+`next_cursor` es una cadena cuando quedan resultados y `null` al terminar.
+Sin avisos: `200 {"items": [], "next_cursor": null}`.
+
+| HTTP | Significado |
+|---|---|
+| 200 | Consulta correcta, incluida colección vacía. |
+| 400 | Query o cursor inválido, manipulado o de otra cuenta. |
+| 401 | Token ausente, inválido, caducado o sesión revocada. Incluye `WWW-Authenticate: Bearer`. |
+| 403 | Perfil inexistente o rol diferente de BUYER/SELLER. |
+| 405 | Método distinto de GET. |
+| 500 | Fallo interno, de verificación del proveedor o de Firestore; permite reintentar conservando la sesión. |
+
+Los errores contienen `{"error": "mensaje genérico"}` sin credenciales, hashes,
+consultas ni trazas internas. Las respuestas llevan `Cache-Control: no-store`.
+La consulta no genera avisos ni matches, no cambia decisiones, no marca avisos
+como leídos y no elimina documentos.
+
+### Persistencia compartida para US4 futura
+
+US4 aún no está implementada. Esta ampliación define una única colección
+Firestore `notifications`, que US4 deberá reutilizar al generar avisos:
+
+| Campo | Tipo y origen |
+|---|---|
+| ID del documento | Identificador único del aviso; se devuelve como `id`. |
+| `recipient_uid` | String: UID Firebase del destinatario, fijado por el servidor escritor. |
+| `type` | String: tipo de aviso fijado por el servidor escritor. |
+| `message` | String: mensaje público, sin datos secretos. |
+| `created_at` | Timestamp Firestore UTC, fijado por el servidor escritor al crear. |
+
+No hay modelos ORM, migraciones, otra colección paralela ni generación de avisos
+en esta implementación. Firestore no requiere crear la colección vacía: aparecerá
+con su primera escritura futura. Los registros sin `created_at` no participan
+en la consulta ordenada; el escritor debe garantizar el esquema completo.
+
+La consulta requiere el índice compuesto especificado en
+[firestore.indexes.json](firestore.indexes.json): ámbito Collection para
+`notifications`, `recipient_uid` ascendente, `created_at` descendente y nombre
+de documento (`__name__`) descendente. Configurarlo en Firebase/Google Cloud
+antes de usar la consulta y esperar a que esté habilitado. Este cambio incluye
+la definición del índice, pero no lo despliega al proyecto remoto. Sin el índice,
+Firestore puede rechazar la consulta; el endpoint devuelve 500 genérico.
+Los clientes siguen sin acceso directo a Firestore; se mantienen sus reglas cerradas.
+
+### Verificación de notificaciones
+
+Desde `backend/`:
+
+```powershell
+.\.venv\Scripts\python.exe manage.py test accounts.test_notifications --verbosity 2
+```
+
+13 pruebas nuevas verifican autenticación y revocación, ambos roles, destinatario
+verificado, rechazo de selectores de cuenta, límites, cursores firmados y su
+vinculación a la cuenta, precisión temporal, campos públicos, consulta Firestore
+y ausencia de escrituras. Firebase se simula; no se accede a producción.
+Suite completa: 103 pruebas, 101 pasan y 2 integraciones Auth se omiten por
+no estar configurado el emulador. `manage.py check`: sin incidencias.
+La consulta y el índice no se han verificado contra Firestore real o su emulador.
