@@ -1,6 +1,7 @@
 from django.urls import path
 from accounts.views import current_user, register
 from accounts.profile_views import logout, password, update_profile
+from accounts.notification_views import notifications
 from config.health import health
 from properties.views import create_property
 
@@ -12,6 +13,7 @@ def profile_dispatch(request):
 
 
 urlpatterns = [
+    path("api/notificaciones", notifications, name="notifications"),
     path("api/health", health, name="health"),
     path("api/auth/register", register, name="register"),
     path("api/auth/me", profile_dispatch, name="current-user"),
