@@ -6,6 +6,7 @@ import { LoginPage } from './pages/LoginPage'
 import { PublishPropertyPage } from './pages/PublishPropertyPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { RegisterPage } from './pages/RegisterPage'
+import { RegisterChoicePage } from './pages/RegisterChoicePage'
 import { SellerHome } from './pages/SellerHome'
 
 /**
@@ -44,7 +45,9 @@ export default function App() {
       <Route path="/" element={<LandingPage />} />
 
       {/* Formulario de registro standalone (acceso directo por URL) */}
-      <Route path="/registro" element={<RegisterPage />} />
+      <Route path="/registro" element={<RegisterChoicePage />} />
+      <Route path="/registro/comprador" element={<RegisterPage role="BUYER" />} />
+      <Route path="/registro/vendedor" element={<RegisterPage role="SELLER" />} />
 
       {/* Formulario de inicio de sesión */}
       <Route path="/login" element={<LoginPage />} />
