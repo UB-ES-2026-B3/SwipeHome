@@ -92,6 +92,32 @@ class GetContainerClientTests(SimpleTestCase):
             # Ya creado: no vuelve a leer la configuración.
             self.assertIs(azure_storage.get_container_client(), first)
 
+    def test_failed_operation_is_bounded_well_under_gunicorn_timeout(self):
+        # Cliente real; solo se sustituye la frontera de red (requests) y la espera.
+        import requests
+        from azure.core.exceptions import ServiceRequestError
+        from azure.core.pipeline.transport import HttpTransport
+
+        with storage_env(AZURE_STORAGE_CONNECTION_STRING=VALID):
+            blob = azure_storage.get_container_client().get_blob_client("uid/abc")
+        # La política espera mediante HttpTransport.sleep (el pipeline usa un envoltorio).
+        with patch.object(
+            requests.Session, "request", autospec=True,
+            side_effect=requests.exceptions.ConnectionError("sin red"),
+        ) as request, patch.object(HttpTransport, "sleep", autospec=True) as sleep:
+            with self.assertRaises(ServiceRequestError):
+                blob.upload_blob(b"data", overwrite=True)
+
+        self.assertEqual(request.call_count, 1 + azure_storage.RETRY_TOTAL)
+        for call in request.call_args_list:
+            self.assertEqual(call.kwargs["timeout"], (5, 5))
+        waits = [call.args[1] for call in sleep.call_args_list]
+        self.assertEqual(len(waits), 2)
+        self.assertTrue(all(0 <= wait <= 2 for wait in waits), waits)
+        # Peor caso: cada intento agota su timeout y las esperas son máximas.
+        worst = request.call_count * max(azure_storage.CONNECTION_TIMEOUT, azure_storage.READ_TIMEOUT) + 2 * 2
+        self.assertLessEqual(worst, 20)
+
     def test_configuration_error_is_not_cached(self):
         with storage_env(), self.assertLogs("accounts.azure_storage", level="ERROR"):
             with self.assertRaises(StorageConfigError):

@@ -17,13 +17,27 @@ import os
 import threading
 from base64 import b64decode
 
-from azure.storage.blob import BlobServiceClient
+from azure.storage.blob import BlobServiceClient, LinearRetry
 
 logger = logging.getLogger(__name__)
 _init_lock = threading.Lock()
 _container = None
 
 DEFAULT_CONTAINER = "listings"
+
+# Límites de red. Los valores por defecto del SDK (3 reintentos con esperas de
+# ~18, 24 y 42 s, conexión 20 s, lectura 60 s) superan los 30 s de timeout de
+# gunicorn: Render mataría el worker a mitad de los reintentos y la limpieza de
+# fotos subidas no llegaría a ejecutarse. Con estos límites, una operación que
+# falla tarda como máximo unos 19 s: 3 intentos x 5 s + 2 esperas de 0-2 s.
+RETRY_TOTAL = 2
+RETRY_BACKOFF = 1  # segundos, con variación aleatoria de ±1 s
+# Ambos son tiempos máximos SIN PROGRESO por operación de socket, no límites a
+# la duración total. El cuerpo se envía con el de conexión, así que una foto de
+# 5 MB tarda lo que necesite mientras siga avanzando; el de lectura solo cubre
+# la espera de la respuesta de Azure una vez enviado el cuerpo.
+CONNECTION_TIMEOUT = 5
+READ_TIMEOUT = 5
 
 
 class StorageConfigError(RuntimeError):
@@ -62,7 +76,14 @@ def _create_container_client():
     container = os.environ.get("AZURE_STORAGE_CONTAINER", "").strip() or DEFAULT_CONTAINER
     # `from None`: la excepción original podría llevar la cadena de conexión.
     try:
-        service = BlobServiceClient.from_connection_string(connection_string)
+        service = BlobServiceClient.from_connection_string(
+            connection_string,
+            retry_policy=LinearRetry(
+                backoff=RETRY_BACKOFF, retry_total=RETRY_TOTAL, random_jitter_range=RETRY_BACKOFF,
+            ),
+            connection_timeout=CONNECTION_TIMEOUT,
+            read_timeout=READ_TIMEOUT,
+        )
     except ValueError:
         raise StorageConfigError(
             "AZURE_STORAGE_CONNECTION_STRING no es una cadena de conexión válida."

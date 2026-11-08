@@ -153,6 +153,7 @@ class CreateListingTests(SimpleTestCase):
             call = blob.upload_blob.call_args
             self.assertIs(call.args[0], photo)
             self.assertEqual(call.kwargs["length"], photo.size)
+            self.assertIs(call.kwargs["overwrite"], True)
             self.assertIsInstance(call.kwargs["content_settings"], ContentSettings)
             self.assertEqual(call.kwargs["content_settings"].content_type, photo.content_type)
         written = self.reference(client).create.call_args.args[0]

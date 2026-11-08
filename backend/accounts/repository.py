@@ -105,9 +105,13 @@ def create_listing(uid, *, values, photos) -> dict:
         uploaded.append(blob)
         try:
             photo.seek(0)
+            # overwrite=True: si se pierde la respuesta de un intento que sí
+            # llegó, el reintento del SDK no falla con 409. El nombre es un
+            # uuid4, así que nunca pisa la foto de otro anuncio.
             blob.upload_blob(
                 photo,
                 length=photo.size,
+                overwrite=True,
                 content_settings=ContentSettings(content_type=photo.content_type),
             )
             # El contenedor tiene acceso anónimo «Blob»: la URL pública basta,
