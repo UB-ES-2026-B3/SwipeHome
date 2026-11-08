@@ -9,9 +9,33 @@ US6 continúa según [su contrato](us6_backend.md); US4 según
 [US4 backend](us4_backend.md) y el [README backend](../backend/README.md).
 
 El registro/publicación existentes y el alojamiento Render no se sustituyen.
-La publicación actual usa Firebase Storage mediante `accounts/repository.py`;
-no se cambia su configuración ni se vuelven a subir fotografías en US4.
 No se ha comprobado ni cambiado el plan de facturación o el despliegue remoto.
+
+### Fotografías de anuncios: Azure Blob Storage
+
+Firebase Storage no funciona en producción con el plan Spark del proyecto, así
+que las fotografías se guardan en **Azure Blob Storage** (Azure for Students,
+sugerido por el profesor; sin tarjeta). Firebase sigue siendo Auth y Firestore;
+la opción `storageBucket` y `FIREBASE_STORAGE_BUCKET` ya no existen.
+
+- Cuenta de almacenamiento creada por Arnau; contenedor `listings` con nivel
+  de acceso anónimo **«Blob»**: cada foto se lee por su URL sin credenciales,
+  pero el contenedor no se puede listar. No subir nada privado a ese contenedor.
+- Blobs `listings/{uid}/{uuid}` con su `Content-Type`; Firestore guarda la URL
+  pública (`https://<cuenta>.blob.core.windows.net/listings/listings/{uid}/{uuid}`;
+  el primer `listings` es el contenedor). No hay token de descarga ni SAS.
+- `accounts/repository.py` sigue siendo el único módulo que sube y borra fotos
+  (misma compensación: se borran si Firestore falla con certeza, se conservan
+  si la escritura pudo confirmarse). `accounts/azure_storage.py` crea el
+  cliente de forma perezosa, como `firebase.py`.
+- Variables: `AZURE_STORAGE_CONNECTION_STRING` (obligatoria para publicar;
+  **secreto**, contiene la clave de la cuenta; solo en Render o en la sesión
+  local) y `AZURE_STORAGE_CONTAINER` (por defecto `listings`). Se exige la
+  cadena con `AccountKey`; una con `SharedAccessSignature` se rechaza porque el
+  token acabaría en las URLs públicas. La cadena nunca aparece en logs ni
+  mensajes de error: solo se registran nombres de clase de las excepciones.
+- Los tests no usan Azure: el cliente se simula. El SDK es `azure-storage-blob`
+  (puro Python) con `azure-core` e `isodate`, fijados en `requirements.txt`.
 
 La evolución US4 añade `swipes/matches` y amplía la colección existente
 `notifications`. No hay migraciones SQL ni conversión/borrado de datos.
@@ -26,7 +50,7 @@ solo de índices. El comando y la revisión de compatibilidad de datos remotos
 están en el README. Los índices no se han publicado en esta tarea.
 
 Pruebas únicamente con emuladores demo en loopback: Auth 9099, Firestore 8080,
-Node 24 y Java 21. 140 pruebas pasan sin omisiones. CI prepara ambos emuladores
+Node 24 y Java 21. 151 pruebas pasan sin omisiones. CI prepara ambos emuladores
 y Java 21. El emulador no certifica índices de producción. No se emplearon
 credenciales de producción, ni se modificaron cuentas, anuncios o fotos remotos.
 
@@ -67,7 +91,7 @@ autenticación.** Donde contradiga a `backend_context.md` o a
 | Hosting backend | **Render**, plan gratuito |
 | Hosting frontend | Firebase Hosting o Vercel (pendiente) |
 | Docker | **No se usa.** Solo si el profesor lo exige. |
-| Fotos de anuncios | Aplazado: Firebase Storage exige plan de pago. Usar URLs por ahora. |
+| Fotos de anuncios | Aplazado: Firebase Storage exige plan de pago. Usar URLs por ahora. *(Sustituido en noviembre 2026 por Azure Blob Storage; ver arriba.)* |
 
 Restricción dura del proyecto: **coste cero, sin tarjeta de crédito.**
 Cualquier propuesta que requiera un servicio de pago queda descartada.
