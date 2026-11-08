@@ -21,9 +21,11 @@ la opción `storageBucket` y `FIREBASE_STORAGE_BUCKET` ya no existen.
 - Cuenta de almacenamiento creada por Arnau; contenedor `listings` con nivel
   de acceso anónimo **«Blob»**: cada foto se lee por su URL sin credenciales,
   pero el contenedor no se puede listar. No subir nada privado a ese contenedor.
-- Blobs `listings/{uid}/{uuid}` con su `Content-Type`; Firestore guarda la URL
-  pública (`https://<cuenta>.blob.core.windows.net/listings/listings/{uid}/{uuid}`;
-  el primer `listings` es el contenedor). No hay token de descarga ni SAS.
+- Blobs `{uid}/{uuid}` con su `Content-Type`, sin prefijo: el contenedor ya
+  separa las fotos de anuncios (el prefijo `listings/` solo tenía sentido con
+  el bucket único de Firebase). Firestore guarda la URL pública
+  `https://<cuenta>.blob.core.windows.net/listings/{uid}/{uuid}`. No hay token
+  de descarga ni SAS.
 - `accounts/repository.py` sigue siendo el único módulo que sube y borra fotos
   (misma compensación: se borran si Firestore falla con certeza, se conservan
   si la escritura pudo confirmarse). `accounts/azure_storage.py` crea el

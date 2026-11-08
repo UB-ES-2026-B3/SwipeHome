@@ -78,8 +78,8 @@ class GetContainerClientTests(SimpleTestCase):
             container = azure_storage.get_container_client()
         self.assertEqual(container.container_name, "listings")
         self.assertEqual(container.account_name, "swipehometest")
-        blob = container.get_blob_client("listings/uid/abc")
-        self.assertEqual(blob.url, "https://swipehometest.blob.core.windows.net/listings/listings/uid/abc")
+        blob = container.get_blob_client("uid/abc")
+        self.assertEqual(blob.url, "https://swipehometest.blob.core.windows.net/listings/uid/abc")
 
     def test_container_can_be_overridden(self):
         with storage_env(AZURE_STORAGE_CONNECTION_STRING=VALID, AZURE_STORAGE_CONTAINER=" fotos "):

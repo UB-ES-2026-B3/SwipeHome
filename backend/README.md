@@ -70,7 +70,7 @@ castellano y recibe entre 1 y 10 fotografías en `photos`, `fotografias` o
 `images`. Cada archivo debe ser JPEG, PNG o WebP real y ocupar como máximo 5 MB.
 Las fotografías se suben a Azure Blob Storage (contenedor
 `AZURE_STORAGE_CONTAINER`, por defecto `listings`, blobs
-`listings/{uid}/{uuid}`) y el anuncio se guarda en la colección Firestore
+`{uid}/{uuid}`) y el anuncio se guarda en la colección Firestore
 `listings` con el `seller_uid` obtenido del token y la URL pública de cada
 blob. El contenedor tiene acceso anónimo «Blob»: las URLs se leen sin
 credenciales ni token, pero el contenedor no se puede listar.
@@ -153,7 +153,7 @@ console.log(response.status, await response.json());
 
 Se espera `201` y un identificador de anuncio. En Firestore debe aparecer un
 documento en `listings` con `seller_uid` igual al uid del token y las URLs
-`https://<cuenta>.blob.core.windows.net/<contenedor>/listings/<uid>/<uuid>`,
+`https://<cuenta>.blob.core.windows.net/<contenedor>/<uid>/<uuid>`,
 que se abren en el navegador sin iniciar sesión. Un usuario sin token obtiene `401` y un usuario `BUYER`
 obtiene `403`.
 

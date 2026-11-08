@@ -99,7 +99,8 @@ def create_listing(uid, *, values, photos) -> dict:
         "created_at": firestore.SERVER_TIMESTAMP,
     }
     for photo in photos:
-        name = f"listings/{uid}/{uuid4().hex}"
+        # El contenedor ya separa las fotos de anuncios: sin prefijo adicional.
+        name = f"{uid}/{uuid4().hex}"
         blob = container.get_blob_client(name)
         uploaded.append(blob)
         try:

@@ -100,7 +100,7 @@ VALUES = {
     "people": 3,
     "shared_accommodation": False,
 }
-BLOB_URL = "https://swipehome.blob.core.windows.net/listings/listings/" + UID + "/abc"
+BLOB_URL = "https://swipehome.blob.core.windows.net/listings/" + UID + "/abc"
 
 
 @patch("accounts.repository.get_app")
@@ -147,7 +147,7 @@ class CreateListingTests(SimpleTestCase):
         self.assertEqual(len(names), 2)
         self.assertNotEqual(names[0], names[1])
         for name in names:
-            self.assertRegex(name, rf"^listings/{UID}/[0-9a-f]{{32}}$")
+            self.assertRegex(name, rf"^{UID}/[0-9a-f]{{32}}$")
         for blob, photo in zip(blobs, photos):
             blob.upload_blob.assert_called_once()
             call = blob.upload_blob.call_args
