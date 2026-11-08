@@ -1,3 +1,41 @@
+# Infraestructura vigente de SwipeHome
+
+## Estado comprobado — 8 noviembre 2026
+
+Django usa Firebase Auth, Firestore y las referencias de fotografías existentes.
+`DATABASES = {}`; no se reintroducen ORM, SQLite activa, sesiones Django ni
+CSRF por cookies. El usuario confirmó este stack para US 4.4–4.7.
+US6 continúa según [su contrato](us6_backend.md); US4 según
+[US4 backend](us4_backend.md) y el [README backend](../backend/README.md).
+
+El registro/publicación existentes y el alojamiento Render no se sustituyen.
+La publicación actual usa Firebase Storage mediante `accounts/repository.py`;
+no se cambia su configuración ni se vuelven a subir fotografías en US4.
+No se ha comprobado ni cambiado el plan de facturación o el despliegue remoto.
+
+La evolución US4 añade `swipes/matches` y amplía la colección existente
+`notifications`. No hay migraciones SQL ni conversión/borrado de datos.
+LIKE genera directamente match y aviso en una transacción Firestore.
+La unicidad es la del path canónico; las referencias/valores los impone el
+servicio Admin, que no debe saltarse. Se mantienen cerrados los accesos directos
+de clientes a Firestore.
+
+Se conservan los índices de avisos y se incorpora el índice de exploración:
+`backend/firestore.indexes.json`. `backend/firebase.json` configura despliegue
+solo de índices. El comando y la revisión de compatibilidad de datos remotos
+están en el README. Los índices no se han publicado en esta tarea.
+
+Pruebas únicamente con emuladores demo en loopback: Auth 9099, Firestore 8080,
+Node 24 y Java 21. 140 pruebas pasan sin omisiones. CI prepara ambos emuladores
+y Java 21. El emulador no certifica índices de producción. No se emplearon
+credenciales de producción, ni se modificaron cuentas, anuncios o fotos remotos.
+
+El plan de migración y las situaciones de ramas/despliegue de octubre que
+siguen son historial; no son instrucciones para cambiar ahora la arquitectura.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
 # Contexto de infraestructura (base de datos, despliegue y autenticación)
 
 > Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
@@ -195,3 +233,5 @@ anunciado.
 - Implementar la migración a Firebase Auth (sección 4).
 - CI con GitHub Actions: ejecutar los tests en cada PR y proteger `main`.
 - Hosting del frontend y configuración de CORS.
+
+</details>

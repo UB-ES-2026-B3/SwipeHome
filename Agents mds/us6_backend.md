@@ -1,5 +1,11 @@
 # US6 backend: perfil y cierre de sesión con Firebase
 
+> Continuidad US4 (8 noviembre 2026): Auth/perfil/logout conservados.
+> [US4 backend](us4_backend.md) documenta los nuevos endpoints y avisos SELLER.
+> LIKE crea directamente match y aviso. La suite actual de 140 pruebas pasa
+> con ambos emuladores; los resultados de octubre se conservan como historial US6.
+
+
 Implementado en la rama `US6-backend`. Adaptación a Firebase autorizada por el
 usuario el 22 de octubre de 2026. Este contrato sustituye, para US6, los
 criterios originales basados en ORM, sesiones Django, cookies y CSRF.
