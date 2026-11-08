@@ -36,6 +36,20 @@ la opción `storageBucket` y `FIREBASE_STORAGE_BUCKET` ya no existen.
   cadena con `AccountKey`; una con `SharedAccessSignature` se rechaza porque el
   token acabaría en las URLs públicas. La cadena nunca aparece en logs ni
   mensajes de error: solo se registran nombres de clase de las excepciones.
+- En local se carga con `$env:AZURE_STORAGE_CONNECTION_STRING =
+  (Get-Clipboard -Raw).Trim()` y se comprueba `.Length` y `.Substring(0, 30)`;
+  `Read-Host -AsSecureString` puede no recibir el pegado y dejarla vacía.
+- **Límites de red** (`azure_storage.py`): 2 reintentos lineales de ~1 s
+  (±1 s), conexión 5 s y lectura 5 s. Son tiempos sin progreso por operación,
+  no límites a la duración total de una subida de 5 MB. Una operación fallida
+  tarda como máximo ~19 s (medido: 17,5 s contra un host que descarta paquetes;
+  2 s con DNS inexistente), por debajo de los 30 s de timeout de gunicorn, así
+  que la limpieza llega a ejecutarse. Con los valores por defecto del SDK eran
+  84 s. **No se sube `--timeout` de gunicorn:** Render gratuito tiene un único
+  worker síncrono y una subida lenta bloquearía a todos. Las subidas usan
+  `overwrite=True` para que un reintento tras una respuesta perdida no dé 409.
+  Límite conocido: si Azure cae entre dos fotos, borrar las ya subidas también
+  falla; quedan huérfanas y el log lo indica.
 - Los tests no usan Azure: el cliente se simula. El SDK es `azure-storage-blob`
   (puro Python) con `azure-core` e `isodate`, fijados en `requirements.txt`.
 
@@ -52,7 +66,7 @@ solo de índices. El comando y la revisión de compatibilidad de datos remotos
 están en el README. Los índices no se han publicado en esta tarea.
 
 Pruebas únicamente con emuladores demo en loopback: Auth 9099, Firestore 8080,
-Node 24 y Java 21. 151 pruebas pasan sin omisiones. CI prepara ambos emuladores
+Node 24 y Java 21. 152 pruebas pasan sin omisiones. CI prepara ambos emuladores
 y Java 21. El emulador no certifica índices de producción. No se emplearon
 credenciales de producción, ni se modificaron cuentas, anuncios o fotos remotos.
 

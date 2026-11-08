@@ -40,6 +40,22 @@ $env:DJANGO_DEV = '1'
 .\.venv\Scripts\python.exe manage.py runserver
 ```
 
+Para publicar anuncios con fotos hace falta además la cadena de conexión de
+Azure Storage (pídesela a Arnau; es un secreto). Cópiala al portapapeles y
+cárgala así, sin escribirla en la línea de comandos para que no quede en el
+historial de PowerShell:
+
+```powershell
+$env:AZURE_STORAGE_CONNECTION_STRING = (Get-Clipboard -Raw).Trim()
+$env:AZURE_STORAGE_CONNECTION_STRING.Length            # > 0
+$env:AZURE_STORAGE_CONNECTION_STRING.Substring(0, 30)  # DefaultEndpointsProtocol=https
+```
+
+Comprueba la longitud y el inicio antes de seguir: un aviso oculto
+(`Read-Host -AsSecureString`) puede no recibir el pegado y dejar la variable
+vacía o con basura. Sin la variable, el servidor arranca pero publicar devuelve
+`500` y el log dice qué falta.
+
 [.env.example](.env.example) describe todas las variables. El archivo `.env` no se
 carga automáticamente: hay que definirlas en la terminal. El frontend Vite
 proxifica `/api/*` a `http://127.0.0.1:8000`.
@@ -173,7 +189,10 @@ Build `pip install -r requirements.txt`, start
 `AZURE_STORAGE_CONNECTION_STRING` (secreto: contiene la clave de la cuenta) y,
 opcionalmente, `AZURE_STORAGE_CONTAINER` (por defecto `listings`). Sin la
 cadena de conexión el servidor arranca y responde, pero publicar devuelve `500`
-y el log indica qué variable falta o qué le pasa. Render
+y el log indica qué variable falta o qué le pasa. El cliente de Azure limita
+reintentos y timeouts para que una subida fallida termine en ~19 s como máximo,
+antes de los 30 s de gunicorn; no se cambia `--timeout` (ver
+`infra_context.md`). Render
 inyecta `RENDER_EXTERNAL_HOSTNAME`, y `settings.py` lo añade a `ALLOWED_HOSTS` y
 activa `SECURE_PROXY_SSL_HEADER`. Ver `infra_context.md` §3.
 
@@ -429,7 +448,7 @@ Desde `backend/`:
 .\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2
 ```
 
-Sin emuladores: **151 pruebas descubiertas, 127 correctas y 24 integraciones
+Sin emuladores: **152 pruebas descubiertas, 128 correctas y 24 integraciones
 omitidas**. Para la verificación completa hacen falta Node 24 y Java 21.
 Este comando inicia/detiene Auth y Firestore Emulator en loopback
 (9099 y 8080), sin usar credenciales ni producción:
@@ -438,7 +457,7 @@ Este comando inicia/detiene Auth y Firestore Emulator en loopback
 npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts properties --verbosity 2"
 ```
 
-Resultado comprobado: **151 pruebas correctas, sin omisiones**, incluidos
+Resultado comprobado: **152 pruebas correctas, sin omisiones**, incluidos
 concurrencia con barreras/hilos y Firestore real emulado, rollback de los tres
 guardados y rechazo de commit, unicidad, privacidad, paginación tras decidir,
 persistencia y registro/login/publicación. El recorrido de Auth real simula
