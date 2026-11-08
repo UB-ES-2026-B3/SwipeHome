@@ -194,7 +194,7 @@ export function LoginForm({ onSubmit } = {}) {
       {resetMode && (
         <div className="login-form__reset">
           <p>Introduce tu email y te enviaremos un enlace de recuperación.</p>
-          <button type="button" className="btn btn--ghost" onClick={handleResetSubmit} disabled={resetSubmitting}>
+          <button type="button" className="btn btn--ghost login-form__reset-submit" onClick={handleResetSubmit} disabled={resetSubmitting}>
             {resetSubmitting ? 'Enviando…' : 'Enviar correo de recuperación'}
           </button>
           {resetMessage?.success && <div className="profile-message" role="status">{resetMessage.success}</div>}

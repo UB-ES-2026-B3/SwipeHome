@@ -201,7 +201,7 @@ export function PublishPropertyPage() {
   return (
     <main className="publish-page">
       <header className="publish-page__header">
-        <Logo size="sm" />
+        <Logo size="sm" to="/vendedor/inicio" />
       </header>
       <div className="publish-page__inner">
         <button type="button" className="publish-page__back" onClick={() => navigate('/vendedor/inicio')}>

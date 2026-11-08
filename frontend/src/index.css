@@ -87,6 +87,8 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   align-items: center;
   gap: 2px;
   width: fit-content;
+  color: inherit;
+  text-decoration: none;
 }
 
 .logo__text {
@@ -462,6 +464,15 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .register-choice__secondary:hover,
 .register-choice__secondary:focus-visible { background: var(--c-gray-50); }
 
+.uniform-action {
+  min-height: 40px;
+  padding-top: 0;
+  padding-bottom: 0;
+  font-size: .875rem;
+  font-weight: 700;
+  line-height: 1;
+}
+
 .register-form__login-link {
   text-align: center;
   font-size: 0.8125rem;
@@ -611,6 +622,132 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   transition: opacity 0.15s;
 }
 .home-page__cta:hover { opacity: 0.8; }
+
+.property-explorer__message {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-2);
+  width: min(100%, 680px);
+  padding: var(--sp-4);
+  background: var(--c-white);
+  border: 1px solid var(--c-gray-100);
+  border-radius: var(--r-card);
+  color: var(--c-gray-700);
+}
+.property-explorer__message--error { color: var(--c-error); }
+.property-card {
+  width: min(100%, 680px);
+  overflow: hidden;
+  text-align: left;
+  background: var(--c-white);
+  border: 1px solid var(--c-gray-100);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+}
+.property-card__gallery {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  background: var(--c-gray-100);
+}
+.property-card__gallery img,
+.property-card__no-photo {
+  flex: 0 0 100%;
+  width: 100%;
+  height: 280px;
+  object-fit: cover;
+}
+.property-card__no-photo {
+  display: grid;
+  place-items: center;
+  color: var(--c-gray-400);
+}
+.property-card__gallery-control {
+  position: absolute;
+  top: 50%;
+  width: 36px;
+  height: 36px;
+  transform: translateY(-50%);
+  color: var(--c-white);
+  background: rgba(17,17,17,.7);
+  border-radius: 50%;
+  font-size: 1.8rem;
+  line-height: 1;
+}
+.property-card__gallery-control:disabled { opacity: .35; cursor: not-allowed; }
+.property-card__gallery-control--prev { left: 12px; }
+.property-card__gallery-control--next { right: 12px; }
+.property-card__counter {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  padding: 3px 8px;
+  color: var(--c-white);
+  background: rgba(17,17,17,.7);
+  border-radius: var(--r-btn);
+  font-size: .75rem;
+  font-weight: 700;
+}
+.property-card__body { padding: var(--sp-3); }
+.property-card__error {
+  margin-bottom: var(--sp-2);
+  padding: 10px 12px;
+  color: var(--c-error);
+  background: var(--c-error-bg);
+  border-radius: var(--r-input);
+  font-size: .875rem;
+}
+.property-card__body h2 {
+  font-size: 1.5rem;
+  line-height: 1.15;
+  margin-bottom: 4px;
+}
+.property-card__location {
+  color: var(--c-gray-700);
+  font-size: .875rem;
+  margin-bottom: var(--sp-2);
+}
+.property-card__description {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  margin-bottom: var(--sp-3);
+}
+.property-card__details {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--sp-2);
+  margin: 0;
+}
+.property-card__details div {
+  padding: 10px;
+  background: var(--c-gray-50);
+  border-radius: var(--r-input);
+}
+.property-card__details dt {
+  color: var(--c-gray-400);
+  font-size: .7rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+.property-card__details dd { margin: 2px 0 0; font-weight: 700; }
+.property-card__actions {
+  display: flex;
+  justify-content: center;
+  gap: var(--sp-4);
+  margin-top: var(--sp-3);
+}
+.property-card__actions .swipe-btn {
+  width: 52px;
+  height: 52px;
+}
+.property-card__actions .swipe-btn:disabled { opacity: .45; cursor: wait; }
+.property-card__feedback {
+  margin-top: var(--sp-2);
+  color: #176b38;
+  font-weight: 700;
+  text-align: center;
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    PANEL DEL VENDEDOR
@@ -957,6 +1094,20 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   font-size: .875rem;
   font-weight: 700;
 }
+.home-page__profile,
+.seller-dashboard__profile,
+.seller-dashboard__logout,
+.profile-page__logout,
+.home-page__logout {
+  min-width: 112px;
+  text-align: center;
+}
+.home-page__profile,
+.seller-dashboard__profile,
+.seller-dashboard__logout,
+.profile-page__logout {
+  width: 112px;
+}
 .home-page__profile:hover,
 .seller-dashboard__profile:hover { background: var(--c-black); color: var(--c-white); }
 
@@ -971,6 +1122,11 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   padding: var(--sp-2) var(--sp-6);
   background: var(--c-white);
   border-bottom: 1px solid var(--c-gray-100);
+}
+.profile-page__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 .profile-page__back,
 .profile-page__logout {
@@ -997,6 +1153,11 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   box-shadow: var(--shadow-sm);
 }
 .profile-card h2 { font-size: 1.15rem; margin-bottom: var(--sp-3); }
+.profile-card form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
 .profile-role {
   display: flex;
   align-items: center;
@@ -1006,6 +1167,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 .profile-role .form-field__label { margin: 0; }
 .profile-actions { display: flex; gap: var(--sp-2); margin-top: var(--sp-3); }
+.profile-card form > .btn { margin-top: var(--sp-2); }
 .profile-message {
   padding: 12px 14px;
   margin-bottom: var(--sp-2);
@@ -1015,13 +1177,49 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   font-size: .9rem;
 }
 
+/* Shared action geometry: keep labels visually consistent across screens. */
+.uniform-action {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 12px !important;
+  font-family: var(--font) !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+  white-space: nowrap;
+}
+.register-choice .uniform-action {
+  width: 100% !important;
+}
+.home-page__profile.uniform-action,
+.home-page__logout.uniform-action,
+.seller-dashboard__profile.uniform-action,
+.seller-dashboard__logout.uniform-action,
+.profile-page__logout.uniform-action {
+  width: 112px !important;
+}
+
 @media (max-width: 600px) {
   .home-page__header { padding: var(--sp-2); }
   .profile-page__header { padding: 12px var(--sp-2); }
+  .profile-page__header-actions { gap: var(--sp-1); }
   .profile-page__back,
-  .profile-page__logout { padding: 8px 11px; font-size: .75rem; }
+  .profile-page__logout { padding: 8px 11px; font-size: .875rem; }
   .profile-page__content { width: min(100% - 24px, 680px); padding: var(--sp-4) 0; }
   .profile-card { padding: var(--sp-3); }
   .profile-actions { flex-direction: column; }
   .profile-actions .btn { width: 100%; }
+  .property-card__gallery img,
+  .property-card__no-photo { height: 220px; }
+  .property-card__details { grid-template-columns: repeat(2, 1fr); }
+}
+
+.login-form__reset-submit {
+  display: block;
+  margin: var(--sp-3) auto 0;
 }

@@ -1,4 +1,6 @@
-export function Logo({ size = 'default' }) {
+import { Link } from 'react-router-dom'
+
+export function Logo({ size = 'default', to = '/' }) {
   const isSmall = size === 'sm'
 
   const width = isSmall ? 90 : 140
@@ -6,10 +8,10 @@ export function Logo({ size = 'default' }) {
   const stroke = isSmall ? 2 : 2.5
 
   return (
-    <div
+    <Link
+      to={to}
       className={`logo ${isSmall ? 'logo--sm' : ''}`}
-      role="img"
-      aria-label="SwipeHome"
+      aria-label="Ir a SwipeHome"
     >
       <span className={`logo__text${isSmall ? ' logo__text--sm' : ''}`}>
         SwipeHome
@@ -38,6 +40,6 @@ export function Logo({ size = 'default' }) {
           />
         </svg>
       </div>
-    </div>
+    </Link>
   )
 }

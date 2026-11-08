@@ -15,13 +15,13 @@ export function SellerHome() {
   return (
     <main className="seller-dashboard">
       <header className="seller-dashboard__header">
-        <Logo size="sm" />
+        <Logo size="sm" to="/vendedor/inicio" />
         <div className="seller-dashboard__account">
           <span className="seller-dashboard__role">Vendedor</span>
-          <button type="button" className="seller-dashboard__profile" onClick={() => navigate('/mi-perfil')}>
+          <button type="button" className="seller-dashboard__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
             Mi perfil
           </button>
-          <button type="button" className="seller-dashboard__logout" onClick={logout}>
+          <button type="button" className="seller-dashboard__logout uniform-action" onClick={logout}>
             LogOut
           </button>
         </div>

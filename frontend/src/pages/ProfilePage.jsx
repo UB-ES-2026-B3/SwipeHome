@@ -151,13 +151,15 @@ export function ProfilePage() {
   return (
     <main className="profile-page">
       <header className="profile-page__header">
-        <button type="button" className="profile-page__back" onClick={() => navigate(-1)}>
-          Volver
-        </button>
-        <Logo size="sm" />
-        <button type="button" className="profile-page__logout" onClick={handleLogout} disabled={loggingOut}>
-          {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
-        </button>
+        <Logo size="sm" to={user.role === 'SELLER' ? '/vendedor/inicio' : '/comprador/inicio'} />
+        <div className="profile-page__header-actions">
+          <button type="button" className="profile-page__back" onClick={() => navigate(-1)}>
+            Volver
+          </button>
+          <button type="button" className="profile-page__logout uniform-action" onClick={handleLogout} disabled={loggingOut}>
+            {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
+          </button>
+        </div>
       </header>
 
       <div className="profile-page__content">

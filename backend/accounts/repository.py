@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 USERS_COLLECTION = "users"
 LISTINGS_COLLECTION = "listings"
+DECISIONS_COLLECTION = "decisions"
 
 
 def _users():
@@ -144,6 +145,77 @@ def create_listing(uid, *, values, photos) -> dict:
         _cleanup_uploaded(uploaded)
         raise
     return {"id": reference.id}
+
+
+def get_active_listings():
+    """Devuelve los anuncios publicados con los valores en unidades de la API."""
+    records = []
+    query = _listings().where("published", "==", True).order_by("created_at")
+    for snapshot in query.stream():
+        data = snapshot.to_dict()
+        if not data.get("published"):
+            continue
+        records.append({
+            "id": snapshot.id,
+            "seller_uid": data.get("seller_uid"),
+            "title": data.get("title", ""),
+            "street": data.get("street", ""),
+            "city": data.get("city", ""),
+            "postal_code": data.get("postal_code", ""),
+            "description": data.get("description", ""),
+            "price": data.get("price_cents", 0) / 100,
+            "surface": data.get("surface_hundredths", 0) / 100,
+            "bedrooms": data.get("bedrooms", 0),
+            "bathrooms": data.get("bathrooms", 0),
+            "people": data.get("people", 0),
+            "shared_accommodation": bool(data.get("shared_accommodation", False)),
+            "photos": list(data.get("photos", [])),
+            "published": True,
+        })
+    return records
+
+
+def get_explorable_listings(uid, *, limit=10, offset=0):
+    """Returns active listings not previously decided by the buyer."""
+    client = firestore.client(app=get_app())
+    decided = {
+        snapshot.id
+        for snapshot in client.collection(DECISIONS_COLLECTION)
+        .where("buyer_uid", "==", uid)
+        .stream()
+    }
+    listings = [
+        listing for listing in get_active_listings()
+        if listing["id"] not in decided and listing.get("seller_uid") != uid
+    ]
+    page = listings[offset:offset + limit]
+    next_offset = offset + limit if offset + limit < len(listings) else None
+    return page, next_offset
+
+
+def save_property_decision(uid, property_id, decision):
+    """Persists a buyer decision and returns whether it created a match."""
+    client = firestore.client(app=get_app())
+    reference = client.collection(DECISIONS_COLLECTION).document(f"{uid}_{property_id}")
+    existing = reference.get()
+    if existing.exists:
+        previous = existing.to_dict().get("decision")
+        if previous == decision:
+            return {"decision": decision, "match": False, "duplicate": True}
+        raise ValueError("A different decision already exists.")
+    listing = client.collection(LISTINGS_COLLECTION).document(property_id).get()
+    if not listing.exists or not listing.to_dict().get("published"):
+        raise LookupError("Property not found.")
+    data = listing.to_dict()
+    if data.get("seller_uid") == uid:
+        raise PermissionError("A seller cannot decide on its own property.")
+    reference.create({
+        "buyer_uid": uid,
+        "property_id": property_id,
+        "decision": decision,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    })
+    return {"decision": decision, "match": False, "duplicate": False}
 
 
 def _cleanup_uploaded(uploaded):
