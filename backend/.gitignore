@@ -6,3 +6,6 @@ __pycache__/
 *.sqlite3-*
 
 .local-tls/
+
+# Logs locales de Firebase Emulator
+*-debug.log

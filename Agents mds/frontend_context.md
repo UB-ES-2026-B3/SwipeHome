@@ -1,5 +1,31 @@
 # Contexto frontend de SwipeHome
 
+## Integración vigente con US4 backend — 8 noviembre 2026
+
+La autenticación vigente sigue siendo Firebase Auth con ID token Bearer y
+revocación US6. No hay cambios de frontend en esta tarea.
+Los consumidores pueden usar los contratos documentados en el
+[README backend](../backend/README.md) y [US4 backend](us4_backend.md).
+
+BUYER: GET `/api/inmuebles/explorar` y POST
+`/api/inmuebles/{id}/decision` con `{"decision":"LIKE"}` o PASS.
+LIKE crea directamente match y aviso: no diseñar aceptación del Vendedor.
+SELLER: GET `/api/notificaciones` devuelve sus propios avisos.
+Ambos GET usan `items/next_cursor`, `limit` 20 por defecto, máximo 50.
+Conservar el cursor al decidir sobre páginas previas para continuar sin saltos.
+401 requiere recuperar el acceso; 500 permite reintentar sin cerrar la sesión.
+Los avisos nuevos incluyen match, Comprador y vivienda; los históricos sin
+match mantienen sus cuatro campos previos.
+
+Solo se ha verificado backend (140 pruebas, incluidos Auth/Firestore Emulator).
+No se certifica aquí un recorrido de interfaz nuevo. El material siguiente
+sobre el frontend de Sprint 0 y sesiones/SQLite es historial identificado.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
+# Contexto frontend de SwipeHome
+
 > Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
 > El contrato vigente de edición del perfil, contraseña y logout está en
 > [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
@@ -288,3 +314,5 @@ deployment. Registro y consulta de sesión ya tienen contrato. La lista completa
 de decisiones pendientes está en el apartado 14 de [project_context.md](project_context.md).
 
 Las pantallas de inicio son destinos necesarios; perfiles, historial, exploración, swipes, candidatos, matches, chat y gestión posterior de anuncios no se incorporan al Sprint 0 por estas referencias.
+
+</details>

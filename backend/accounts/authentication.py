@@ -61,3 +61,34 @@ def verified_session(request, *, allow_revoked=False):
 
 def uid_from_request(request):
     return verified_session(request)["uid"]
+
+
+def firebase_role(role):
+    """Construye request.user solo desde Auth verificado y perfil del servidor."""
+    from functools import wraps
+    from types import SimpleNamespace
+
+    from django.http import JsonResponse
+
+    def decorate(view):
+        @wraps(view)
+        def wrapped(request, *args, **kwargs):
+            try:
+                session = verified_session(request)
+                profile = repository.get_user_profile(session["uid"])
+                if profile is None or profile["role"] != role:
+                    return JsonResponse({"error": "La cuenta no tiene acceso a esta operación."}, status=403)
+                request.user = SimpleNamespace(
+                    uid=session["uid"], role=profile["role"], name=profile.get("name", ""),
+                    is_authenticated=True,
+                )
+            except AuthenticationFailed:
+                response = JsonResponse({"error": "No hay una sesión autenticada."}, status=401)
+                response["WWW-Authenticate"] = "Bearer"
+                return response
+            except Exception as error:
+                logger.error("No se pudo comprobar el acceso (%s).", type(error).__name__)
+                return JsonResponse({"error": "No se pudo verificar la sesión. Inténtalo de nuevo."}, status=500)
+            return view(request, *args, **kwargs)
+        return wrapped
+    return decorate

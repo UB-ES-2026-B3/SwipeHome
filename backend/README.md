@@ -52,7 +52,9 @@ desde la consola de Firebase al terminar.
 
 | Método | Ruta | Resumen |
 |---|---|---|
-| `GET` | `/api/notificaciones` | Avisos propios, paginados y de solo lectura: 200 / 400 / 401 / 403 / 500 |
+| `GET` | `/api/notificaciones` | Avisos privados SELLER paginados: 200 / 400 / 401 / 403 / 500 |
+| `GET` | `/api/inmuebles/explorar` | Viviendas pendientes BUYER paginadas. |
+| `POST` | `/api/inmuebles/{id}/decision` | Decisión BUYER; LIKE crea match y aviso: 201 / 200 / 400 / 401 / 403 / 404 / 409 / 500 |
 | `GET` | `/api/health` | Comprobación de vida. No toca Firebase. |
 | `POST` | `/api/auth/register` | `{name, email, password, role}` → 201 / 400 / 409 / 500 |
 | `GET` | `/api/auth/me` | `Authorization: Bearer <ID token>` → 200 / 401 / 404 / 500 |
@@ -79,7 +81,7 @@ contraseña de 15–128 caracteres sin recortar y rol `SELLER` o `BUYER`.
 ## Estructura de `accounts/`
 
 - `views.py` — endpoints. No habla con Firestore directamente.
-- `repository.py` — **único** módulo que accede a Firestore (colecciones `users`, `listings`, `notifications` y `revoked_sessions`).
+- `repository.py` — **único** módulo que accede a Firestore (colecciones `users`, `listings`, `swipes`, `matches`, `notifications` y `revoked_sessions`).
 - `authentication.py` — extrae y verifica el ID token. Nunca lo escribe en los logs.
 - `firebase.py` — inicializa el Admin SDK, de forma perezosa y una sola vez.
 - `validation.py` — validación del registro.
@@ -188,109 +190,289 @@ El cliente intercambia `custom_token` tras cambiar email/contraseña.
 Si el intercambio falla tras guardar, indica `reauthentication_required`.
 Los consumidores deben pedir iniciar sesión de nuevo en ese caso.
 
+## US 4.4–4.7: exploración, decisiones y avisos privados
 
-## GET /api/notificaciones
+La adaptación a **Firebase Auth/Firestore** fue autorizada expresamente.
+Se conserva el contrato Bearer existente. No hay sesiones por cookies, CSRF
+Django ni migraciones ORM; no se añade `csrf_exempt`. Cookies por sí solas no
+autentican estos endpoints. La identidad procede de `request.user`, construido
+por el servidor con el token verificado, su revocación y el perfil actual.
 
-Consulta de solo lectura para usuarios BUYER y SELLER. Reutiliza la autenticación
-Firebase existente: `Authorization: Bearer <ID token>`, incluida la comprobación
-de revocación. La vista construye `request.user` con la identidad verificada y el
-rol del perfil; el destinatario de la consulta procede exclusivamente de ese objeto.
-Las cookies por sí solas no autentican esta API.
+**LIKE crea directamente el match y un aviso al propietario.** No hay
+aceptación del Vendedor, segundo swipe ni reserva o retirada automática del anuncio.
 
-| Query | Contrato |
-|---|---|
-| `limit` | Entero decimal entre 1 y 50, ambos incluidos. Predeterminado: 20. |
-| `cursor` | Cadena opaca devuelta en `next_cursor`. Omitir en la primera consulta; enviar con codificación URL en las siguientes. |
+| Método | Ruta exacta | Rol |
+|---|---|---|
+| GET | `/api/inmuebles/explorar` | BUYER |
+| POST | `/api/inmuebles/{id}/decision` | BUYER |
+| GET | `/api/notificaciones` | SELLER |
 
-Se rechazan con 400 los parámetros desconocidos (incluidos `uid`, `recipient_uid`
-y cualquier selector de cuenta), repetidos, vacíos o inválidos. Un cursor está
-firmado y vinculado a su usuario; no puede reutilizarse para otra cuenta ni
-modificarse. Es opaco, no cifrado: el consumidor no debe interpretar su contenido.
-El servidor usa `DJANGO_SECRET_KEY`, que debe ser estable y secreto en producción;
-al rotarlo, los cursores anteriores dejan de ser válidos y se debe empezar de nuevo.
+Todos requieren `Authorization: Bearer <ID token Firebase>`.
+401 significa token ausente, inválido, caducado o sesión revocada;
+403 significa rol incorrecto o perfil ausente. 405 significa método incorrecto.
+Los errores son `{"error": "mensaje seguro"}` y los fallos internos, 500.
+Las respuestas llevan `Cache-Control: no-store` y no exponen credenciales,
+SQL ni trazas. Los 500 permiten reintentar conservando el acceso del cliente.
 
-Orden fijo: `created_at DESC`, identificador de documento `DESC` como desempate.
-Se consultan como máximo `limit + 1` registros para detectar otra página.
-El cursor conserva la precisión de nanosegundos de Firestore y no depende de que
-el documento de la página anterior siga existiendo. La paginación no representa
-una instantánea: los avisos nuevos anteriores al cursor se verán al actualizar
-desde la primera página. El escritor futuro debe mantener inmutables destinatario
-y fecha de creación para conservar un recorrido estable.
+### GET /api/inmuebles/explorar
 
-Ejemplo de respuesta 200:
+Incluye únicamente anuncios `published=true` con todos los campos del esquema
+de publicación, fecha y entre 1 y 10 referencias de fotografías.
+Excluye cualquier decisión propia, LIKE o PASS; las decisiones y matches de
+otros Compradores no excluyen el anuncio.
+
+Respuesta 200 de ejemplo:
 
 ```json
 {
   "items": [
     {
-      "id": "notification-123",
-      "type": "MATCH",
-      "message": "Tienes un nuevo match.",
-      "created_at": "2026-11-06T12:30:00.123456789Z"
+      "id": "listing-123",
+      "title": "Piso luminoso",
+      "street": "Calle Mayor 1",
+      "city": "Barcelona",
+      "postal_code": "08001",
+      "description": "Una descripción válida",
+      "price": "950.50",
+      "surface": "65.50",
+      "bedrooms": 2,
+      "bathrooms": 1,
+      "people": 3,
+      "shared_accommodation": false,
+      "photos": ["https://example.com/primera.jpg", "https://example.com/segunda.jpg"],
+      "created_at": "2026-11-08T10:00:00Z"
     }
   ],
   "next_cursor": null
 }
 ```
 
-`MATCH` es un ejemplo de tipo, no un catálogo cerrado. Cada elemento contiene
-únicamente `id`, `type`, `message` y `created_at` (RFC 3339 en UTC).
-`next_cursor` es una cadena cuando quedan resultados y `null` al terminar.
-Sin avisos: `200 {"items": [], "next_cursor": null}`.
+`price` y `surface` son cadenas decimales exactas con dos posiciones, a partir
+de `price_cents` y `surface_hundredths` existentes. Las fotografías se devuelven
+todas, en el orden del array guardado; no se ordenan por URL.
+No se exponen el UID interno del propietario ni campos arbitrarios del documento.
 
-| HTTP | Significado |
+### Paginación de ambas consultas GET
+
+| Parámetro | Contrato |
 |---|---|
-| 200 | Consulta correcta, incluida colección vacía. |
-| 400 | Query o cursor inválido, manipulado o de otra cuenta. |
-| 401 | Token ausente, inválido, caducado o sesión revocada. Incluye `WWW-Authenticate: Bearer`. |
-| 403 | Perfil inexistente o rol diferente de BUYER/SELLER. |
-| 405 | Método distinto de GET. |
-| 500 | Fallo interno, de verificación del proveedor o de Firestore; permite reintentar conservando la sesión. |
+| `limit` | Entero decimal de 1 a 50; predeterminado 20. |
+| `cursor` | Cursor opaco de `next_cursor`; omitir en la primera página y codificar al enviarlo en la URL. |
 
-Los errores contienen `{"error": "mensaje genérico"}` sin credenciales, hashes,
-consultas ni trazas internas. Las respuestas llevan `Cache-Control: no-store`.
-La consulta no genera avisos ni matches, no cambia decisiones, no marca avisos
-como leídos y no elimina documentos.
+Se rechazan con 400 parámetros desconocidos, repetidos, vacíos, límites inválidos
+y cursores inválidos o de otra cuenta/recurso. El cursor está firmado con
+`DJANGO_SECRET_KEY`: mantenerla estable; rotarla invalida los cursores previos.
+El cursor es opaco, no cifrado, y conserva nanosegundos.
 
-### Persistencia compartida para US4 futura
+Orden: `created_at DESC, identificador DESC`. La posición es estrictamente una
+fecha anterior, o igual fecha con ID menor. No se usa OFFSET. Decidir sobre
+las viviendas de páginas anteriores no desplaza ni salta pendientes.
+Se busca un elemento adicional para determinar si existe otra página.
+`next_cursor` es `null` al terminar. Sin resultados, ambos endpoints devuelven
+`200 {"items": [], "next_cursor": null}`.
 
-US4 aún no está implementada. Esta ampliación define una única colección
-Firestore `notifications`, que US4 deberá reutilizar al generar avisos:
+Los registros nuevos situados antes del cursor se ven al volver a la primera
+página; no se promete una instantánea del catálogo. Fecha e ID deben permanecer
+inmutables. Exploración consulta anuncios en lotes y decisiones con lecturas
+batch; fotos y avisos no provocan consultas por elemento.
 
-| Campo | Tipo y origen |
+### POST /api/inmuebles/{id}/decision
+
+`Content-Type: application/json`. Único campo admitido:
+
+```json
+{"decision": "LIKE"}
+```
+
+Solo se aceptan cadenas exactas `LIKE` y `PASS`. Otros valores, campos extra
+(incluidos IDs de Comprador o propietario), JSON mal formado o estructuras
+incorrectas devuelven 400. Un inmueble inexistente, no publicado o incompleto
+devuelve 404.
+
+Respuesta LIKE 201, o 200 en un reintento idéntico:
+
+```json
+{
+  "decision": {
+    "id": "clave-canonica",
+    "listing_id": "listing-123",
+    "value": "LIKE",
+    "created_at": "2026-11-08T10:01:00Z"
+  },
+  "match": {
+    "id": "clave-canonica",
+    "decision_id": "clave-canonica",
+    "listing_id": "listing-123",
+    "created_at": "2026-11-08T10:01:00Z"
+  }
+}
+```
+
+PASS usa la misma estructura con `value: "PASS"` y `match: null`.
+
+| HTTP | Resultado |
 |---|---|
-| ID del documento | Identificador único del aviso; se devuelve como `id`. |
-| `recipient_uid` | String: UID Firebase del destinatario, fijado por el servidor escritor. |
-| `type` | String: tipo de aviso fijado por el servidor escritor. |
-| `message` | String: mensaje público, sin datos secretos. |
-| `created_at` | Timestamp Firestore UTC, fijado por el servidor escritor al crear. |
+| 201 | Decisión nueva confirmada; LIKE incluye match y aviso en el mismo commit. |
+| 200 | Misma decisión previa; mismos identificadores y fechas, sin aviso duplicado. |
+| 400 | Cuerpo o decisión inválidos. |
+| 401 / 403 | Autenticación o rol incorrectos. |
+| 404 | Anuncio no disponible para decidir. |
+| 409 | La decisión contraria ya quedó confirmada; no se modifica. |
+| 500 | Fallo interno, inconsistencia o contención no resuelta; mensaje seguro. |
 
-No hay modelos ORM, migraciones, otra colección paralela ni generación de avisos
-en esta implementación. Firestore no requiere crear la colección vacía: aparecerá
-con su primera escritura futura. Los registros sin `created_at` no participan
-en la consulta ordenada; el escritor debe garantizar el esquema completo.
+### GET /api/notificaciones
 
-La consulta requiere el índice compuesto especificado en
-[firestore.indexes.json](firestore.indexes.json): ámbito Collection para
-`notifications`, `recipient_uid` ascendente, `created_at` descendente y nombre
-de documento (`__name__`) descendente. Configurarlo en Firebase/Google Cloud
-antes de usar la consulta y esperar a que esté habilitado. Este cambio incluye
-la definición del índice, pero no lo despliega al proyecto remoto. Sin el índice,
-Firestore puede rechazar la consulta; el endpoint devuelve 500 genérico.
-Los clientes siguen sin acceso directo a Firestore; se mantienen sus reglas cerradas.
+Solo devuelve avisos cuyo `recipient_uid` es el SELLER autenticado. No admite
+elegir otro destinatario; BUYER obtiene 403.
 
-### Verificación de notificaciones
+Respuesta 200 para avisos nuevos de match:
+
+```json
+{
+  "items": [
+    {
+      "id": "match-clave-canonica",
+      "type": "MATCH",
+      "message": "Tienes un nuevo match.",
+      "match_id": "clave-canonica",
+      "created_at": "2026-11-08T10:01:00Z",
+      "buyer": {"id": "buyer-uid", "name": "Ana"},
+      "listing": {"id": "listing-123", "title": "Piso luminoso"}
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+Nombre y título son instantáneas fijadas al crear el aviso. Se conservan
+`type` y `message` del contrato anterior. **Compatibilidad histórica:** los avisos
+previos sin match siguen devolviendo solo `id/type/message/created_at`; no se
+les inventan identidades ni matches. Los avisos US4 tienen siempre las relaciones
+completas. No se marca lectura ni se cambia ningún registro al consultar.
+
+### Modelos Firestore, unicidad y transacciones
+
+Se reutilizan `users`, `listings` y `notifications`. La clave canónica es
+SHA-256 del JSON ASCII de `[buyer_uid, listing_id]`. Se añaden:
+
+- `swipes/{key}`: `buyer_uid, listing_id, value, created_at`.
+- `matches/{key}`: `buyer_uid, listing_id, decision_id, created_at`.
+- `notifications/match-{key}`: destinatario propietario, match, Comprador,
+  nombre, vivienda, título, tipo, mensaje y fecha.
+
+El propietario se resuelve desde `listings.seller_uid`. Un match no almacena
+otro propietario, reserva ni retira la vivienda. Un LIKE completo tiene un
+match y un aviso; PASS no los crea.
+
+Firestore garantiza unicidad de documento y precondición de `create()`.
+El servicio central `repository.record_decision` garantiza valores permitidos,
+vínculo positivo y coherencia entre documentos; **no son CHECK/FK SQL**.
+Las escrituras van en una sola transacción, incluido el aviso. Si falla un
+guardado o se rechaza el commit, se revierte el conjunto nuevo.
+No se añaden trabajos asíncronos ni callbacks posteriores al commit.
+
+Las peticiones simultáneas comparten la misma clave y convergen; la decisión
+contraria recibe 409. Se contemplan abortos durante lecturas y commits,
+colisiones de creación y reintentos con transacciones nuevas y espera acotada.
+El wrapper transaccional del SDK se instancia por operación, sin compartir
+estado de reintento entre hilos.
+Los datos inconsistentes producen 500, sin reparación silenciosa.
+La persistencia reside en Firestore y sobrevive al logout o reinicio de Django.
+
+Si se pierde la respuesta después de un commit remoto, puede existir el
+conjunto **completo** pese al error HTTP; repetir la misma decisión recupera
+su resultado sin duplicarlo. No se promete deshacer un commit remoto aceptado.
+
+### Evolución del esquema e índices
+
+La evolución es aditiva: no hay migraciones Django que aplicar, datos borrados,
+tablas paralelas ni cambio de base de datos. Las colecciones nuevas se crean
+con su primera escritura. `backend/db.sqlite3` residual no se usa ni se modifica.
+
+El código previo no tiene escritores de `swipes/matches`. No se inspeccionó
+producción. Si existen datos externos en esas colecciones, comprobar antes del
+despliegue su compatibilidad con las claves y relaciones anteriores; no se
+transforman datos desconocidos automáticamente.
+
+Se conserva el índice de avisos y se añade el de exploración en
+[firestore.indexes.json](firestore.indexes.json). Desde `backend/`, con Firebase
+CLI autenticado y permiso de administrar índices:
+
+```powershell
+npx.cmd --yes --package firebase-tools@15.34.1 firebase deploy --only firestore:indexes --project swipehome-a51d7 --config firebase.json
+```
+
+Este comando publica únicamente índices. Comparar antes la definición con los
+índices remotos para conservar los ajenos a la tarea; esperar a que estén
+habilitados. **No se ha ejecutado contra producción.** Sin los índices requeridos,
+Firestore puede rechazar consultas y la API devuelve 500 seguro.
+Se mantienen cerradas las reglas de acceso directo de clientes.
+Las reglas de `tests/firestore.rules` son exclusivamente de los emuladores.
+
+### Comprobar US4 y regresiones
 
 Desde `backend/`:
 
 ```powershell
-.\.venv\Scripts\python.exe manage.py test accounts.test_notifications --verbosity 2
+.\.venv\Scripts\python.exe manage.py check
+.\.venv\Scripts\python.exe manage.py makemigrations --check --dry-run
+.\.venv\Scripts\python.exe -m pip check
+.\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2
 ```
 
-13 pruebas nuevas verifican autenticación y revocación, ambos roles, destinatario
-verificado, rechazo de selectores de cuenta, límites, cursores firmados y su
-vinculación a la cuenta, precisión temporal, campos públicos, consulta Firestore
-y ausencia de escrituras. Firebase se simula; no se accede a producción.
-Suite completa: 103 pruebas, 101 pasan y 2 integraciones Auth se omiten por
-no estar configurado el emulador. `manage.py check`: sin incidencias.
-La consulta y el índice no se han verificado contra Firestore real o su emulador.
+Sin emuladores: **140 pruebas descubiertas, 116 correctas y 24 integraciones
+omitidas**. Para la verificación completa hacen falta Node 24 y Java 21.
+Este comando inicia/detiene Auth y Firestore Emulator en loopback
+(9099 y 8080), sin usar credenciales ni producción:
+
+```powershell
+npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts properties --verbosity 2"
+```
+
+Resultado comprobado: **140 pruebas correctas, sin omisiones**, incluidos
+concurrencia con barreras/hilos y Firestore real emulado, rollback de los tres
+guardados y rechazo de commit, unicidad, privacidad, paginación tras decidir,
+persistencia y registro/login/publicación. El recorrido de Auth real simula
+únicamente Storage. `check`, `makemigrations --check --dry-run`, `pip check`
+y `git diff --check` también pasan. No hay lint/formatter Python configurado.
+CI está preparado para ejecutar esta misma suite con Java 21.
+El emulador no demuestra el despliegue de índices ni el funcionamiento de
+Storage o Firestore en producción.
+
+### Ejemplo desde un consumidor Firebase existente
+
+El SDK ya inicia sesión según el contrato del proyecto. Con el objeto
+`currentUser` autenticado del SDK, sin guardar tokens en el repositorio:
+
+```javascript
+const headers = {Authorization: "Bearer " + await currentUser.getIdToken()};
+const pageResponse = await fetch("/api/inmuebles/explorar?limit=20", {headers});
+const page = await pageResponse.json();
+const home = page.items[0];
+if (home) {
+  const response = await fetch("/api/inmuebles/" + encodeURIComponent(home.id) + "/decision", {
+    method: "POST",
+    headers: {...headers, "Content-Type": "application/json"},
+    body: JSON.stringify({decision: "LIKE"})
+  });
+  console.log(response.status, await response.json());
+}
+if (page.next_cursor) {
+  const next = await fetch("/api/inmuebles/explorar?limit=20&cursor=" +
+    encodeURIComponent(page.next_cursor), {headers});
+  console.log(await next.json());
+}
+```
+
+Como SELLER, obtener su propio token y consultar:
+
+```javascript
+const response = await fetch("/api/notificaciones?limit=20", {
+  headers: {Authorization: "Bearer " + await currentUser.getIdToken()}
+});
+console.log(response.status, await response.json());
+```
+
+No se necesitan cookies ni token CSRF para este contrato Bearer.
+Detalle de arquitectura, garantías, compatibilidad y pruebas:
+[US4 backend](<../Agents mds/us4_backend.md>).
