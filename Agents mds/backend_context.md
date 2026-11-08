@@ -1,5 +1,45 @@
 # Contexto backend de SwipeHome
 
+## Estado vigente — US4 y US6 (8 noviembre 2026)
+
+El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
+cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
+para US 4.4–4.7. Los contratos vigentes están en el
+[README backend](../backend/README.md), [US4 backend](us4_backend.md) y
+[US6 backend](us6_backend.md).
+
+US4 reutiliza usuarios y anuncios actuales, fotografías ordenadas en
+`listings.photos`, autenticación con revocación y la colección `notifications`.
+LIKE crea directamente decisión, match y aviso; PASS solo crea decisión.
+No hay aceptación posterior del Vendedor ni reserva del inmueble.
+
+`accounts/repository.py` centraliza todo Firestore/Storage, incluida la
+transacción y las claves canónicas `swipes/{key}`, `matches/{key}` y
+`notifications/match-{key}`. Firestore garantiza unicidad de path; valores,
+referencias y conjunto completo son garantías del servicio, no CHECK/FK.
+Los reintentos equivalentes son 200, nuevos 201 y contrarios 409.
+Abortos de lectura/commit y colisiones usan transacciones nuevas acotadas.
+
+GET `/api/inmuebles/explorar` y POST `/api/inmuebles/{id}/decision` son BUYER;
+GET `/api/notificaciones` es solo SELLER. `request.user` se construye desde el
+token verificado y el perfil, sin aceptar selectores de identidad del cliente.
+Los GET comparten `limit/cursor` 20/50, orden fecha/ID descendentes y cursor
+firmado. Exploración carga decisiones en batch, sin OFFSET ni consultas por foto.
+
+La evolución de esquema es aditiva y conserva avisos históricos; no hay
+migraciones ORM. Los índices están en `backend/firestore.indexes.json` y su
+configuración en `backend/firebase.json`; no se han desplegado remotamente.
+El detalle de compatibilidad y límites de garantías está en US4 backend.
+
+Verificación: 140 pruebas pasan con Auth/Firestore Emulator, sin omisiones;
+sin emuladores pasan 116 y se omiten 24 integraciones. Django check, comprobación
+de migraciones, pip check y diff check correctos. No se ha probado producción.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
+# Contexto backend de SwipeHome
+
 > Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
 > El contrato vigente de edición del perfil, contraseña y logout está en
 > [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
@@ -157,3 +197,5 @@ La documentación puede describir estas relaciones sin imponer tablas, clases, c
 Un vendedor puede tener varios inmuebles; cada inmueble pertenece a un vendedor. Cada anuncio publicado tiene al menos una fotografía, y las fotografías quedan asociadas al inmueble correspondiente.
 
 No está resuelto si «inmueble» y «anuncio» serán entidades separadas. Se han utilizado de forma conjunta en el backlog inicial; no duplicarlas automáticamente en el diseño.
+
+</details>

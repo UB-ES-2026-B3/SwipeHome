@@ -1,5 +1,40 @@
 # Contexto del proyecto SwipeHome
 
+## Estado vigente — US4 backend (8 noviembre 2026)
+
+El stack vigente es Django con Firebase Auth y Firestore. La implementación
+de US 4.4–4.7 sobre ese stack fue autorizada explícitamente por el usuario.
+Las descripciones anteriores de sesiones Django/SQLite son historial.
+
+**Regla vigente:** el Comprador da LIKE y crea directamente match y aviso
+al propietario. No hay aceptación del Vendedor ni segundo swipe. PASS no
+crea match ni aviso. Un match no reserva el anuncio y varios Compradores
+pueden tener match con la misma vivienda.
+
+| Historia | Estado de backend |
+|---|---|
+| US 4.4 | Exploración BUYER, anuncios completos, decisiones propias excluidas, todas las fotografías ordenadas, cursor sin OFFSET. |
+| US 4.5 | Decisiones LIKE/PASS, creación atómica, reintentos idempotentes, conflictos sin sobrescritura. |
+| US 4.6 | Persistencia Firestore con claves canónicas, transacciones, controles de coherencia y unicidad de path. |
+| US 4.7 | Avisos privados SELLER, relaciones de match/Comprador/vivienda y paginación. |
+
+Implementación y pruebas backend terminadas: 140 pruebas correctas con ambos
+emuladores, sin omisiones. Queda pendiente desplegar/verificar los índices
+remotos antes de activar las consultas en producción. No se ha implementado
+frontend de US4, chat, email, push ni lectura de avisos.
+US6 permanece vigente según [su contrato](us6_backend.md).
+
+La referencia de modelos, atomicidad, concurrencia, compatibilidad histórica y
+resultados reales es [US4 backend](us4_backend.md). Los contratos HTTP completos,
+ejemplos y comandos están en el [README backend](../backend/README.md).
+El backlog original de Sprint 0 se conserva a continuación como historial:
+sus afirmaciones sobre funcionalidades futuras no describen el estado actual.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
+# Contexto del proyecto SwipeHome
+
 > Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
 > El contrato vigente de edición del perfil, contraseña y logout está en
 > [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
@@ -369,3 +404,5 @@ También están pendientes:
 12. Detalles de CI/CD y criterios comunes de finalización adicionales, si el equipo los acuerda.
 
 Separar las decisiones pendientes de los requisitos que ya se deben cumplir. Si es imprescindible resolver una para implementar, plantear una propuesta explícita; la documentación no debe simular que el equipo ya la aprobó.
+
+</details>

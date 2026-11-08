@@ -230,8 +230,14 @@ class PasswordServiceTests(SimpleTestCase):
 class EmailRaceIntegrationTests(SimpleTestCase):
     """Concurrencia real del proveedor; nunca usa el proyecto de producción."""
 
+    def setUp(self):
+        host = os.environ["FIREBASE_AUTH_EMULATOR_HOST"]
+        self.assertTrue(host.startswith(("127.0.0.1:", "localhost:")))
+        self.project = os.environ.get("GCLOUD_PROJECT", "demo-swipehome-us6")
+        self.assertTrue(self.project.startswith("demo-"))
+
     def test_concurrent_email_updates_have_one_winner_and_no_partial_name(self):
-        app = initialize_app(options={"projectId": "demo-swipehome-us6"}, name="us6-race")
+        app = initialize_app(options={"projectId": self.project}, name="us6-race")
         users = []
         try:
             for i in range(2):
@@ -265,7 +271,7 @@ class EmailRaceIntegrationTests(SimpleTestCase):
         if not host.startswith(("127.0.0.1:", "localhost:")):
             self.fail("El emulador de las pruebas debe estar en loopback.")
         base = f"http://{host}/identitytoolkit.googleapis.com/v1/"
-        app = initialize_app(options={"projectId": "demo-swipehome-us6"}, name="us6-password")
+        app = initialize_app(options={"projectId": self.project}, name="us6-password")
         old, new = "Original password value", " New password value 🙂 "
         user = auth.create_user(email="password-integration@example.com", password=old, display_name="Ana", app=app)
         real_post = requests.post

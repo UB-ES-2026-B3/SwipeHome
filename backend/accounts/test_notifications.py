@@ -22,7 +22,7 @@ class NotificationApiTests(SimpleTestCase):
         ))
         self.revoked = self.enterContext(patch("accounts.repository.is_session_revoked", return_value=False))
         self.profile = self.enterContext(patch(
-            "accounts.repository.get_user_profile", return_value={"role": "BUYER"},
+            "accounts.repository.get_user_profile", return_value={"role": "SELLER", "name": "Seller"},
         ))
         self.read = self.enterContext(patch("accounts.repository.get_notifications", return_value=[]))
         self.writes = [self.enterContext(patch("accounts.repository." + name)) for name in (
@@ -38,14 +38,14 @@ class NotificationApiTests(SimpleTestCase):
                 "created_at": stamp or datetime(2026, 11, 6, tzinfo=timezone.utc),
                 "password": "secret", "recipient_uid": "buyer"}
 
-    def test_empty_both_roles_default_limit_and_no_writes(self):
-        for role in ("BUYER", "SELLER"):
-            self.profile.return_value = {"role": role}
-            response = self.get()
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json(), {"items": [], "next_cursor": None})
-            self.assertIn("no-store", response["Cache-Control"])
-            self.read.assert_called_with("buyer", limit=21, position=None)
+    def test_empty_seller_default_limit_buyer_forbidden_and_no_writes(self):
+        response = self.get()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"items": [], "next_cursor": None})
+        self.assertIn("no-store", response["Cache-Control"])
+        self.read.assert_called_once_with("buyer", limit=21, position=None)
+        self.profile.return_value = {"role": "BUYER"}
+        self.assertEqual(self.get().status_code, 403)
         for write in self.writes:
             write.assert_not_called()
 
@@ -115,7 +115,7 @@ class NotificationApiTests(SimpleTestCase):
         for dependency in (self.verify, self.revoked, self.profile, self.read):
             with self.subTest(dependency=dependency):
                 dependency.side_effect = RuntimeError("password=secret token=test-token internal traceback")
-                with self.assertLogs("accounts.notification_views", level="ERROR") as logs:
+                with self.assertLogs("accounts", level="ERROR") as logs:
                     response = self.get()
                 self.assertEqual(response.status_code, 500)
                 exposed = response.content.decode() + " ".join(logs.output)
