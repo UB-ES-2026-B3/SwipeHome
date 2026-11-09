@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth'
 import { BuyerHome } from './pages/BuyerHome'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
+import { NotificationsPage } from './pages/NotificationsPage'
 import { PublishPropertyPage } from './pages/PublishPropertyPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -90,6 +91,15 @@ export default function App() {
         element={
           <PrivateRoute>
             <ProfilePage />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/notificaciones"
+        element={
+          <PrivateRoute>
+            <NotificationsPage />
           </PrivateRoute>
         }
       />
