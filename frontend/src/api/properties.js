@@ -1,5 +1,34 @@
 import { auth } from '../firebase'
 
+async function authenticatedRequest(path, options = {}) {
+  const user = auth.currentUser
+  if (!user) return { ok: false, status: 401, data: { error: 'Necesitas iniciar sesión.' } }
+  const token = await user.getIdToken()
+  const response = await fetch(path, {
+    ...options,
+    headers: { ...options.headers, Authorization: `Bearer ${token}` },
+    cache: 'no-store',
+  })
+  const data = await response.json()
+  return { ok: response.ok, status: response.status, data }
+}
+
+export function getActiveProperties() {
+  return authenticatedRequest('/api/inmuebles')
+}
+
+export function exploreProperties(offset = 0) {
+  return authenticatedRequest(`/api/inmuebles/explorar?limit=10&offset=${offset}`)
+}
+
+export function decideProperty(propertyId, decision) {
+  return authenticatedRequest('/api/inmuebles/decidir', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ property_id: propertyId, decision }),
+  })
+}
+
 export async function publishProperty(fields, photos) {
   const user = auth.currentUser
   if (!user) return { ok: false, status: 401, data: { error: 'Necesitas iniciar sesión para publicar un inmueble.' } }

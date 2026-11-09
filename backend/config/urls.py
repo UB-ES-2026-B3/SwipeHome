@@ -5,6 +5,7 @@ from accounts.notification_views import notifications
 from config.health import health
 from properties.views import create_property
 from properties.discovery_views import explore_listings, listing_decision
+from properties.views import decide_property
 
 
 def profile_dispatch(request):
@@ -23,4 +24,5 @@ urlpatterns = [
     path("api/inmuebles/explorar", explore_listings, name="explore-listings"),
     path("api/inmuebles/<str:listing_id>/decision", listing_decision, name="listing-decision"),
     path("api/inmuebles", create_property, name="create-property"),
+    path("api/inmuebles/decidir", decide_property, name="decide-property"),
 ]

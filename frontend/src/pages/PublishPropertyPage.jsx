@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { publishProperty } from '../api/properties'
 import { FormField } from '../components/FormField'
 import { Logo } from '../components/Logo'
+import { useAuth } from '../hooks/useAuth'
 
 const MAX_PHOTOS = 10
 const MAX_PHOTO_SIZE = 5 * 1024 * 1024
@@ -86,6 +87,7 @@ const FIELD_ALIASES = {
 }
 
 export function PublishPropertyPage() {
+  const { logout } = useAuth()
   const navigate = useNavigate()
   const [fields, setFields] = useState(initialFields)
   const [photos, setPhotos] = useState([])
@@ -201,7 +203,16 @@ export function PublishPropertyPage() {
   return (
     <main className="publish-page">
       <header className="publish-page__header">
-        <Logo size="sm" />
+        <Logo size="sm" to="/vendedor/inicio" />
+        <div className="seller-dashboard__account">
+          <span className="seller-dashboard__role uniform-action">Vendedor</span>
+          <button type="button" className="seller-dashboard__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
+            Mi perfil
+          </button>
+          <button type="button" className="seller-dashboard__logout uniform-action" onClick={logout}>
+            LogOut
+          </button>
+        </div>
       </header>
       <div className="publish-page__inner">
         <button type="button" className="publish-page__back" onClick={() => navigate('/vendedor/inicio')}>
