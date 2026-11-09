@@ -54,6 +54,10 @@ export default function App() {
 
       {/* Inicio Vendedor */}
       <Route
+        path="/vendedor"
+        element={<Navigate to="/vendedor/inicio" replace />}
+      />
+      <Route
         path="/vendedor/inicio"
         element={
           <PrivateRoute requiredRole="SELLER">

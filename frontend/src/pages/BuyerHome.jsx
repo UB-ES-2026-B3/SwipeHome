@@ -96,13 +96,18 @@ export function BuyerHome() {
     <main className="home-page home-page--buyer">
       <header className="home-page__header">
         <Logo size="sm" to="/comprador/inicio" />
-        <button type="button" className="home-page__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
-          Mi perfil
-        </button>
+        <div className="buyer-dashboard__account">
+          <span className="buyer-dashboard__role uniform-action">Comprador</span>
+          <button type="button" className="home-page__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
+            Mi perfil
+          </button>
+          <button type="button" className="buyer-dashboard__logout uniform-action" onClick={logout}>
+            LogOut
+          </button>
+        </div>
       </header>
       <div className="home-page__content">
         <h1 className="home-page__title">¡Bienvenido, {user?.name || 'Comprador'}!</h1>
-        <p className="home-page__role-badge home-page__role-badge--buyer">Comprador</p>
         {status === 'loading' && <p className="property-explorer__message">Cargando viviendas…</p>}
         {status === 'error' && (
           <div className="property-explorer__message property-explorer__message--error" role="alert">
@@ -161,7 +166,6 @@ export function BuyerHome() {
             </div>
           </article>
         )}
-        <button type="button" className="home-page__logout uniform-action" onClick={logout}>Cerrar sesión</button>
       </div>
     </main>
   )

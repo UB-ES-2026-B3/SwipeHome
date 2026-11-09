@@ -582,12 +582,14 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
    ═══════════════════════════════════════════════════════════════════ */
 .home-page {
   min-height: 100vh;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: var(--sp-4);
+  background: var(--c-gray-50);
 }
-.home-page__content { text-align: center; max-width: 440px; }
+.home-page__content {
+  width: min(100% - 32px, 680px);
+  margin: 0 auto;
+  padding: var(--sp-8) 0;
+  text-align: center;
+}
 .home-page__title {
   font-size: 2rem;
   font-weight: 900;
@@ -763,9 +765,9 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   display: flex;
   align-items: center;
   justify-content: space-between;
-  min-height: 72px;
-  padding: 14px var(--sp-6);
-  background: var(--c-white);
+  min-height: 64px;
+  padding: var(--sp-2) var(--sp-6);
+  background: var(--c-gray-50);
   border-bottom: 1px solid var(--c-gray-100);
 }
 .seller-dashboard__account {
@@ -797,10 +799,27 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .seller-dashboard__content {
   max-width: 960px;
   margin: 0 auto;
-  padding: var(--sp-6);
+  padding: var(--sp-8) var(--sp-6);
 }
+.buyer-dashboard__account {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.buyer-dashboard__role {
+  color: #0070b8;
+  background: #f0f8ff;
+  border-radius: var(--r-btn);
+}
+.buyer-dashboard__logout {
+  color: var(--c-white);
+  background: var(--c-black);
+  border-radius: var(--r-btn);
+}
+.buyer-dashboard__logout:hover { background: var(--c-gray-700); }
 .seller-dashboard__publish {
-  padding: 13px 28px;
+  min-height: 40px;
+  padding: 0 24px;
   color: var(--c-white);
   background: var(--c-red);
   border-radius: var(--r-btn);
@@ -811,7 +830,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .seller-dashboard__list { margin-top: var(--sp-6); }
 .seller-dashboard__list h1 {
   margin-bottom: var(--sp-3);
-  font-size: 1.5rem;
+  font-size: 2rem;
   font-weight: 900;
   letter-spacing: -0.03em;
 }
@@ -831,6 +850,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   background: var(--c-white);
   border: 1px solid var(--c-gray-100);
   border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
 }
 .seller-dashboard__property span:first-child,
 .seller-dashboard__empty strong { font-weight: 700; }
@@ -839,31 +859,82 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   color: var(--c-gray-400);
   font-size: 0.875rem;
 }
+.seller-dashboard__notifications {
+  margin-top: var(--sp-8);
+}
+.seller-dashboard__section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-3);
+}
+.seller-dashboard__section-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+.seller-dashboard__notifications-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  list-style: none;
+}
+.seller-dashboard__notification {
+  padding: var(--sp-3);
+  background: var(--c-white);
+  border: 1px solid var(--c-gray-100);
+  border-radius: var(--r-card);
+}
+.seller-dashboard__notification p {
+  margin: 0 0 var(--sp-1);
+  font-weight: 700;
+}
+.seller-dashboard__notification time {
+  color: var(--c-gray-400);
+  font-size: 0.875rem;
+}
+.seller-dashboard__message {
+  padding: var(--sp-4);
+  color: var(--c-gray-500);
+  background: var(--c-white);
+  border: 1px solid var(--c-gray-100);
+  border-radius: var(--r-card);
+}
+.seller-dashboard__message p { margin: 0 0 var(--sp-2); }
+.seller-dashboard__message--error { color: var(--c-red); }
+.seller-dashboard__load-more { margin-top: var(--sp-3); }
 
 /* ═══════════════════════════════════════════════════════════════════
    PUBLICACIÓN DE INMUEBLE
    ═══════════════════════════════════════════════════════════════════ */
 .publish-page {
   min-height: 100vh;
-  padding: 0 var(--sp-4) var(--sp-6);
+  padding: 0 0 var(--sp-6);
   background: var(--c-gray-50);
 }
 .publish-page__header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  max-width: 960px;
-  min-height: 72px;
-  margin: 0 auto var(--sp-4);
+  min-height: 64px;
+  padding: var(--sp-2) var(--sp-6);
+  background: var(--c-gray-50);
+  border-bottom: 1px solid var(--c-gray-100);
 }
 .publish-page__inner {
   width: 100%;
   max-width: 700px;
-  margin: 0 auto;
-  padding: var(--sp-4);
+  margin: var(--sp-8) auto 0;
+  padding: var(--sp-6);
   background: var(--c-white);
   border: 1px solid var(--c-gray-100);
   border-radius: 14px;
+  box-shadow: var(--shadow-card);
 }
 .publish-page__back {
   color: var(--c-gray-700);
@@ -982,9 +1053,8 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   .seller-dashboard__content { padding: var(--sp-4) var(--sp-2); }
   .seller-dashboard__account-name { display: none; }
   .seller-dashboard__role { font-size: 0.65rem; }
-  .publish-page { padding-inline: var(--sp-2); }
-  .publish-page__header { min-height: 64px; }
-  .publish-page__inner { padding: var(--sp-3); }
+  .publish-page__header { padding: 12px var(--sp-2); }
+  .publish-page__inner { margin-inline: var(--sp-2); padding: var(--sp-3); width: auto; }
   .publish-form__grid,
   .publish-form__grid--three { grid-template-columns: 1fr; }
 }
@@ -1077,14 +1147,16 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 
 /* ── Perfil ─────────────────────────────────────────────────────── */
 .home-page__header {
-  position: absolute;
+  position: sticky;
   top: 0;
-  left: 0;
-  right: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: var(--sp-2) var(--sp-4);
+  min-height: 64px;
+  padding: var(--sp-2) var(--sp-6);
+  background: var(--c-gray-50);
+  border-bottom: 1px solid var(--c-gray-100);
 }
 .home-page__profile,
 .seller-dashboard__profile {
@@ -1120,7 +1192,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   align-items: center;
   justify-content: space-between;
   padding: var(--sp-2) var(--sp-6);
-  background: var(--c-white);
+  background: var(--c-gray-50);
   border-bottom: 1px solid var(--c-gray-100);
 }
 .profile-page__header-actions {
@@ -1198,6 +1270,9 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 .home-page__profile.uniform-action,
 .home-page__logout.uniform-action,
+.buyer-dashboard__role.uniform-action,
+.buyer-dashboard__logout.uniform-action,
+.seller-dashboard__role.uniform-action,
 .seller-dashboard__profile.uniform-action,
 .seller-dashboard__logout.uniform-action,
 .profile-page__logout.uniform-action {
