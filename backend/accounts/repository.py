@@ -1,4 +1,4 @@
-"""Único módulo del proyecto que habla con Firestore y Firebase Storage.
+"""Único módulo del proyecto que habla con Firestore y Azure Blob Storage.
 
 Las vistas llaman aquí, nunca a Firestore directamente. Si algún día se cambia
 de base de datos, se reescribe este fichero y nada más.
@@ -25,11 +25,12 @@ Colección `listings`, con id generado por Firestore:
 import hashlib
 import json
 import logging
-from urllib.parse import quote
 from uuid import uuid4
 
-from firebase_admin import auth, firestore, storage
+from azure.storage.blob import ContentSettings
+from firebase_admin import auth, firestore
 
+from .azure_storage import get_container_client
 from .fields import normalize_account_email
 from .firebase import get_app
 
@@ -78,10 +79,6 @@ def get_user_profile(uid) -> dict | None:
     return _public_profile(uid, data)
 
 
-def _storage_bucket():
-    return storage.bucket(app=get_app())
-
-
 def create_listing(uid, *, values, photos) -> dict:
     """Sube fotografías y crea el anuncio, compensando fallos confirmados."""
     stored_values = {
@@ -91,7 +88,7 @@ def create_listing(uid, *, values, photos) -> dict:
     }
     stored_values.pop("price")
     stored_values.pop("surface")
-    bucket = _storage_bucket()
+    container = get_container_client()
     uploaded = []
     reference = _listings().document()
     listing = {
@@ -102,21 +99,24 @@ def create_listing(uid, *, values, photos) -> dict:
         "created_at": firestore.SERVER_TIMESTAMP,
     }
     for photo in photos:
-        name = f"listings/{uid}/{uuid4().hex}"
-        blob = bucket.blob(name)
+        # El contenedor ya separa las fotos de anuncios: sin prefijo adicional.
+        name = f"{uid}/{uuid4().hex}"
+        blob = container.get_blob_client(name)
         uploaded.append(blob)
         try:
             photo.seek(0)
-            blob.upload_from_file(photo, content_type=photo.content_type)
-            token = uuid4().hex
-            blob.metadata = {"firebaseStorageDownloadTokens": token}
-            blob.patch()
-            bucket_name = bucket.name
-            url = (
-                f"https://firebasestorage.googleapis.com/v0/b/{bucket_name}/o/"
-                f"{quote(name, safe='')}?alt=media&token={token}"
+            # overwrite=True: si se pierde la respuesta de un intento que sí
+            # llegó, el reintento del SDK no falla con 409. El nombre es un
+            # uuid4, así que nunca pisa la foto de otro anuncio.
+            blob.upload_blob(
+                photo,
+                length=photo.size,
+                overwrite=True,
+                content_settings=ContentSettings(content_type=photo.content_type),
             )
-            listing["photos"].append(url)
+            # El contenedor tiene acceso anónimo «Blob»: la URL pública basta,
+            # sin token de descarga ni SAS.
+            listing["photos"].append(blob.url)
         except Exception:
             _cleanup_uploaded(uploaded)
             raise
@@ -149,7 +149,7 @@ def create_listing(uid, *, values, photos) -> dict:
 def _cleanup_uploaded(uploaded):
     for blob in uploaded:
         try:
-            blob.delete()
+            blob.delete_blob()
         except Exception as cleanup_error:
             logger.error(
                 "No se pudo limpiar una fotografía de la publicación (%s).",

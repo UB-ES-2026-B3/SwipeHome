@@ -336,7 +336,8 @@ class FirebaseFlowTests(SimpleTestCase):
             self.enterContext(patch(target, return_value=app))
         self.enterContext(patch("accounts.repository.firestore.client", return_value=db))
         # Storage es el único proveedor simulado en este recorrido.
-        self.enterContext(patch("accounts.repository._storage_bucket"))
+        container = self.enterContext(patch("accounts.repository.get_container_client"))
+        container.return_value.get_blob_client.return_value.url = "https://example.com/foto.jpg"
         client = Client(enforce_csrf_checks=True)
         suffix = uuid4().hex
         users = {}

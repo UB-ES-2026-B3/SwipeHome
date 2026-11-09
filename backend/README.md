@@ -40,6 +40,22 @@ $env:DJANGO_DEV = '1'
 .\.venv\Scripts\python.exe manage.py runserver
 ```
 
+Para publicar anuncios con fotos hace falta además la cadena de conexión de
+Azure Storage (pídesela a Arnau; es un secreto). Cópiala al portapapeles y
+cárgala así, sin escribirla en la línea de comandos para que no quede en el
+historial de PowerShell:
+
+```powershell
+$env:AZURE_STORAGE_CONNECTION_STRING = (Get-Clipboard -Raw).Trim()
+$env:AZURE_STORAGE_CONNECTION_STRING.Length            # > 0
+$env:AZURE_STORAGE_CONNECTION_STRING.Substring(0, 30)  # DefaultEndpointsProtocol=https
+```
+
+Comprueba la longitud y el inicio antes de seguir: un aviso oculto
+(`Read-Host -AsSecureString`) puede no recibir el pegado y dejar la variable
+vacía o con basura. Sin la variable, el servidor arranca pero publicar devuelve
+`500` y el log dice qué falta.
+
 [.env.example](.env.example) describe todas las variables. El archivo `.env` no se
 carga automáticamente: hay que definirlas en la terminal. El frontend Vite
 proxifica `/api/*` a `http://127.0.0.1:8000`.
@@ -68,8 +84,12 @@ La publicación requiere un ID token Firebase válido y un perfil con rol `SELLE
 El cuerpo es `multipart/form-data`, admite nombres de campos en inglés o
 castellano y recibe entre 1 y 10 fotografías en `photos`, `fotografias` o
 `images`. Cada archivo debe ser JPEG, PNG o WebP real y ocupar como máximo 5 MB.
-Las fotografías se suben a Firebase Storage y el anuncio se guarda en la
-colección Firestore `listings` con el `seller_uid` obtenido del token.
+Las fotografías se suben a Azure Blob Storage (contenedor
+`AZURE_STORAGE_CONTAINER`, por defecto `listings`, blobs
+`{uid}/{uuid}`) y el anuncio se guarda en la colección Firestore
+`listings` con el `seller_uid` obtenido del token y la URL pública de cada
+blob. El contenedor tiene acceso anónimo «Blob»: las URLs se leen sin
+credenciales ni token, pero el contenedor no se puede listar.
 El contrato completo, el significado de cada código y cómo debe reaccionar el
 frontend están en el §3 de la
 [especificación](<../Agents mds/firebase_auth_migration.md>).
@@ -84,6 +104,7 @@ contraseña de 15–128 caracteres sin recortar y rol `SELLER` o `BUYER`.
 - `repository.py` — **único** módulo que accede a Firestore (colecciones `users`, `listings`, `swipes`, `matches`, `notifications` y `revoked_sessions`).
 - `authentication.py` — extrae y verifica el ID token. Nunca lo escribe en los logs.
 - `firebase.py` — inicializa el Admin SDK, de forma perezosa y una sola vez.
+- `azure_storage.py` — crea el cliente del contenedor de fotografías, de forma perezosa y una sola vez. Nunca escribe la cadena de conexión en logs ni excepciones.
 - `validation.py` — validación del registro.
 - `fields.py` — `normalize_account_email`, la única regla de normalización de email.
 
@@ -147,8 +168,9 @@ console.log(response.status, await response.json());
 ```
 
 Se espera `201` y un identificador de anuncio. En Firestore debe aparecer un
-documento en `listings` con `seller_uid` igual al uid del token y las URLs de
-Firebase Storage. Un usuario sin token obtiene `401` y un usuario `BUYER`
+documento en `listings` con `seller_uid` igual al uid del token y las URLs
+`https://<cuenta>.blob.core.windows.net/<contenedor>/<uid>/<uuid>`,
+que se abren en el navegador sin iniciar sesión. Un usuario sin token obtiene `401` y un usuario `BUYER`
 obtiene `403`.
 
 ## Dependencias reproducibles
@@ -163,8 +185,14 @@ más el paquete nuevo con su versión fijada y sustituye el fichero por la salid
 
 Build `pip install -r requirements.txt`, start
 `gunicorn config.wsgi:application --bind 0.0.0.0:$PORT`. Variables:
-`DJANGO_SECRET_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_PROJECT_ID` y
-`FIREBASE_STORAGE_BUCKET`. Render
+`DJANGO_SECRET_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`, `FIREBASE_PROJECT_ID`,
+`AZURE_STORAGE_CONNECTION_STRING` (secreto: contiene la clave de la cuenta) y,
+opcionalmente, `AZURE_STORAGE_CONTAINER` (por defecto `listings`). Sin la
+cadena de conexión el servidor arranca y responde, pero publicar devuelve `500`
+y el log indica qué variable falta o qué le pasa. El cliente de Azure limita
+reintentos y timeouts para que una subida fallida termine en ~19 s como máximo,
+antes de los 30 s de gunicorn; no se cambia `--timeout` (ver
+`infra_context.md`). Render
 inyecta `RENDER_EXTERNAL_HOSTNAME`, y `settings.py` lo añade a `ALLOWED_HOSTS` y
 activa `SECURE_PROXY_SSL_HEADER`. Ver `infra_context.md` §3.
 
@@ -420,7 +448,7 @@ Desde `backend/`:
 .\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2
 ```
 
-Sin emuladores: **140 pruebas descubiertas, 116 correctas y 24 integraciones
+Sin emuladores: **152 pruebas descubiertas, 128 correctas y 24 integraciones
 omitidas**. Para la verificación completa hacen falta Node 24 y Java 21.
 Este comando inicia/detiene Auth y Firestore Emulator en loopback
 (9099 y 8080), sin usar credenciales ni producción:
@@ -429,11 +457,11 @@ Este comando inicia/detiene Auth y Firestore Emulator en loopback
 npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts properties --verbosity 2"
 ```
 
-Resultado comprobado: **140 pruebas correctas, sin omisiones**, incluidos
+Resultado comprobado: **152 pruebas correctas, sin omisiones**, incluidos
 concurrencia con barreras/hilos y Firestore real emulado, rollback de los tres
 guardados y rechazo de commit, unicidad, privacidad, paginación tras decidir,
 persistencia y registro/login/publicación. El recorrido de Auth real simula
-únicamente Storage. `check`, `makemigrations --check --dry-run`, `pip check`
+únicamente Azure Blob Storage. `check`, `makemigrations --check --dry-run`, `pip check`
 y `git diff --check` también pasan. No hay lint/formatter Python configurado.
 CI está preparado para ejecutar esta misma suite con Java 21.
 El emulador no demuestra el despliegue de índices ni el funcionamiento de
