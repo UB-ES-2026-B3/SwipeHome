@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Logo } from '../components/Logo'
 import { useAuth } from '../hooks/useAuth'
@@ -7,7 +7,22 @@ import { getNotifications } from '../api/notifications'
 /**
  * Pantalla de notificaciones (/notificaciones).
  * Muestra los avisos del usuario (Comprador o Vendedor) con paginación.
- * Cumple con todos los criterios de aceptación de US 7.1.
+ * 
+ * US 7.1: Pantalla de notificaciones
+ * US 7.2: Conexión con API y gestión de errores
+ * 
+ * Criterios de aceptación:
+ * - Reutiliza GET /api/notificaciones (US4)
+ * - Usa la sesión existente (Authorization: Bearer token)
+ * - Consulta al entrar y al recargar
+ * - Botón "Actualizar" vuelve a consultar sin duplicar
+ * - Evita solicitudes repetidas mientras se actualiza
+ * - Cargar más conserva los anteriores
+ * - Errores iniciales permiten reintentar
+ * - Fallos en actualización conservan avisos visibles
+ * - 401: Cierra sesión y redirige a login
+ * - 500: Error reintentable sin cerrar sesión
+ * - Solo datos del servidor, no ficticios
  */
 export function NotificationsPage() {
   const { user, logout } = useAuth()
@@ -19,6 +34,9 @@ export function NotificationsPage() {
   const [cursor, setCursor] = useState(null)
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
+  
+  // Ref para evitar solicitudes simultáneas
+  const isRefreshingRef = useRef(false)
 
   // Formato de fecha en español
   const formatDate = (dateString) => {
@@ -43,31 +61,58 @@ export function NotificationsPage() {
     })
   }
 
-  // Cargar notificaciones
-  const loadNotifications = async (nextCursor = null) => {
+  /**
+   * Cargar notificaciones del servidor.
+   * 
+   * @param {string|null} nextCursor - Cursor para paginación. Si es null, carga desde el inicio.
+   * @param {boolean} isRefresh - Si es true, es una actualización (no duplica)
+   */
+  const loadNotifications = async (nextCursor = null, isRefresh = false) => {
     try {
-      if (!nextCursor) {
-        setLoading(true)
-        setError(null)
-      } else {
-        setLoadingMore(true)
-      }
-      
-      const result = await getNotifications({ cursor: nextCursor })
-      
-      if (!result.ok) {
-        if (result.status === 401) {
-          navigate('/login')
-          return
-        }
-        setError(result.data?.error || 'No se pudieron cargar las notificaciones. Inténtalo de nuevo.')
+      // CA-06: Evitar solicitudes repetidas
+      if (nextCursor === null && isRefreshingRef.current) {
         return
       }
 
-      const { items, cursor: newCursor, has_more } = result.data
+      if (!nextCursor) {
+        // CA-01: Consultar al entrar en la pantalla y al recargar
+        // CA-03: Se evita duplicar notificaciones ya mostradas
+        setLoading(true)
+        setError(null)
+        isRefreshingRef.current = true
+      } else {
+        // CA-02: Cargar más resultados conserva los anteriores
+        setLoadingMore(true)
+      }
+      
+      // CA-01: Reutiliza GET /api/notificaciones
+      // CA-02: Las solicitudes utilizan la sesión existente (vía Authorization header en getNotifications)
+      const result = await getNotifications({ cursor: nextCursor })
+      
+      if (!result.ok) {
+        // CA-05: Manejo de errores según status
+        if (result.status === 401) {
+          // CA-05: Un 401 activa el tratamiento de sesión expirada
+          setError('Tu sesión ha caducado. Por favor, inicia sesión de nuevo.')
+          await logout()
+          navigate('/login')
+          return
+        }
+        
+        // CA-05: Un 500 se trata como error reintentable, sin cerrar la sesión
+        const errorMessage = result.data?.error || 'No se pudieron cargar las notificaciones. Inténtalo de nuevo.'
+        setError(errorMessage)
+        return
+      }
+
+      const { items = [], cursor: newCursor, has_more } = result.data
+      
+      // CA-03: Las notificaciones proceden del servidor, no de datos ficticios
       if (nextCursor) {
+        // CA-02: Cargar más resultados conserva los anteriores
         setNotifications(prev => [...prev, ...items])
       } else {
+        // CA-03: Actualizar no duplica las notificaciones ya mostradas
         setNotifications(items)
       }
       
@@ -75,43 +120,46 @@ export function NotificationsPage() {
       setHasMore(has_more || false)
     } catch (err) {
       console.error('Error fetching notifications:', err)
+      // CA-05: Un fallo se trata como error reintentable
       setError('Hubo un error al cargar las notificaciones. Inténtalo de nuevo.')
     } finally {
       setLoading(false)
       setLoadingMore(false)
+      isRefreshingRef.current = false
     }
   }
 
-  // Cargar notificaciones al montar el componente
+  // CA-01: Se consultan los avisos al entrar en la pantalla
   useEffect(() => {
     loadNotifications()
   }, [])
 
-  // Cargar más resultados
+  // CA-02: Cargar más resultados
   const handleLoadMore = () => {
-    if (cursor && hasMore && !loadingMore) {
-      loadNotifications(cursor)
+    // CA-06: Mientras se actualiza, se evita enviar solicitudes repetidas
+    if (cursor && hasMore && !loadingMore && !isRefreshingRef.current) {
+      loadNotifications(cursor, false)
     }
   }
 
-  // Actualizar notificaciones
+  // CA-01: «Actualizar» vuelve a consultar los resultados más recientes
   const handleRefresh = () => {
-    loadNotifications()
+    // CA-06: Se evita enviar solicitudes repetidas mediante el mismo control
+    if (!isRefreshingRef.current) {
+      loadNotifications(null, true)
+    }
   }
-
-  const navClass = user?.role === 'SELLER' ? 'seller-dashboard__account' : 'buyer-dashboard__account'
 
   return (
     <main className="notifications-page">
       <header className="home-page__header">
         <Logo size="sm" to={user?.role === 'SELLER' ? '/vendedor/inicio' : '/comprador/inicio'} />
-        <div className={navClass}>
-          <span className="uniform-action">{user?.role === 'SELLER' ? 'Vendedor' : 'Comprador'}</span>
+        <div className="home-page__account">
           <button type="button" className="home-page__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
             Mi perfil
           </button>
-          <button type="button" className="uniform-action" onClick={logout}>
-            LogOut
+          <button type="button" className="home-page__logout uniform-action" onClick={logout}>
+            Salir
           </button>
         </div>
       </header>
@@ -121,12 +169,12 @@ export function NotificationsPage() {
           <h1 className="notifications-page__title">Notificaciones</h1>
           <button 
             type="button" 
-            className="notifications-page__refresh"
+            className="btn"
             onClick={handleRefresh}
-            disabled={loading}
+            disabled={loading || isRefreshingRef.current}
             aria-label="Actualizar notificaciones"
           >
-            🔄 Actualizar
+            Actualizar
           </button>
         </div>
 
@@ -136,14 +184,14 @@ export function NotificationsPage() {
           </div>
         )}
 
-        {error && (
+        {error && notifications.length === 0 && (
           <div className="notifications-page__error" role="alert">
-            <p className="notifications-page__error-icon">⚠️</p>
             <p className="notifications-page__error-message">{error}</p>
             <button 
               type="button" 
-              className="notifications-page__retry"
+              className="btn btn--error"
               onClick={handleRefresh}
+              disabled={isRefreshingRef.current}
             >
               Reintentar
             </button>
@@ -152,7 +200,6 @@ export function NotificationsPage() {
 
         {!loading && !error && notifications.length === 0 && (
           <div className="notifications-page__empty">
-            <p className="notifications-page__empty-icon">📭</p>
             <p className="notifications-page__empty-message">
               Todavía no tienes notificaciones.
             </p>
@@ -161,6 +208,12 @@ export function NotificationsPage() {
 
         {notifications.length > 0 && (
           <>
+            {error && (
+              <div className="notifications-page__error-inline" role="alert">
+                <p className="notifications-page__error-message">{error}</p>
+              </div>
+            )}
+            
             <ul className="notifications-page__list">
               {notifications.map(notification => (
                 <li key={notification.id} className="notifications-page__item">
@@ -202,9 +255,9 @@ export function NotificationsPage() {
               <div className="notifications-page__load-more">
                 <button 
                   type="button"
-                  className="notifications-page__load-more-btn"
+                  className="btn"
                   onClick={handleLoadMore}
-                  disabled={loadingMore}
+                  disabled={loadingMore || isRefreshingRef.current}
                 >
                   {loadingMore ? 'Cargando...' : 'Cargar más'}
                 </button>
