@@ -331,6 +331,7 @@ Respuesta LIKE 201, o 200 en un reintento idéntico:
     "id": "clave-canonica",
     "decision_id": "clave-canonica",
     "listing_id": "listing-123",
+    "status": "PENDING",
     "created_at": "2026-11-08T10:01:00Z"
   }
 }
@@ -377,6 +378,83 @@ Nombre y título son instantáneas fijadas al crear el aviso. Se conservan
 previos sin match siguen devolviendo solo `id/type/message/created_at`; no se
 les inventan identidades ni matches. Los avisos US4 tienen siempre las relaciones
 completas. No se marca lectura ni se cambia ningún registro al consultar.
+
+### GET /api/matches
+
+Consulta paginada de matches mutuos confirmados (`status == "CONFIRMED"`).
+- Para **BUYER**: devuelve exclusivamente sus viviendas confirmadas con datos completos del inmueble (`listing_item`).
+- Para **SELLER**: devuelve exclusivamente matches confirmados de sus viviendas con datos del Comprador y vivienda.
+- Admite parámetro opcional `inmueble`: solo permite consultar viviendas relacionadas con el usuario autenticado (403 si pertenece a otro o no hay relación).
+- Ordenación: `confirmed_at DESC, __name__ DESC`.
+
+Ejemplo respuesta Comprador (200):
+```json
+{
+  "items": [
+    {
+      "id": "clave-canonica",
+      "status": "CONFIRMED",
+      "confirmed_at": "2026-11-10T12:00:00Z",
+      "created_at": "2026-11-10T11:00:00Z",
+      "listing": {
+        "id": "listing-123",
+        "title": "Ático en Gràcia",
+        "price": "950.00",
+        "surface": "65.00",
+        "photos": ["https://..."],
+        "created_at": "2026-11-08T10:00:00Z"
+      }
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### GET /api/candidatos
+
+Consulta paginada de candidaturas pendientes (`status == "PENDING"`) para el Vendedor autenticado (`SELLER`).
+Un rol `BUYER` recibe 403.
+- Admite parámetro opcional `inmueble`: solo permite consultar viviendas del Vendedor (403 si no le pertenece).
+- Ordenación: `created_at DESC, __name__ DESC` (por fecha del interés inicial).
+- Paginación estable por cursor que previene saltos al confirmar o rechazar candidatos entre páginas.
+
+Ejemplo respuesta Vendedor (200):
+```json
+{
+  "items": [
+    {
+      "id": "clave-canonica",
+      "status": "PENDING",
+      "created_at": "2026-11-10T11:00:00Z",
+      "buyer": {"id": "buyer-uid", "name": "Ana"},
+      "listing": {"id": "listing-123", "title": "Ático en Gràcia"}
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### POST /api/matches/{id}/decision-vendedor
+
+Decisión del propietario sobre una candidatura (`SELLER`).
+`Content-Type: application/json`. Cuerpo admitido: `{"decision": "LIKE"}` o `{"decision": "PASS"}`.
+- Solo el propietario del inmueble asociado puede decidir (404 si no existe o es ajeno).
+- Comprueba que la candidatura procede de un interés positivo previo del Comprador.
+- `LIKE`: transforma `PENDING` en `CONFIRMED` y guarda `confirmed_at` y `decided_at`.
+- `PASS`: transforma `PENDING` en `REJECTED` y guarda `decided_at`.
+- No crea un segundo registro de match; actualiza el existente de forma atómica.
+- Idempotente: repetir la misma decisión devuelve 200 con el estado actual.
+- Conflicto: intentar contradecir una decisión ya tomada (`CONFIRMED` a `PASS` o `REJECTED` a `LIKE`) devuelve 409.
+
+Respuesta 200:
+```json
+{
+  "id": "clave-canonica",
+  "status": "CONFIRMED",
+  "decided_at": "2026-11-10T12:00:00Z",
+  "confirmed_at": "2026-11-10T12:00:00Z"
+}
+```
 
 ### Modelos Firestore, unicidad y transacciones
 
@@ -448,7 +526,7 @@ Desde `backend/`:
 .\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2
 ```
 
-Sin emuladores: **152 pruebas descubiertas, 128 correctas y 24 integraciones
+Sin emuladores: **170 pruebas descubiertas, 138 correctas y 32 integraciones
 omitidas**. Para la verificación completa hacen falta Node 24 y Java 21.
 Este comando inicia/detiene Auth y Firestore Emulator en loopback
 (9099 y 8080), sin usar credenciales ni producción:
@@ -457,7 +535,7 @@ Este comando inicia/detiene Auth y Firestore Emulator en loopback
 npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts properties --verbosity 2"
 ```
 
-Resultado comprobado: **152 pruebas correctas, sin omisiones**, incluidos
+Resultado comprobado: **170 pruebas correctas, sin omisiones**, incluidos
 concurrencia con barreras/hilos y Firestore real emulado, rollback de los tres
 guardados y rechazo de commit, unicidad, privacidad, paginación tras decidir,
 persistencia y registro/login/publicación. El recorrido de Auth real simula

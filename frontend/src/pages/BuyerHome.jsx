@@ -56,7 +56,7 @@ export function BuyerHome() {
       const result = await decideProperty(property.id, decision)
       if (result.ok) {
         setProperties((current) => current.slice(1))
-        if (result.data.match) setFeedback('Match creado')
+        if (result.data.match) setFeedback('Interés enviado')
         if (nextOffset !== null && properties.length <= 1) loadProperties()
       } else if (result.status === 409) {
         setError('Esta vivienda ya tenía una decisión. Actualizando el explorador…')
