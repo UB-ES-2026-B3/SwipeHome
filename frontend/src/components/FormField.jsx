@@ -19,7 +19,7 @@ export function FormField({ id, label, error, children, ...inputProps }) {
       {children ? (
         // Render de select u otros elementos personalizados
         <div
-          className={`form-field__input-wrapper ${error ? 'form-field__input-wrapper--error' : ''}`}
+          className={`form-field__input-wrapper ${children.type === 'select' ? 'form-field__select-wrapper' : ''} ${error ? 'form-field__input-wrapper--error' : ''}`}
           aria-describedby={errorId}
         >
           {children}

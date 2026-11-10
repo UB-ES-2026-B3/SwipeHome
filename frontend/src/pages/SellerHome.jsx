@@ -4,7 +4,7 @@ import { useAuth } from '../hooks/useAuth'
 /**
  * Inicio del Vendedor (/vendedor/inicio).
  * Destino de navegación tras un registro o login exitoso con rol SELLER.
- * El contenido completo de esta pantalla está fuera del alcance del Sprint 0.
+ * Inicio del vendedor y acceso al formulario de publicación.
  */
 export function SellerHome() {
   const { user, logout } = useAuth()
@@ -21,15 +21,17 @@ export function SellerHome() {
           Vendedor
         </p>
         <p className="home-page__desc">
-          Desde aquí podrás publicar tus inmuebles y gestionar tus anuncios.
-          Las funcionalidades completas estarán disponibles próximamente.
+          Publica un inmueble para que los compradores puedan encontrarlo.
         </p>
-        <button
-          className="home-page__cta"
-          onClick={() => navigate('/publicar')}
-        >
-          Publicar inmueble
-        </button>
+        <nav className="home-page__seller-menu" aria-label="Menú del vendedor">
+          <button
+            type="button"
+            className="home-page__cta"
+            onClick={() => navigate('/publicar')}
+          >
+            Publicar
+          </button>
+        </nav>
         {/* Provisional: desbloquea el flujo de logout; libre de mover o rediseñar. */}
         <button type="button" className="home-page__logout" onClick={logout}>
           Cerrar sesión

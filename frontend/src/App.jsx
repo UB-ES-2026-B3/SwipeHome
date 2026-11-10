@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth'
 import { BuyerHome } from './pages/BuyerHome'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
+import { PropertyPublish } from './pages/PropertyPublish'
 import { RegisterPage } from './pages/RegisterPage'
 import { SellerHome } from './pages/SellerHome'
 
@@ -63,6 +64,16 @@ export default function App() {
         element={
           <PrivateRoute requiredRole="BUYER">
             <BuyerHome />
+          </PrivateRoute>
+        }
+      />
+
+      {/* Solo un Vendedor autenticado puede abrir el formulario. */}
+      <Route
+        path="/publicar"
+        element={
+          <PrivateRoute requiredRole="SELLER">
+            <PropertyPublish />
           </PrivateRoute>
         }
       />

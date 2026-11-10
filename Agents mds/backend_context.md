@@ -14,6 +14,11 @@
 > por Firebase Auth. Ver `infra_context.md` y `firebase_auth_migration.md`. Pendiente
 > de actualizar.
 
+> Estado US3-8 (1 noviembre 2026): la interfaz `/publicar` integra el endpoint
+> mediante FormData autenticado. La verificación usa Auth Emulator e intercepta
+> la API, sin escrituras reales en Firestore/Storage. Detalle en el
+> [README backend](../backend/README.md).
+
 ## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
 
 DJANGO_DEV=1 activa HTTP local con cookies sin Secure; sin esa variable se conserva

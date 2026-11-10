@@ -505,7 +505,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 
 /* Wrapper del select + flecha */
 .form-field__input-wrapper { position: relative; }
-.form-field__input-wrapper::after {
+.form-field__select-wrapper::after {
   content: '';
   position: absolute;
   right: 14px;
@@ -572,6 +572,115 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   transition: opacity 0.15s;
 }
 .home-page__cta:hover { opacity: 0.8; }
+.home-page__seller-menu { display: flex; justify-content: center; }
+
+/* ═══════════════════════════════════════════════════════════════════
+   PUBLICACIÓN DE INMUEBLES
+   ═══════════════════════════════════════════════════════════════════ */
+.property-page {
+  min-height: 100vh;
+  padding: 104px var(--sp-4) var(--sp-8);
+  background: var(--c-gray-50);
+}
+.property-page__header,
+.property-form,
+.property-success {
+  width: 100%;
+  max-width: 760px;
+  margin: 0 auto;
+}
+.property-page__header { margin-bottom: var(--sp-3); }
+.property-page__back {
+  margin-bottom: var(--sp-2);
+  color: var(--c-gray-700);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.property-page__title {
+  font-size: 2rem;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+}
+.property-page__subtitle { color: var(--c-gray-700); }
+.property-form,
+.property-success {
+  padding: var(--sp-4);
+  background: var(--c-white);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-sm);
+}
+.property-form { display: flex; flex-direction: column; gap: var(--sp-4); }
+.property-form__fields {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-2);
+}
+.property-form__fields .form-field:nth-child(5) { grid-column: 1 / -1; }
+.property-form__textarea { resize: vertical; }
+.property-photos { display: flex; flex-direction: column; gap: var(--sp-2); }
+.property-photos__heading h2,
+.property-success h2 { font-size: 1.25rem; font-weight: 800; }
+.property-photos__heading p,
+.property-success p { color: var(--c-gray-700); font-size: 0.875rem; }
+.property-photos__picker {
+  width: fit-content;
+  padding: 10px 20px;
+  border: 1px solid var(--c-gray-200);
+  border-radius: var(--r-btn);
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 700;
+}
+.property-photos__picker:hover { background: var(--c-gray-50); }
+.property-photos__input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+.property-photos__input:focus-visible ~ .property-photos__grid { outline: 2px solid var(--c-black); }
+.property-photos__errors {
+  padding: 12px 16px;
+  background: var(--c-error-bg);
+  color: var(--c-error);
+  border-radius: var(--r-input);
+  font-size: 0.875rem;
+}
+.property-photos__errors li + li { margin-top: 6px; }
+.property-photos__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: var(--sp-2);
+  list-style: none;
+}
+.property-photos__item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--c-gray-700);
+  font-size: 0.8rem;
+}
+.property-photos__item img {
+  width: 100%;
+  height: 120px;
+  border-radius: var(--r-input);
+  object-fit: cover;
+  background: var(--c-gray-100);
+}
+.property-photos__remove {
+  width: fit-content;
+  color: var(--c-red);
+  text-decoration: underline;
+  font-size: 0.8rem;
+}
+.property-photos__remove:disabled { opacity: 0.5; cursor: not-allowed; }
+.property-success { display: flex; flex-direction: column; gap: var(--sp-2); }
+.property-success .home-page__logout { width: fit-content; margin: 0 auto; }
+.property-form .register-form__submit { margin-top: 0; }
+.property-form .register-form__submit:disabled { cursor: progress; }
 
 /* ═══════════════════════════════════════════════════════════════════
    AUTH PAGE (registro standalone /registro)

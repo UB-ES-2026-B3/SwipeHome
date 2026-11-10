@@ -146,6 +146,28 @@ para no dejar un posible anuncio guardado apuntando a fotos borradas. Esos
 objetos requieren conciliación operativa; no se puede afirmar rollback
 distribuido absoluto ante una respuesta remota ambigua.
 
+### Resultado de US3-8: recorrido de publicación desde la interfaz
+
+La ruta `/publicar` está protegida para `SELLER` y envía el formulario como
+`multipart/form-data` a `POST /api/inmuebles` con el ID token Firebase. El
+frontend valida los campos y la firma de las imágenes JPEG/PNG/WebP, permite
+previsualizar y retirar fotografías, bloquea el envío durante la carga y
+conserva los datos y archivos seleccionados ante errores para reintentar.
+`BUYER` no muestra «Publicar» y el router le deniega la ruta directa; la API
+mantiene además su propia autorización SELLER.
+
+Ejecutado el 1 de noviembre de 2026: `npm test` pasó 17 pruebas de frontend;
+`npm run build` pasó y `npm run lint` dejó solo el aviso Fast Refresh ya existente
+en `AuthContext.jsx`. El recorrido de navegador con Firebase Auth Emulator
+comprobó ambos roles, errores de validación sin POST, fotografías rechazadas,
+selección/previsualización/retirada, envío con una y varias imágenes, bloqueo
+durante la carga, respuestas 500 y fallo de conexión con conservación de datos,
+reintento exitoso y ausencia de detalles internos. Las respuestas del endpoint
+se interceptaron; no se escribió en Firestore ni Storage reales. La persistencia
+integrada frontend→servicios Firebase reales sigue fuera de alcance porque el
+proyecto no configura emuladores de Firestore/Storage y su uso real no está
+habilitado para esta prueba.
+
 Referencias: [campos Django](https://docs.djangoproject.com/en/5.2/howto/custom-model-fields/),
 [restricciones](https://docs.djangoproject.com/en/5.2/ref/models/constraints/),
 [migraciones de datos](https://docs.djangoproject.com/en/5.2/ref/migration-operations/#runpython).

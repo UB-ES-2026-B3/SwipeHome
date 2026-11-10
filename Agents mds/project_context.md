@@ -269,7 +269,7 @@ La base actual de las sub-tareas utiliza entre **1 y 10 imágenes**, hasta **5 M
 
 - El frontend permite seleccionar, previsualizar y retirar imágenes antes de publicar.
 - Una imagen rechazada no elimina los demás datos ni las imágenes válidas.
-- Si no queda ninguna imagen válida, no se envía el formulario y se muestra `Añade al menos una fotografía.`
+- Si no queda ninguna imagen válida, no se envía el formulario y se muestra `Añade al menos una fotografía válida.`
 - El backend comprueba cantidad, tamaño y contenido real de los archivos; la extensión no basta.
 - Se conserva el orden enviado desde el formulario.
 - Cada imagen almacenada tiene un identificador o nombre generado por el sistema y se asocia al inmueble correcto.
@@ -320,6 +320,33 @@ Firestore/Storage. Si no puede confirmarse el resultado de una creación en
 Firestore, el repositorio conserva los objetos y registra el caso para
 conciliación, porque eliminarlos podría romper un anuncio que sí se guardó.
 No se declara atomicidad distribuida en ese escenario ambiguo.
+
+### Resultado de verificación de US3-8 (1 noviembre 2026)
+
+La interfaz de publicación está implementada en `/publicar`, protegida para
+Vendedores. El recorrido en navegador usó Firebase Auth Emulator y respuestas
+interceptadas de `/api/inmuebles`, sin crear anuncios ni subir fotos a Firebase
+real. Se verificaron:
+
+- Acceso desde «Publicar» para SELLER y ausencia de esa opción para BUYER; el
+  acceso directo del comprador a la ruta vuelve a `/comprador/inicio`.
+- Validación de campos y rechazo sin fotos, ambos sin solicitud a la API; rechazo
+  de formato de archivo con motivo visible y preservación del formulario.
+- Previsualización, orden de selección y retirada de fotografías, incluido el
+  bloqueo al retirar la última.
+- Envío multipart con token Firebase, una fotografía y varias; indicador de
+  carga y botón deshabilitado mientras la respuesta está pendiente.
+- La opción de alojamiento compartido no tiene valor inicial: sin elegirla no
+  se envía la solicitud; se completó el flujo con «Sí» y con «No».
+- Error 500 y fallo de conexión seguidos de reintento, conservando los datos y
+  la imagen seleccionada; confirmación tras las respuestas 201 simuladas y
+  ausencia de detalles internos en el mensaje mostrado.
+
+`frontend`: 17 tests Node pasan; `npm run build` pasa y `npm run lint` deja solo
+el aviso Fast Refresh preexistente de `AuthContext.jsx`. La prueba de navegador
+intercepta la API. Firestore y Storage no tienen emuladores en la configuración
+actual, así que no se afirma persistencia real de archivos ni de anuncios desde
+la interfaz; el contrato API de US3-7 se verificó con esos servicios simulados.
 
 ## 12. Tablero Kanban y límites de trabajo
 
@@ -375,13 +402,16 @@ También están pendientes:
    tiene contrato local documentado en el README backend; la ratificación del
    código de éxito por el backlog de producto sigue pendiente. Registro y
    GET /api/auth/me también tienen contrato documentado.
-2. Integracion frontend de GET /api/auth/me (endpoint backend ya implementado).
-3. Nombres técnicos de los campos de publicación y envío de fotografías.
-4. URL del formulario de registro: **`/registro`** (implementado en US1_Registro). URL del formulario de publicación: pendiente.
+2. Verificar GET /api/auth/me en el despliegue cuando se configure el entorno
+   final.
+3. Ratificación por producto de los nombres técnicos de publicación; el
+   contrato ya implementado está documentado en el README backend.
+4. URL del formulario de registro: **`/registro`** (implementado en US1_Registro). URL del formulario de publicación: **`/publicar`** (implementada y protegida en US3-8).
 5. Ratificación específica de máximos, tamaño y formatos de imágenes.
 6. Límites de textos y validación territorial del código postal.
 7. Semántica exacta del número de personas y de la oferta de habitaciones.
-8. Duración/expiración de sesiones y condiciones de despliegue de cookies.
+8. Parámetros de expiración/revocación de Firebase Auth y condiciones de
+   despliegue del frontend y backend.
 9. Cómo coordinar persistencia de datos e imágenes sin publicaciones parciales.
 10. Qué hacer ante reintentos cuando no se conoce si una publicación llegó a guardarse.
 11. Estimaciones, asignaciones personales, prioridad detallada y duración del sprint.

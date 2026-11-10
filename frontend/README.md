@@ -11,6 +11,12 @@ Copia `.env.example` a `.env.local` (ignorado por Git) y rellena los valores
 `VITE_FIREBASE_*`. Están en la consola de Firebase → Configuración del proyecto →
 General → Tus apps. No son secretos.
 
+Para que Auth use un emulador local en lugar de Firebase real, establece también
+`VITE_FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099`. Si la variable está vacía, el
+SDK no se conecta al emulador. Usa un proyecto demo (por ejemplo,
+`VITE_FIREBASE_PROJECT_ID=demo-swipehome-us3-8`) y no configures una cuenta de
+servicio para la prueba frontend.
+
 ```powershell
 npm install
 npm run dev
@@ -51,6 +57,24 @@ npm run build
 ```
 
 Son las mismas que ejecuta el CI.
+
+## Publicación de inmuebles (US3-8)
+
+El vendedor abre `/publicar` desde «Publicar» en su inicio. La ruta exige rol
+`SELLER`; a un `BUYER` se le redirige a su inicio. El formulario envía los campos
+y las fotografías con `FormData` a `POST /api/inmuebles`, autenticando con el ID
+token Firebase y dejando que el navegador genere el `Content-Type` multipart.
+Se aceptan JPEG/PNG/WebP reales, hasta 10 fotos de 5 MiB cada una. Los errores
+de campo o de foto evitan la solicitud; los errores de red/servidor conservan
+los datos para reintentar.
+
+`npm test` cubre el helper de validación y la construcción de la petición. El
+recorrido de navegador de US3-8 se verificó con Auth Emulator y respuestas del
+endpoint interceptadas para no escribir en Firebase real. `backend/tests/firebase.json`
+solo declara Auth Emulator; Firestore y Storage no tienen emuladores configurados,
+así que esta comprobación no valida escritura real del anuncio ni subida real de
+fotos. Los resultados detallados están en
+[README backend](../backend/README.md) y [project_context.md](../Agents%20mds/project_context.md).
 
 ## Integración US6
 

@@ -10,6 +10,11 @@
 > por Firebase Auth. Ver `infra_context.md` y `firebase_auth_migration.md`. Pendiente
 > de actualizar.
 
+> Estado US3-8 (1 noviembre 2026): `/publicar` está implementada y protegida
+> para `SELLER`. La ruta usa token Firebase, validación de campos y firmas de
+> imagen, selección/previsualización/retirada de fotos, envío multipart y
+> recuperación del formulario ante errores. Ver el resultado integrado al final.
+
 ## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
 
 DJANGO_DEV=1 activa HTTP local con cookies sin Secure; sin esa variable se conserva
@@ -125,7 +130,7 @@ Siempre usar la clase base `.btn` más un modificador:
 
 - Fija en la parte superior, `backdrop-filter: blur(8px)`.
 - Logo a la izquierda, botón "Iniciar sesión" (`.btn--red`) a la derecha.
-- Sin menú hamburguesa ni links adicionales hasta que US2/US3 lo requieran.
+- Sin menú hamburguesa. El inicio de SELLER incorpora el acceso «Publicar» de US3-8.
 
 ### Rutas
 
@@ -133,15 +138,17 @@ Siempre usar la clase base `.btn` más un modificador:
 |---|---|---|
 | `/` | `LandingPage` | Página principal con baraja, CTA y overlay de registro |
 | `/registro` | `RegisterPage` | Acceso directo por URL; mismo formulario sin overlay |
-| `/login` | Placeholder → `/` | Se implementa en US2 |
+| `/login` | `LoginPage` | Firebase Auth; destino según rol |
 | `/vendedor/inicio` | `SellerHome` | Protegida por rol SELLER |
 | `/comprador/inicio` | `BuyerHome` | Protegida por rol BUYER |
+| `/publicar` | `PropertyPublish` | Protegida por rol SELLER; Comprador vuelve a su inicio |
 
 ### Estructura de `frontend/src/`
 
 ```
 api/
-  auth.js             → getCsrfToken, registerUser, fetchCurrentUser
+  auth.js             → registro, login, perfil, logout y cambios de cuenta Firebase
+  properties.js       → POST multipart autenticado de anuncios
 context/
   AuthContext.jsx     → AuthProvider, AuthContext (user, loading, setUser, clearUser)
 hooks/
@@ -153,58 +160,29 @@ components/
 pages/
   LandingPage.jsx     → /, con navbar, hero, baraja de tarjetas y overlay de registro
   RegisterPage.jsx    → /registro, acceso directo standalone
-  SellerHome.jsx      → /vendedor/inicio (placeholder Sprint 0)
-  BuyerHome.jsx       → /comprador/inicio (placeholder Sprint 0)
+  SellerHome.jsx      → /vendedor/inicio y acceso «Publicar»
+  BuyerHome.jsx       → /comprador/inicio sin opción «Publicar»
+  PropertyPublish.jsx → /publicar, campos, fotos, validación, carga y resultado
+  propertyForm.js     → reglas de campos, cantidad, tamaño y firma de imagen
 App.jsx               → router con rutas protegidas (PrivateRoute)
 main.jsx              → BrowserRouter + AuthProvider + App
 index.css             → sistema de diseño completo (tokens, componentes, layout)
 ```
-  auth.js           → getCsrfToken, registerUser, fetchCurrentUser
-context/
-  AuthContext.jsx   → AuthProvider, AuthContext (user, loading, setUser, clearUser)
-hooks/
-  useAuth.js        → hook useAuth()
-components/
-  FormField.jsx     → campo reutilizable con label, input/select y error accesible
-  RegisterForm.jsx  → formulario de registro con validaciones US1
-pages/
-  RegisterPage.jsx  → /registro (redirige si ya autenticado)
-  SellerHome.jsx    → /vendedor/inicio (placeholder Sprint 0)
-  BuyerHome.jsx     → /comprador/inicio (placeholder Sprint 0)
-App.jsx             → router con rutas protegidas (PrivateRoute)
-main.jsx            → BrowserRouter + AuthProvider + App
-index.css           → sistema de diseño completo (tokens, componentes, layout)
-```
 
 ## Estado vigente de la integración con backend
 
-El backend ya implementa POST /api/auth/register y GET /api/auth/me sobre
-Django y SQLite local. [README backend](../backend/README.md) es la referencia
-principal de contratos, CSRF, cookies, certificados HTTPS, comandos y pruebas.
-Login aun esta pendiente; su codigo de exito y cuerpo deben acordarse.
+La autenticación actual usa Firebase Auth en el cliente y el perfil del backend
+en `GET /api/auth/me`. Las peticiones protegidas llevan el ID token Firebase en
+`Authorization: Bearer …`; no se usan sesiones ni CSRF de Django. Los contratos,
+comandos y resultados backend se mantienen en el
+[README del backend](../backend/README.md).
 
-- Obtener csrfToken mediante GET /api/auth/register antes del POST; conservar
-  la cookie CSRF y enviar X-CSRFToken. Volver a obtenerlo tras autenticar,
-  porque Django rota el token.
-- Registro devuelve 201 con id/name/email/role, 400 por datos invalidos, 409
-  por duplicado, 403 por CSRF y 500 por fallo interno. El navegador recibe
-  la cookie sessionid con HttpOnly, Secure y SameSite=Lax.
-- Al cargar o recargar, consultar GET /api/auth/me: 200 con id/name/email/role,
-  401 sin sesion y 500 como error reintentable. No tratar 500 como logout.
-- sessionid no se lee con JavaScript ni se guarda en localStorage. El navegador
-  gestiona la cookie; el servidor resuelve identidad y rol. No enviar un rol
-  o identificador del cliente como prueba de autenticacion.
-- Reutilizar las rutas de inicio de cada rol. Conectar /api al backend mediante
-  HTTPS local y un origen/proxy configurado. No hay CORS general habilitado:
-  no asumir que dos servidores en puertos distintos funcionan sin integrar
-  cookies, origen y CSRF. El comando frontend depende del stack que se elija.
-
-La suite backend pasa 53 pruebas, incluida consulta real por HTTPS a /api/auth/me.
-El resultado de la verificación US1-6 está registrado en el
-[README backend](../backend/README.md): los contratos de API y sesión pasan.
-También pasan build y lint; el lint informa una advertencia de Fast Refresh en
-`AuthContext.jsx`. El recorrido en navegador verificó registro, destino y
-recarga de sesión para ambos roles.
+La publicación utiliza `POST /api/inmuebles` con `FormData` y el token del
+usuario autenticado. El navegador no fija `Content-Type`, para que el navegador
+añada el límite multipart. `seller_uid` no se envía: el servidor lo deriva del
+token verificado y exige rol `SELLER`. El contrato de campos, fotos, tamaños y
+permisos vive en el README backend y la validación del producto en
+[project_context.md](project_context.md).
 
 ## Referencias principales
 
@@ -242,14 +220,32 @@ Las tareas US1-6, US2-7 y US3-8 cubren la comprobación de los recorridos integr
 - Aplicar la longitud de contraseña de la historia correspondiente: registro 15–128, login 1–128 caracteres.
 - En login, usar `Introduce un email válido.` para email vacío o inválido y `Email o contraseña incorrectos.` para ambos tipos de credenciales incorrectas. Mantener `/login` ante fallos.
 - En publicación, todos los campos definidos en US3 son obligatorios, incluida la elección Sí/No de alojamiento compartido, sin valor por defecto.
-- Exigir al menos una fotografía válida. Sin imágenes válidas, mostrar `Añade al menos una fotografía.` y no enviar el formulario.
+- Exigir al menos una fotografía válida. Sin imágenes válidas, mostrar `Añade al menos una fotografía válida.` y no enviar el formulario.
 - Una imagen rechazada no elimina los datos ni las imágenes válidas. Conservar el orden de selección y los datos ante errores para permitir reintentos. No se ha acordado persistencia del formulario al cerrar el navegador ni un sistema de borradores.
 - El menú de Comprador no muestra «Publicar». Los permisos y la identidad del propietario los comprueba el servidor.
 
-La sesion utiliza cookies y el rol procede del servidor. La recarga consulta
-GET /api/auth/me conforme al contrato anterior. No se adopta JWT/Bearer.
-HTTPS local esta preparado; las condiciones de deployment entre dominios
-siguen pendientes.
+La sesión está gestionada por Firebase Auth; el rol procede del perfil validado
+por el backend. La ruta `/publicar` se protege también en el router, sin sustituir
+la autorización obligatoria del endpoint.
+
+## Resultado US3-8: recorrido integrado de publicación (1 noviembre 2026)
+
+Verificación en navegador con Firebase Auth Emulator y respuestas de API
+interceptadas; no se crearon anuncios ni se subieron fotos a Firebase real.
+Se comprobó acceso vendedor/comprador, menú vendedor y ausencia de «Publicar»
+para BUYER, bloqueo de acceso directo a `/publicar`, formulario válido e inválido,
+rechazo de formato, selección/previsualización/retirada, mínimo de fotos,
+multipart con token, indicador/deshabilitación durante envío, y publicaciones
+simuladas con una y varias fotos. Las respuestas 500 y desconexión mantuvieron
+campos y fotos para reintentar; el mensaje no mostró el detalle interno enviado
+por el servidor.
+
+`npm test` pasa 17 tests, incluidos los tests de validación, firmas JPEG/PNG/WebP
+y construcción del multipart. `npm run build` pasa. `npm run lint` pasa con el
+aviso Fast Refresh histórico de `AuthContext.jsx`. Firestore y Storage no tienen
+emulador configurado en este repositorio: la escritura real de un anuncio y sus
+archivos queda fuera de esta prueba; el contrato backend está verificado en
+US3-7 con Firestore/Storage simulados.
 
 Los límites de fotografías del backlog (1–10, hasta 5 MB, JPEG/PNG/WebP) se documentan con su estado de ratificación en US3. No imponer restricciones territoriales o longitudes de campos no acordadas.
 
@@ -259,9 +255,9 @@ Los límites de fotografías del backlog (1–10, hasta 5 MB, JPEG/PNG/WebP) se 
 |---|---|---|
 | `/registro` | Formulario de registro US1 | ✅ Implementado |
 | `/login` | Pantalla de acceso; permanece abierta ante un login fallido. | ✅ Implementado; US2-7 verificada |
-| `/vendedor/inicio` | Destino de un Vendedor tras registro o login exitoso. | ✅ Placeholder implementado |
+| `/vendedor/inicio` | Destino de un Vendedor; incluye acceso «Publicar». | ✅ Implementado |
 | `/comprador/inicio` | Destino de un Comprador tras registro o login exitoso. | ✅ Placeholder implementado |
-| Opción «Publicar» | Abre el formulario para un Vendedor autenticado; su URL no está fijada. | Pendiente US3 |
+| Opción «Publicar» | Abre `/publicar` para un Vendedor autenticado. | ✅ Implementada y protegida en US3-8 |
 
 ### Resultado de verificación integrada US2-7 (18 octubre 2026)
 
@@ -282,9 +278,10 @@ Vendedor correctamente. No se usó la base SQLite de desarrollo.
 
 El contrato local de login ya está integrado: acepta email y contraseña y
 devuelve 200 en éxito; la ratificación formal del código de éxito en el backlog
-sigue pendiente. También siguen pendientes los nombres técnicos de campos
-multipart y archivos, la URL de publicación y las condiciones de cookies del
-deployment. Registro y consulta de sesión ya tienen contrato. La lista completa
-de decisiones pendientes está en el apartado 14 de [project_context.md](project_context.md).
+sigue pendiente. El formulario `/publicar` y su contrato multipart están
+implementados y documentados; siguen pendientes la ratificación por producto
+de los campos/límites y las condiciones de deployment. Registro y consulta de
+sesión ya tienen contrato. La lista completa de decisiones pendientes está en
+el apartado 14 de [project_context.md](project_context.md).
 
 Las pantallas de inicio son destinos necesarios; perfiles, historial, exploración, swipes, candidatos, matches, chat y gestión posterior de anuncios no se incorporan al Sprint 0 por estas referencias.
