@@ -71,6 +71,10 @@ omisiones; CI prepara ambos emuladores y Java 21. El emulador no certifica
 índices de producción. No se emplearon credenciales de producción, ni se
 modificaron cuentas, anuncios o fotos remotos.
 
+US6.9 verificó el cliente de perfil/logout contra Auth Emulator, con API
+interceptada, en viewports de escritorio y móvil emulado. No se usó Firebase de
+producción ni un dispositivo físico; detalles en el README frontend.
+
 El plan de migración y las situaciones de ramas/despliegue de octubre que
 siguen son historial; no son instrucciones para cambiar ahora la arquitectura.
 

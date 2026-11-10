@@ -176,6 +176,31 @@ un fallo anterior a la escritura, mientras que los resultados de Auth Emulator y
 la carrera comprueban persistencia/atomicidad de operaciones confirmadas. No se
 promete rollback distribuido tras una respuesta remota perdida.
 
+## US6.9: recorrido de perfil y logout desde la interfaz
+
+La comprobación de interfaz se realizó con Auth Emulator y API interceptada.
+Buyer y Seller iniciaron sesión con cuentas sintéticas, abrieron perfil y
+vieron rol y datos. En el recorrido se verificaron edición y cancelación,
+validación local sin petición, error 409, guardado con Enter, estado
+«Guardando…», botón deshabilitado ante una petición pendiente y solo un PATCH
+tras intentar un segundo click. Se recargó el perfil y el fixture devolvió el
+valor actualizado.
+
+El formulario de contraseña rechazó confirmación distinta sin petición, mostró
+el error de contraseña actual, mantuvo los campos `type=password` y limpió los
+valores tras una respuesta exitosa sin cerrar la sesión. En viewport móvil
+390×844 y escritorio 1280×900, ambos roles pudieron recorrer el perfil y enviar
+el formulario por teclado.
+
+Con cambios de perfil pendientes se intentó logout: no se envió PATCH. El primer
+logout falló con 500; el aviso mostró una acción explícita «Reintentar cierre de
+sesión». El retry 204 regresó a `/`; navegación atrás y acceso directo a
+`/mi-perfil` redirigieron a la página pública, y el login Buyer volvió a
+funcionar. Esto valida UX con mocks. La revocación del token y persistencia de
+datos se validaron aparte con Auth/Firestore Emulator en US6.8; no se atribuye
+persistencia backend al fixture de navegador ni validación a dispositivos
+móviles físicos.
+
 ## Verificación reproducible
 
 Suite ordinaria, desde `backend/`:

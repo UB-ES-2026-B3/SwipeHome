@@ -19,6 +19,12 @@ Emulator, sin omisiones, incluidas las regresiones de US6.8. Los resultados
 históricos y pendientes del plan de octubre que siguen no sustituyen ese estado
 comprobado.
 
+US6.9 verificó en la interfaz el perfil de ambos roles, edición, cambio de
+contraseña y logout con Auth Emulator y respuestas API interceptadas. El retry
+visual de logout usa una acción explícita; la revocación persistente sigue
+cubierta en backend por US6.8 con Firestore Emulator. No se conectó Firebase
+real.
+
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
 

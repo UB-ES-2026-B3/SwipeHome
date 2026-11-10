@@ -7,10 +7,11 @@ import { useAuth } from '../hooks/useAuth'
  * No es un patrón a copiar; el equipo de frontend puede moverlo o rediseñarlo.
  *
  * - unavailable: servidor lento o caído. "Reintentar" siempre visible.
+ * - logout: el servidor no confirmó el cierre; permite reintentar la misma acción.
  * - incomplete: cuenta sin perfil (404). Se puede cerrar.
  */
 export function AuthErrorBanner() {
-  const { authError, retry, dismissAuthError } = useAuth()
+  const { authError, retry, logout, dismissAuthError } = useAuth()
   if (!authError) return null
 
   return (
@@ -19,6 +20,10 @@ export function AuthErrorBanner() {
       {authError.kind === 'unavailable' ? (
         <button type="button" className="auth-banner__action" onClick={retry}>
           Reintentar
+        </button>
+      ) : authError.kind === 'logout' ? (
+        <button type="button" className="auth-banner__action" onClick={logout}>
+          Reintentar cierre de sesión
         </button>
       ) : (
         <button type="button" className="auth-banner__action" onClick={dismissAuthError}>

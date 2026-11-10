@@ -38,6 +38,14 @@ de lint. Auth Emulator y API interceptada cubrieron en navegador validación,
 errores, conservación del formulario, retry, recarga y logout. La API y la
 revocación persistente se comprobaron aparte con emuladores en backend.
 
+US6.9 verificó Buyer y Seller en navegador, cancelar/guardar, Enter, validación
+de nombre/email y confirmación de contraseña, carga con botón deshabilitado y
+sin petición repetida, persistencia de fixture al recargar, logout con cambios
+pendientes, error y retry explícito desde el aviso. Tras 204, volver atrás y
+abrir `/mi-perfil` llevan a la página pública; se pudo iniciar sesión de nuevo.
+Auth Emulator fue real; las APIs se interceptaron. Viewports 390×844 y
+1280×900 pasaron en navegador de escritorio emulado, no en hardware físico.
+
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
 

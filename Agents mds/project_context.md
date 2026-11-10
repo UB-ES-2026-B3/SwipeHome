@@ -20,6 +20,7 @@ pueden tener match con la misma vivienda.
 | US 4.9 | Verificación de permisos, datos, paginación, privacidad, concurrencia y rollback con persistencia local aislada. |
 | US 4.10 | Verificación integrada del recorrido de exploración, decisiones y avisos; UI contrastada con API mockeada y persistencia backend en emuladores. |
 | US 6.8 | Verificación de perfil, cambio de contraseña y logout para BUYER/SELLER; concurrencia, integridad y continuidad probadas con emuladores. |
+| US 6.9 | Recorrido de perfil y logout para ambos roles verificado en navegador con Auth Emulator y API interceptada; cobertura de persistencia backend reutilizada de US6.8. |
 
 Verificación US 4.9: 166 pruebas correctas con Auth y Firestore Emulator, sin
 omisiones. Contra los CA oficiales, CA-03 a CA-06 pasan en la API/persistencia;
@@ -35,6 +36,9 @@ frontend. El navegador comprobó el flujo de perfil/logout con Auth Emulator y
 API interceptada; las operaciones y revocación se verificaron aparte en los
 emuladores. No se usaron servicios de producción. La petición solo con cookie
 no autentica el logout; CSRF Django no aplica al contrato Bearer vigente.
+US6.9 añadió comprobaciones de cancelación, validación, confirmación, carga,
+retry, rutas protegidas, credenciales vigentes y viewports móvil/escritorio.
+El fallo de logout ahora ofrece un botón explícito de reintento.
 
 La referencia de modelos, atomicidad, concurrencia, compatibilidad histórica y
 resultados reales es [US4 backend](us4_backend.md). Los contratos HTTP completos,

@@ -283,3 +283,36 @@ real y respuestas API interceptadas; no acredita persistencia de esa sesión en
 Firestore. La inyección de fallo se hace antes de la escritura; no se promete
 rollback ante una respuesta remota perdida después de que Auth haya aceptado el
 cambio.
+
+## QA US 6.9 — recorrido completo de perfil y logout (10 noviembre 2026)
+
+Se corrigió el aviso global de autenticación: un error de logout ahora ofrece
+«Reintentar cierre de sesión», que vuelve a ejecutar la misma operación en lugar
+de mostrar solo un botón de cerrar aviso. Auth Emulator gestionó cuentas
+sintéticas Buyer/Seller. Las APIs de perfil, contraseña y logout se interceptaron
+en navegador; por tanto, los resultados visuales no prueban persistencia de UI
+en Firestore. Persistencia de cuenta, credenciales nuevas, revocación y
+aislamiento entre cuentas cuentan con evidencia backend de US6.8: 171 tests con
+Auth/Firestore Emulators.
+
+| CA oficial US6 | Evidencia US6.9 | Resultado |
+|---|---|---|
+| CA-01 — Consulta del perfil propio | Buyer y Seller iniciaron sesión con Auth Emulator y abrieron `/mi-perfil`; fixture API mostró nombre/email y rol correspondientes. | **Pasa con mocks de API** (Auth de emulador). |
+| CA-02 — Actualización de datos | Buyer canceló cambios; Buyer/Seller guardaron nombre con Enter y recibieron confirmación; recarga mostró el valor actualizado del fixture. | **Pasa con mocks**; persistencia backend confirmada aparte con Auth Emulator en US6.8. |
+| CA-03 — Datos inválidos o email duplicado | Nombre inválido no generó PATCH; email duplicado 409 mostró el mensaje. API de US6.8 prueba validaciones y email concurrente real en Auth Emulator. | **Pasa:** UI con mocks y contrato backend con emulador. |
+| CA-04 — Cambio de contraseña | Confirmación distinta mostró error sin petición; error de contraseña actual, inputs `type=password`, borrado de campos y sesión continuada tras éxito. US6.8 prueba cambio real: nueva contraseña aceptada y anterior rechazada en Auth Emulator. | **Pasa con mocks en UI** y Auth Emulator en backend. |
+| CA-05 — Acceso exclusivo al perfil propio | Browser verifica que el perfil corresponde al rol autenticado; API rechaza selectores `uid/id/role` y ausencia de sesión en `ProfileTests`. | **Pasa en API con emulador; UI parcial** (sin intentar suplantar cuenta desde frontend). |
+| CA-06 — Persistencia y continuidad de sesión | Cambios visibles tras recarga de fixture; actualizar contraseña no cerró la sesión visible. US6.8 verifica datos Auth tras PATCH/re-login y continuidad por custom token. | **Pasa con mocks en UI** y Auth Emulator para persistencia/backend. |
+| CA-07 — Fallos durante la actualización | Error 500 de PATCH conserva entrada y permite reintentar; test backend inyecta fallo previo a `auth.update_user` y verifica nombre/email sin cambios parciales. | **Pasa con mocks en UI** y emulador para el estado final backend. |
+| CA-08 — Cierre de sesión | Logout 204 regresó a `/`; volver atrás y abrir `/mi-perfil` redirigió a la página pública; Buyer pudo autenticarse de nuevo. Token viejo/revocación verificados en test backend US6.8. | **Pasa con API mockeada**; revocación real en Auth/Firestore Emulator. |
+| CA-09 — Fallos y reintentos al cerrar sesión | Primer logout 500 mantuvo sesión y formulario pendiente sin enviar PATCH; aviso ofreció retry explícito. Segundo 204 limpió Auth local y navegó a `/`. | **Pasa con mocks de API y Auth Emulator.** |
+
+El estado de carga se observó mientras el PATCH quedaba pendiente: botón
+«Guardando…» deshabilitado, y un segundo click programático no generó otro
+PATCH. Contraste de layout: Buyer en 390×844 y Seller en 1280×900; teclado
+Enter envió formularios. Son viewports emulados en navegador de escritorio, no
+certificación de dispositivos móviles físicos.
+
+`npm test`: 22 tests pasan; `npm run lint` y `npm run build` finalizan. Lint
+mantiene advertencias existentes. No se modificaron dependencias ni se probaron
+servicios de producción.

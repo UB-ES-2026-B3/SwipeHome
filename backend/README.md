@@ -273,6 +273,15 @@ contraseña y logout con fallo 500 seguido de retry 204. Auth Emulator gestionó
 el inicio de sesión; la API se interceptó, así que las respuestas visuales no
 demuestran persistencia del navegador en Firestore.
 
+#### US 6.9: recorrido de perfil desde la interfaz
+
+La verificación visual detallada de ambos roles, edición/cancelación,
+confirmación, carga y bloqueo de envíos, validación de contraseña, logout y
+rutas tras salir está en [README frontend](../frontend/README.md). Se usó Auth
+Emulator con respuestas API interceptadas; no se atribuye persistencia de UI a
+Firestore. La cobertura de persistencia, revocación y nuevas credenciales es la
+de los tests backend US6.8 con Auth/Firestore Emulator.
+
 ## US 4.4–4.7: exploración, decisiones y avisos privados
 
 La adaptación a **Firebase Auth/Firestore** fue autorizada expresamente.

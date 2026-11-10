@@ -129,3 +129,23 @@ con mocks, no persistencia del navegador en Firestore.
 La continuidad de token, persistencia de nombre/email y contraseña, carrera
 con email duplicado y revocación del Bearer anterior están probadas aparte en
 Auth/Firestore Emulators desde el backend. No se conectó Firebase de producción.
+
+### Verificación US 6.9 — recorrido de perfil y logout
+
+En navegador, Auth Emulator gestionó el inicio de sesión de cuentas sintéticas
+Buyer y Seller; `/api/auth/me`, cambios de perfil, contraseña y logout se
+interceptaron con fixtures. Se comprobó:
+
+| Recorrido | Evidencia y resultado |
+|---|---|
+| Ambos roles y datos | Login con Buyer y Seller; ambos abrieron `/mi-perfil` y vieron nombre/email/rol esperados. **Pasa con mocks de API.** |
+| Edición, cancelar, validar y guardar | Cancelar restableció el valor original; nombre inválido mostró error sin PATCH; duplicado 409 mostró el mensaje. Guardar con Enter confirmó el cambio. **Pasa con mocks.** |
+| Carga y repetición | PATCH retenido mostró «Guardando…» y deshabilitó el botón; un segundo click programático no generó otra petición (1 PATCH). **Pasa con mock retenido.** |
+| Persistencia visual | Tras guardar, recarga volvió a mostrar el valor actualizado del fixture. **Pasa con mocks; no es persistencia Firestore del navegador.** |
+| Contraseña | Confirmación distinta fue rechazada sin petición; error de contraseña actual visible; éxito limpió los campos y conservó la sesión. Inputs observados como `type=password`. **Pasa con mocks.** |
+| Logout, reintento y rutas | Con cambios sin guardar, el primer logout 500 mostró aviso y no envió PATCH; acción «Reintentar cierre de sesión» con 204 limpió Auth y llevó a `/`. Atrás y URL `/mi-perfil` quedaron protegidas; login volvió a funcionar. **Pasa con Auth Emulator y API interceptada.** |
+| Viewports y teclado | Buyer en 390×844 y Seller en 1280×900; guardado por Enter en ambos formularios. **Pasa en navegador de escritorio emulado; no certifica hardware móvil.** |
+
+El backend de US6.8 ya verificó aparte persistencia, duplicados concurrentes,
+cambio de contraseña y revocación con Auth/Firestore Emulator. No se desplegó
+Firebase ni se probó en producción en esta US.

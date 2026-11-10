@@ -53,6 +53,13 @@ contraseña y el inicio de sesión con la nueva/anterior contraseña se prueban 
 Auth Emulator. Azure Blob sigue simulado en el comando completo; no hay servicios
 ni credenciales de producción. CSRF Django no se usa en este contrato Bearer.
 
+US6.9 verificó el cliente de perfil para ambos roles en navegador con Auth
+Emulator y API mockeada: edición, cancelación, validación, guardado/recarga,
+contraseña, reintento de logout y rutas protegidas. Un logout 500 ahora muestra
+«Reintentar cierre de sesión». Persistencia y revocación del backend se apoyan
+en las pruebas US6.8 con Auth/Firestore Emulator; UI no representa persistencia
+real de Firestore.
+
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
 
