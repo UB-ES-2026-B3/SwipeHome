@@ -66,6 +66,9 @@ export function SellerHome() {
         <Logo size="sm" to="/vendedor/inicio" />
         <div className="seller-dashboard__account">
           <span className="seller-dashboard__role uniform-action">Vendedor</span>
+          <button type="button" className="uniform-action" onClick={() => navigate('/notificaciones')}>
+            Notificaciones
+          </button>
           <button type="button" className="seller-dashboard__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
             Mi perfil
           </button>
