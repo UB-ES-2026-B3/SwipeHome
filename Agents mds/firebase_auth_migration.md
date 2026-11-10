@@ -1,4 +1,40 @@
+# Firebase Auth y Firestore: continuidad vigente
+
+## Estado US4 — 8 noviembre 2026
+
+El usuario autorizó mantener Firebase Auth/Firestore para US 4.4–4.7.
+La migración a Firebase ya está implementada en esta rama; el plan original
+que sigue se conserva como historial y no debe ejecutarse de nuevo.
+
+Los contratos de autenticación/perfil/logout vigentes están en
+[US6 backend](us6_backend.md). Exploración, decisiones y avisos están en
+[US4 backend](us4_backend.md) y [README backend](../backend/README.md).
+LIKE crea directamente match y aviso; no requiere aceptación posterior.
+Se reutilizan `listings` y `notifications`, se añaden `swipes/matches` con
+claves canónicas y transacciones. No se añaden ORM ni sesiones por cookies.
+La evolución es aditiva; los índices se definen pero no se despliegan remotamente.
+
+La última suite completa de backend pasa 171 tests con Auth y Firestore
+Emulator, sin omisiones, incluidas las regresiones de US6.8. Los resultados
+históricos y pendientes del plan de octubre que siguen no sustituyen ese estado
+comprobado.
+
+US6.9 verificó en la interfaz el perfil de ambos roles, edición, cambio de
+contraseña y logout con Auth Emulator y respuestas API interceptadas. El retry
+visual de logout usa una acción explícita; la revocación persistente sigue
+cubierta en backend por US6.8 con Firestore Emulator. No se conectó Firebase
+real.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
 # Especificación: migración de autenticación a Firebase
+
+> Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
+> El contrato vigente de edición del perfil, contraseña y logout está en
+> [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
+> rol y relaciones permanecen en Firestore. Los apartados anteriores a esta
+> adaptación que describen sesiones Django son históricos.
 
 Rama: `feature/firebase-auth` (sale de `dev`). Escrito el 18 de octubre de 2026.
 
@@ -366,10 +402,15 @@ si algún día cambia el proyecto.
 8. PR a `dev` cuando todo funcione.
 9. Tras el merge, volver a apuntar Render a `dev` (último paso de §12).
 
-## 11. Lo que no entra en esta rama
+## 11. Alcance original de esta rama de migración
+
+Esta sección registra el alcance original de `feature/firebase-auth`, no el
+estado actual del repositorio. La publicación y subida a Azure Blob Storage se
+añadieron después; su verificación vigente de API y repositorio está en el
+[README backend](../backend/README.md) (US3-7).
+
 - Hosting del frontend y CORS (con el proxy de Vite no hace falta todavía).
-- Subida de fotos (Firebase Storage necesita plan de pago).
-- Las colecciones `listings`, `swipes`, `matches`.
+- Swipes y matches.
 - Arreglar `main`.
 
 ### Pendiente para después del merge
@@ -550,3 +591,5 @@ desplegando desde la rama de trabajo mientras se revisa.
    son las mismas; solo cambia de qué rama sale el código.
 4. Desde aquí, cada push a `dev` despliega. `deploy/render-bootstrap` deja de usarse;
    borrarla o conservarla es decisión aparte.
+
+</details>

@@ -1,4 +1,4 @@
-import { onAuthStateChanged } from 'firebase/auth'
+import { onAuthStateChanged, signOut } from 'firebase/auth'
 import { createContext, useCallback, useEffect, useRef, useState } from 'react'
 import { fetchCurrentUser, logout as firebaseLogout } from '../api/auth'
 import { AuthErrorBanner } from '../components/AuthErrorBanner'
@@ -50,6 +50,8 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [loading, setLoading] = useState(true)
   const [authError, setAuthError] = useState(null)
+  const [loggingOut, setLoggingOut] = useState(false)
+  const logoutInProgress = useRef(false)
   // Cada petición de perfil tiene un id: solo se aplica la respuesta de la última.
   const requestId = useRef(0)
 
@@ -69,10 +71,10 @@ export function AuthProvider({ children }) {
         setLoading(false)
       } else if (status === 401) {
         setAuthError(null)
-        await firebaseLogout()
+        await signOut(auth)
       } else if (status === 404) {
         setAuthError(ACCOUNT_INCOMPLETE)
-        await firebaseLogout()
+        await signOut(auth)
       } else {
         setAuthError(SERVER_UNAVAILABLE)
       }
@@ -111,11 +113,25 @@ export function AuthProvider({ children }) {
 
   const clearUser = useCallback(() => setUser(null), [])
   const dismissAuthError = useCallback(() => setAuthError(null), [])
-  const logout = useCallback(() => firebaseLogout(), [])
+  const logout = useCallback(async () => {
+    if (logoutInProgress.current) return false
+    logoutInProgress.current = true
+    setLoggingOut(true)
+    try {
+      await firebaseLogout()
+      return true
+    } catch {
+      setAuthError({ kind: 'logout', message: 'No se pudo cerrar la sesión. Vuelve a pulsar Cerrar sesión.' })
+      return false
+    } finally {
+      logoutInProgress.current = false
+      setLoggingOut(false)
+    }
+  }, [])
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, authError, setUser, clearUser, logout, retry, dismissAuthError }}
+      value={{ user, loading, authError, setUser, clearUser, logout, loggingOut, retry, dismissAuthError }}
     >
       {/* Solución temporal: el aviso vive aquí para no tocar los componentes existentes. */}
       <AuthErrorBanner />

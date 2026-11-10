@@ -8,7 +8,11 @@ from django.test import SimpleTestCase
 from . import firebase
 from .firebase import FirebaseConfigError
 
-CREDENTIAL_VARS = ("FIREBASE_SERVICE_ACCOUNT_JSON", "GOOGLE_APPLICATION_CREDENTIALS", "FIREBASE_PROJECT_ID")
+CREDENTIAL_VARS = (
+    "FIREBASE_SERVICE_ACCOUNT_JSON",
+    "GOOGLE_APPLICATION_CREDENTIALS",
+    "FIREBASE_PROJECT_ID",
+)
 FAKE_SECRET = "-----BEGIN PRIVATE KEY-----secreto-----END PRIVATE KEY-----"
 
 

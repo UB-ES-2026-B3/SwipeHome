@@ -9,7 +9,7 @@ from firebase_admin import auth
 
 from . import repository
 from .authentication import AuthenticationFailed, uid_from_request
-from .firebase import get_app
+from .firebase import FirebaseConfigError, get_app
 from .validation import validate_registration
 
 logger = logging.getLogger(__name__)
@@ -20,6 +20,18 @@ logger = logging.getLogger(__name__)
 
 def registration_error():
     return JsonResponse({"error": "No se pudo completar el registro. Inténtalo de nuevo."}, status=500)
+
+
+def firebase_configuration_error():
+    return JsonResponse(
+        {
+            "error": (
+                "El servidor no está configurado para crear cuentas. "
+                "Falta la credencial de Firebase en el entorno local."
+            )
+        },
+        status=503,
+    )
 
 
 def current_user_error():
@@ -52,10 +64,13 @@ def register(request):
         return JsonResponse({"errors": errors}, status=400)
 
     try:
-        firebase_user = auth.create_user(email=values["email"], password=values["password"], app=get_app())
+        firebase_user = auth.create_user(email=values["email"], password=values["password"], display_name=values["name"], app=get_app())
     except auth.EmailAlreadyExistsError:
         # Firebase Auth garantiza la unicidad del email; no hay nada que deshacer.
         return JsonResponse({"error": "El email ya está registrado."}, status=409)
+    except FirebaseConfigError as error:
+        logger.error("Firebase no está configurado para el registro (%s).", type(error).__name__)
+        return firebase_configuration_error()
     except Exception as error:
         logger.error("No se pudo crear el usuario en Firebase Auth (%s).", type(error).__name__)
         return registration_error()

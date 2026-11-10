@@ -26,8 +26,14 @@ def validate_registration(data):
         errors["email"] = "Introduce un email válido."
     if len(email) > 254 or any(char.isspace() for char in email):
         errors["email"] = "Introduce un email válido."
-    if not 15 <= len(password) <= 128:
-        errors["password"] = "La contraseña debe tener entre 15 y 128 caracteres."
+    if not 8 <= len(password) <= 128:
+        errors["password"] = "La contraseña debe tener entre 8 y 128 caracteres."
+    elif not any(char.isupper() for char in password):
+        errors["password"] = "La contraseña debe incluir al menos una mayúscula."
+    elif not any(char.isdigit() for char in password):
+        errors["password"] = "La contraseña debe incluir al menos un número."
+    elif not any(not char.isalnum() and not char.isspace() for char in password):
+        errors["password"] = "La contraseña debe incluir al menos un símbolo."
     if role not in ("SELLER", "BUYER"):
         errors["role"] = "Selecciona SELLER o BUYER."
     return {"name": name, "email": email, "password": password, "role": role}, errors

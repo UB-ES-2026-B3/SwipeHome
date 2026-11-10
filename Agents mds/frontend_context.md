@@ -1,8 +1,70 @@
 # Contexto frontend de SwipeHome
 
+## Integración y verificación vigente US4.10 — 10 noviembre 2026
+
+La autenticación vigente sigue siendo Firebase Auth con ID token Bearer y
+revocación US6.
+Los consumidores pueden usar los contratos documentados en el
+[README backend](../backend/README.md) y [US4 backend](us4_backend.md).
+
+BUYER: GET `/api/inmuebles/explorar` y POST
+`/api/inmuebles/{id}/decision` con `{"decision":"LIKE"}` o PASS.
+LIKE crea directamente match y aviso; no requiere aceptación del Vendedor ni
+redirige a una pantalla US5.
+SELLER: GET `/api/notificaciones` devuelve sus propios avisos.
+Ambos GET usan `items/next_cursor`, `limit` 20 por defecto, máximo 50.
+Conservar el cursor al decidir sobre páginas previas para continuar sin saltos.
+401 requiere recuperar el acceso; 500 permite reintentar sin cerrar la sesión.
+Los avisos nuevos incluyen match, Comprador y vivienda; los históricos sin
+match mantienen sus cuatro campos previos.
+
+US4.10 corrigió la integración frontend: exploración con cursor, decisión por ID
+y cuerpo `{decision}`; confirma solo respuestas coherentes con decisión/match.
+Los controles soportan galería, gestos horizontales, teclado, retry y mensaje
+vacío. `npm test` pasa 20 tests; lint y build terminan correctamente.
+
+La comprobación de navegador usó Auth Emulator real y mock/interceptación de la
+API: se revisaron datos/fotos, botones, teclado, gestos de puntero, retry tras
+503, sesión expirada, recarga y viewport de 390 px/1280 px. No es persistencia
+del navegador contra Firestore: el flujo de publicación, decisiones, avisos,
+re-login y dos Compradores se verificó aparte en el test backend con Firestore
+Emulator y Azure Blob mockeado. No se accedió a Firebase/Azure de producción.
+
+US6.8: `ProfilePage` consulta/actualiza el perfil, cambia contraseña y permite
+reintentar el logout cuando no se confirma. Si el servidor guardó el cambio pero
+falló el intercambio de continuidad, el mensaje indica que hay que iniciar
+sesión de nuevo. `npm test` pasa 22 tests; lint/build terminan con advertencias
+de lint. Auth Emulator y API interceptada cubrieron en navegador validación,
+errores, conservación del formulario, retry, recarga y logout. La API y la
+revocación persistente se comprobaron aparte con emuladores en backend.
+
+US6.9 verificó Buyer y Seller en navegador, cancelar/guardar, Enter, validación
+de nombre/email y confirmación de contraseña, carga con botón deshabilitado y
+sin petición repetida, persistencia de fixture al recargar, logout con cambios
+pendientes, error y retry explícito desde el aviso. Tras 204, volver atrás y
+abrir `/mi-perfil` llevan a la página pública; se pudo iniciar sesión de nuevo.
+Auth Emulator fue real; las APIs se interceptaron. Viewports 390×844 y
+1280×900 pasaron en navegador de escritorio emulado, no en hardware físico.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
+# Contexto frontend de SwipeHome
+
+> Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
+> El contrato vigente de edición del perfil, contraseña y logout está en
+> [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
+> rol y relaciones permanecen en Firestore. Los apartados anteriores a esta
+> adaptación que describen sesiones Django son históricos.
+
 > ⚠️ Partes de este documento describen el login por sesiones y cookies, sustituido
 > por Firebase Auth. Ver `infra_context.md` y `firebase_auth_migration.md`. Pendiente
 > de actualizar.
+
+> Estado US3-8 (1 noviembre 2026): `/publicar` está implementada y protegida
+> para `SELLER`. La ruta usa token Firebase, validación de campos y firmas de
+> imagen, selección/previsualización/retirada de fotos, envío multipart y
+> recuperación del formulario ante errores. Ver el resultado integrado al final.
 
 ## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
 
@@ -119,7 +181,7 @@ Siempre usar la clase base `.btn` más un modificador:
 
 - Fija en la parte superior, `backdrop-filter: blur(8px)`.
 - Logo a la izquierda, botón "Iniciar sesión" (`.btn--red`) a la derecha.
-- Sin menú hamburguesa ni links adicionales hasta que US2/US3 lo requieran.
+- Sin menú hamburguesa. El inicio de SELLER incorpora el acceso «Publicar» de US3-8.
 
 ### Rutas
 
@@ -127,15 +189,17 @@ Siempre usar la clase base `.btn` más un modificador:
 |---|---|---|
 | `/` | `LandingPage` | Página principal con baraja, CTA y overlay de registro |
 | `/registro` | `RegisterPage` | Acceso directo por URL; mismo formulario sin overlay |
-| `/login` | Placeholder → `/` | Se implementa en US2 |
+| `/login` | `LoginPage` | Firebase Auth; destino según rol |
 | `/vendedor/inicio` | `SellerHome` | Protegida por rol SELLER |
 | `/comprador/inicio` | `BuyerHome` | Protegida por rol BUYER |
+| `/publicar` | `PropertyPublish` | Protegida por rol SELLER; Comprador vuelve a su inicio |
 
 ### Estructura de `frontend/src/`
 
 ```
 api/
-  auth.js             → getCsrfToken, registerUser, fetchCurrentUser
+  auth.js             → registro, login, perfil, logout y cambios de cuenta Firebase
+  properties.js       → POST multipart autenticado de anuncios
 context/
   AuthContext.jsx     → AuthProvider, AuthContext (user, loading, setUser, clearUser)
 hooks/
@@ -147,58 +211,29 @@ components/
 pages/
   LandingPage.jsx     → /, con navbar, hero, baraja de tarjetas y overlay de registro
   RegisterPage.jsx    → /registro, acceso directo standalone
-  SellerHome.jsx      → /vendedor/inicio (placeholder Sprint 0)
-  BuyerHome.jsx       → /comprador/inicio (placeholder Sprint 0)
+  SellerHome.jsx      → /vendedor/inicio y acceso «Publicar»
+  BuyerHome.jsx       → /comprador/inicio sin opción «Publicar»
+  PropertyPublish.jsx → /publicar, campos, fotos, validación, carga y resultado
+  propertyForm.js     → reglas de campos, cantidad, tamaño y firma de imagen
 App.jsx               → router con rutas protegidas (PrivateRoute)
 main.jsx              → BrowserRouter + AuthProvider + App
 index.css             → sistema de diseño completo (tokens, componentes, layout)
 ```
-  auth.js           → getCsrfToken, registerUser, fetchCurrentUser
-context/
-  AuthContext.jsx   → AuthProvider, AuthContext (user, loading, setUser, clearUser)
-hooks/
-  useAuth.js        → hook useAuth()
-components/
-  FormField.jsx     → campo reutilizable con label, input/select y error accesible
-  RegisterForm.jsx  → formulario de registro con validaciones US1
-pages/
-  RegisterPage.jsx  → /registro (redirige si ya autenticado)
-  SellerHome.jsx    → /vendedor/inicio (placeholder Sprint 0)
-  BuyerHome.jsx     → /comprador/inicio (placeholder Sprint 0)
-App.jsx             → router con rutas protegidas (PrivateRoute)
-main.jsx            → BrowserRouter + AuthProvider + App
-index.css           → sistema de diseño completo (tokens, componentes, layout)
-```
 
 ## Estado vigente de la integración con backend
 
-El backend ya implementa POST /api/auth/register y GET /api/auth/me sobre
-Django y SQLite local. [README backend](../backend/README.md) es la referencia
-principal de contratos, CSRF, cookies, certificados HTTPS, comandos y pruebas.
-Login aun esta pendiente; su codigo de exito y cuerpo deben acordarse.
+La autenticación actual usa Firebase Auth en el cliente y el perfil del backend
+en `GET /api/auth/me`. Las peticiones protegidas llevan el ID token Firebase en
+`Authorization: Bearer …`; no se usan sesiones ni CSRF de Django. Los contratos,
+comandos y resultados backend se mantienen en el
+[README del backend](../backend/README.md).
 
-- Obtener csrfToken mediante GET /api/auth/register antes del POST; conservar
-  la cookie CSRF y enviar X-CSRFToken. Volver a obtenerlo tras autenticar,
-  porque Django rota el token.
-- Registro devuelve 201 con id/name/email/role, 400 por datos invalidos, 409
-  por duplicado, 403 por CSRF y 500 por fallo interno. El navegador recibe
-  la cookie sessionid con HttpOnly, Secure y SameSite=Lax.
-- Al cargar o recargar, consultar GET /api/auth/me: 200 con id/name/email/role,
-  401 sin sesion y 500 como error reintentable. No tratar 500 como logout.
-- sessionid no se lee con JavaScript ni se guarda en localStorage. El navegador
-  gestiona la cookie; el servidor resuelve identidad y rol. No enviar un rol
-  o identificador del cliente como prueba de autenticacion.
-- Reutilizar las rutas de inicio de cada rol. Conectar /api al backend mediante
-  HTTPS local y un origen/proxy configurado. No hay CORS general habilitado:
-  no asumir que dos servidores en puertos distintos funcionan sin integrar
-  cookies, origen y CSRF. El comando frontend depende del stack que se elija.
-
-La suite backend pasa 53 pruebas, incluida consulta real por HTTPS a /api/auth/me.
-El resultado de la verificación US1-6 está registrado en el
-[README backend](../backend/README.md): los contratos de API y sesión pasan.
-También pasan build y lint; el lint informa una advertencia de Fast Refresh en
-`AuthContext.jsx`. El recorrido en navegador verificó registro, destino y
-recarga de sesión para ambos roles.
+La publicación utiliza `POST /api/inmuebles` con `FormData` y el token del
+usuario autenticado. El navegador no fija `Content-Type`, para que el navegador
+añada el límite multipart. `seller_uid` no se envía: el servidor lo deriva del
+token verificado y exige rol `SELLER`. El contrato de campos, fotos, tamaños y
+permisos vive en el README backend y la validación del producto en
+[project_context.md](project_context.md).
 
 ## Referencias principales
 
@@ -236,14 +271,35 @@ Las tareas US1-6, US2-7 y US3-8 cubren la comprobación de los recorridos integr
 - Aplicar la longitud de contraseña de la historia correspondiente: registro 15–128, login 1–128 caracteres.
 - En login, usar `Introduce un email válido.` para email vacío o inválido y `Email o contraseña incorrectos.` para ambos tipos de credenciales incorrectas. Mantener `/login` ante fallos.
 - En publicación, todos los campos definidos en US3 son obligatorios, incluida la elección Sí/No de alojamiento compartido, sin valor por defecto.
-- Exigir al menos una fotografía válida. Sin imágenes válidas, mostrar `Añade al menos una fotografía.` y no enviar el formulario.
+- Exigir al menos una fotografía válida. Sin imágenes válidas, mostrar `Añade al menos una fotografía válida.` y no enviar el formulario.
 - Una imagen rechazada no elimina los datos ni las imágenes válidas. Conservar el orden de selección y los datos ante errores para permitir reintentos. No se ha acordado persistencia del formulario al cerrar el navegador ni un sistema de borradores.
 - El menú de Comprador no muestra «Publicar». Los permisos y la identidad del propietario los comprueba el servidor.
 
-La sesion utiliza cookies y el rol procede del servidor. La recarga consulta
-GET /api/auth/me conforme al contrato anterior. No se adopta JWT/Bearer.
-HTTPS local esta preparado; las condiciones de deployment entre dominios
-siguen pendientes.
+La sesión está gestionada por Firebase Auth; el rol procede del perfil validado
+por el backend. La ruta `/publicar` se protege también en el router, sin sustituir
+la autorización obligatoria del endpoint.
+
+## Resultado US3-8: recorrido integrado de publicación tras el merge con Azure
+
+Verificación en navegador con Firebase Auth Emulator y respuestas de API
+interceptadas; no se crearon anuncios en Firestore ni se subieron fotos a Azure.
+El resumen por criterio es:
+
+| CA | Prueba | Resultado |
+|---|---|---|
+| CA-01 | Login SELLER con Auth Emulator, opción «Publicar», entrada a `/publicar`; login BUYER, ausencia de la opción y navegación directa a la ruta. | Pasa |
+| CA-02 | Formulario válido enviado como multipart autenticado, primero con una imagen y luego con varias; respuesta 201 interceptada y confirmación visible. | Pasa en interfaz; persistencia integrada no probada |
+| CA-03 | Envío sin fotos y retirada de la última: aparece el error requerido y no se envía la solicitud. Tests backend cubren fotos y asociación usando Firestore Emulator y mock Azure. | Pasa |
+| CA-04 | Envío con campos vacíos: errores visibles y cero solicitudes; la API también tiene pruebas de validación directa. | Pasa |
+| CA-05 | Un GIF rechazado muestra el motivo sin retirar la imagen JPEG válida ni borrar campos; backend comprueba formatos y contenido. | Pasa |
+| CA-06 | Carga bloquea nuevos envíos; errores 500 y conexión conservan campos/fotos y permiten reintentar. Tests backend comprueban compensación con Azure mock. | Pasa con mocks/interceptación |
+
+`npm test` pasa 18 tests, incluidos los tests de validación, firmas JPEG/PNG/WebP
+y construcción del multipart. `npm run build` pasa. `npm run lint` termina con
+código 0 y avisos en `AuthContext.jsx`, `SellerHome.jsx` y `BuyerHome.jsx`. El
+navegador interceptó el endpoint: no probó escritura Firestore ni subida real a
+Azure Blob. Los tests backend usan Firestore Emulator y mockean Azure Blob; el
+contrato real de persistencia en Azure no queda verificado en esta US.
 
 Los límites de fotografías del backlog (1–10, hasta 5 MB, JPEG/PNG/WebP) se documentan con su estado de ratificación en US3. No imponer restricciones territoriales o longitudes de campos no acordadas.
 
@@ -253,9 +309,9 @@ Los límites de fotografías del backlog (1–10, hasta 5 MB, JPEG/PNG/WebP) se 
 |---|---|---|
 | `/registro` | Formulario de registro US1 | ✅ Implementado |
 | `/login` | Pantalla de acceso; permanece abierta ante un login fallido. | ✅ Implementado; US2-7 verificada |
-| `/vendedor/inicio` | Destino de un Vendedor tras registro o login exitoso. | ✅ Placeholder implementado |
+| `/vendedor/inicio` | Destino de un Vendedor; incluye acceso «Publicar». | ✅ Implementado |
 | `/comprador/inicio` | Destino de un Comprador tras registro o login exitoso. | ✅ Placeholder implementado |
-| Opción «Publicar» | Abre el formulario para un Vendedor autenticado; su URL no está fijada. | Pendiente US3 |
+| Opción «Publicar» | Abre `/publicar` para un Vendedor autenticado. | ✅ Implementada y protegida en US3-8 |
 
 ### Resultado de verificación integrada US2-7 (18 octubre 2026)
 
@@ -276,9 +332,12 @@ Vendedor correctamente. No se usó la base SQLite de desarrollo.
 
 El contrato local de login ya está integrado: acepta email y contraseña y
 devuelve 200 en éxito; la ratificación formal del código de éxito en el backlog
-sigue pendiente. También siguen pendientes los nombres técnicos de campos
-multipart y archivos, la URL de publicación y las condiciones de cookies del
-deployment. Registro y consulta de sesión ya tienen contrato. La lista completa
-de decisiones pendientes está en el apartado 14 de [project_context.md](project_context.md).
+sigue pendiente. El formulario `/publicar` y su contrato multipart están
+implementados y documentados; siguen pendientes la ratificación por producto
+de los campos/límites y las condiciones de deployment. Registro y consulta de
+sesión ya tienen contrato. La lista completa de decisiones pendientes está en
+el apartado 14 de [project_context.md](project_context.md).
 
 Las pantallas de inicio son destinos necesarios; perfiles, historial, exploración, swipes, candidatos, matches, chat y gestión posterior de anuncios no se incorporan al Sprint 0 por estas referencias.
+
+</details>
