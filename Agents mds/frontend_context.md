@@ -1,5 +1,31 @@
 # Contexto frontend de SwipeHome
 
+## Integración vigente con US4 backend — 8 noviembre 2026
+
+La autenticación vigente sigue siendo Firebase Auth con ID token Bearer y
+revocación US6. No hay cambios de frontend en esta tarea.
+Los consumidores pueden usar los contratos documentados en el
+[README backend](../backend/README.md) y [US4 backend](us4_backend.md).
+
+BUYER: GET `/api/inmuebles/explorar` y POST
+`/api/inmuebles/{id}/decision` con `{"decision":"LIKE"}` o PASS.
+LIKE crea directamente match y aviso: no diseñar aceptación del Vendedor.
+SELLER: GET `/api/notificaciones` devuelve sus propios avisos.
+Ambos GET usan `items/next_cursor`, `limit` 20 por defecto, máximo 50.
+Conservar el cursor al decidir sobre páginas previas para continuar sin saltos.
+401 requiere recuperar el acceso; 500 permite reintentar sin cerrar la sesión.
+Los avisos nuevos incluyen match, Comprador y vivienda; los históricos sin
+match mantienen sus cuatro campos previos.
+
+Solo se ha verificado backend (140 pruebas, incluidos Auth/Firestore Emulator).
+No se certifica aquí un recorrido de interfaz nuevo. El material siguiente
+sobre el frontend de Sprint 0 y sesiones/SQLite es historial identificado.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
+# Contexto frontend de SwipeHome
+
 > Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
 > El contrato vigente de edición del perfil, contraseña y logout está en
 > [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
@@ -228,24 +254,27 @@ La sesión está gestionada por Firebase Auth; el rol procede del perfil validad
 por el backend. La ruta `/publicar` se protege también en el router, sin sustituir
 la autorización obligatoria del endpoint.
 
-## Resultado US3-8: recorrido integrado de publicación (1 noviembre 2026)
+## Resultado US3-8: recorrido integrado de publicación tras el merge con Azure
 
 Verificación en navegador con Firebase Auth Emulator y respuestas de API
-interceptadas; no se crearon anuncios ni se subieron fotos a Firebase real.
-Se comprobó acceso vendedor/comprador, menú vendedor y ausencia de «Publicar»
-para BUYER, bloqueo de acceso directo a `/publicar`, formulario válido e inválido,
-rechazo de formato, selección/previsualización/retirada, mínimo de fotos,
-multipart con token, indicador/deshabilitación durante envío, y publicaciones
-simuladas con una y varias fotos. Las respuestas 500 y desconexión mantuvieron
-campos y fotos para reintentar; el mensaje no mostró el detalle interno enviado
-por el servidor.
+interceptadas; no se crearon anuncios en Firestore ni se subieron fotos a Azure.
+El resumen por criterio es:
 
-`npm test` pasa 17 tests, incluidos los tests de validación, firmas JPEG/PNG/WebP
-y construcción del multipart. `npm run build` pasa. `npm run lint` pasa con el
-aviso Fast Refresh histórico de `AuthContext.jsx`. Firestore y Storage no tienen
-emulador configurado en este repositorio: la escritura real de un anuncio y sus
-archivos queda fuera de esta prueba; el contrato backend está verificado en
-US3-7 con Firestore/Storage simulados.
+| CA | Prueba | Resultado |
+|---|---|---|
+| CA-01 | Login SELLER con Auth Emulator, opción «Publicar», entrada a `/publicar`; login BUYER, ausencia de la opción y navegación directa a la ruta. | Pasa |
+| CA-02 | Formulario válido enviado como multipart autenticado, primero con una imagen y luego con varias; respuesta 201 interceptada y confirmación visible. | Pasa en interfaz; persistencia integrada no probada |
+| CA-03 | Envío sin fotos y retirada de la última: aparece el error requerido y no se envía la solicitud. Tests backend cubren fotos y asociación usando Firestore Emulator y mock Azure. | Pasa |
+| CA-04 | Envío con campos vacíos: errores visibles y cero solicitudes; la API también tiene pruebas de validación directa. | Pasa |
+| CA-05 | Un GIF rechazado muestra el motivo sin retirar la imagen JPEG válida ni borrar campos; backend comprueba formatos y contenido. | Pasa |
+| CA-06 | Carga bloquea nuevos envíos; errores 500 y conexión conservan campos/fotos y permiten reintentar. Tests backend comprueban compensación con Azure mock. | Pasa con mocks/interceptación |
+
+`npm test` pasa 18 tests, incluidos los tests de validación, firmas JPEG/PNG/WebP
+y construcción del multipart. `npm run build` pasa. `npm run lint` termina con
+código 0 y avisos en `AuthContext.jsx`, `SellerHome.jsx` y `BuyerHome.jsx`. El
+navegador interceptó el endpoint: no probó escritura Firestore ni subida real a
+Azure Blob. Los tests backend usan Firestore Emulator y mockean Azure Blob; el
+contrato real de persistencia en Azure no queda verificado en esta US.
 
 Los límites de fotografías del backlog (1–10, hasta 5 MB, JPEG/PNG/WebP) se documentan con su estado de ratificación en US3. No imponer restricciones territoriales o longitudes de campos no acordadas.
 
@@ -285,3 +314,5 @@ sesión ya tienen contrato. La lista completa de decisiones pendientes está en
 el apartado 14 de [project_context.md](project_context.md).
 
 Las pantallas de inicio son destinos necesarios; perfiles, historial, exploración, swipes, candidatos, matches, chat y gestión posterior de anuncios no se incorporan al Sprint 0 por estas referencias.
+
+</details>

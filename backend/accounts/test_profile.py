@@ -88,21 +88,21 @@ class ProfileTests(FirebaseMocks, SimpleTestCase):
                          {"current_password": "x", "new_password": "x" * 15, "uid": "other"}):
                 self.assertEqual(self.send(data, "post", "/api/auth/me/password").status_code, 400)
             change.assert_not_called()
-            data = {"current_password": "old", "new_password": " New password 🙂 "}
+            data = {"current_password": "old", "new_password": " New password 1! "}
             change.side_effect = IncorrectPassword()
             self.assertEqual(self.send(data, "post", "/api/auth/me/password").status_code, 400)
             change.side_effect = None
             response = self.send(data, "post", "/api/auth/me/password")
             self.assertEqual(response.status_code, 200)
             self.assertEqual(response.json(), {"custom_token": "continuity"})
-            change.assert_called_with(UID, "old", " New password 🙂 ")
+            change.assert_called_with(UID, "old", " New password 1! ")
             self.verify.return_value = {"uid": UID, "auth_time": 200}
             self.assertEqual(self.client.get("/api/auth/me", HTTP_AUTHORIZATION="Bearer replacement").status_code, 200)
 
     def test_password_failure_has_no_hash_or_password(self):
         with patch("accounts.profile_views.change_password", side_effect=RuntimeError("secret_backend_detail")):
             with self.assertLogs("accounts.profile_views", level="ERROR"):
-                response = self.send({"current_password": "old", "new_password": "new password value"}, "post", "/api/auth/me/password")
+                response = self.send({"current_password": "old", "new_password": "New password value 1!"}, "post", "/api/auth/me/password")
         self.assertEqual(response.status_code, 500)
         self.assert_safe(response)
         self.assertNotIn("new password value", response.content.decode())
@@ -230,8 +230,14 @@ class PasswordServiceTests(SimpleTestCase):
 class EmailRaceIntegrationTests(SimpleTestCase):
     """Concurrencia real del proveedor; nunca usa el proyecto de producción."""
 
+    def setUp(self):
+        host = os.environ["FIREBASE_AUTH_EMULATOR_HOST"]
+        self.assertTrue(host.startswith(("127.0.0.1:", "localhost:")))
+        self.project = os.environ.get("GCLOUD_PROJECT", "demo-swipehome-us6")
+        self.assertTrue(self.project.startswith("demo-"))
+
     def test_concurrent_email_updates_have_one_winner_and_no_partial_name(self):
-        app = initialize_app(options={"projectId": "demo-swipehome-us6"}, name="us6-race")
+        app = initialize_app(options={"projectId": self.project}, name="us6-race")
         users = []
         try:
             for i in range(2):
@@ -265,7 +271,7 @@ class EmailRaceIntegrationTests(SimpleTestCase):
         if not host.startswith(("127.0.0.1:", "localhost:")):
             self.fail("El emulador de las pruebas debe estar en loopback.")
         base = f"http://{host}/identitytoolkit.googleapis.com/v1/"
-        app = initialize_app(options={"projectId": "demo-swipehome-us6"}, name="us6-password")
+        app = initialize_app(options={"projectId": self.project}, name="us6-password")
         old, new = "Original password value", " New password value 🙂 "
         user = auth.create_user(email="password-integration@example.com", password=old, display_name="Ana", app=app)
         real_post = requests.post

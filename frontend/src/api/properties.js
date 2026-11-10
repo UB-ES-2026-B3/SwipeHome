@@ -1,23 +1,29 @@
 import { auth } from '../firebase'
 
-/** Publishes a listing using the authenticated Firebase user's ID token. */
-export async function publishProperty(values, photos) {
-  const firebaseUser = auth.currentUser
-  if (!firebaseUser) throw new Error('No hay una sesión autenticada.')
+const SESSION_GONE = new Set([
+  'auth/user-token-expired',
+  'auth/invalid-user-token',
+  'auth/user-disabled',
+  'auth/user-not-found',
+])
 
-  const token = await firebaseUser.getIdToken()
-  const form = new FormData()
-  for (const [field, value] of Object.entries(values)) {
-    form.append(field, value)
-  }
-  for (const photo of photos) {
-    form.append('photos', photo)
+async function authenticatedRequest(path, options = {}) {
+  const user = auth.currentUser
+  if (!user) return { ok: false, status: 401, data: { error: 'Necesitas iniciar sesión.' } }
+
+  let token
+  try {
+    token = await user.getIdToken()
+  } catch (error) {
+    if (SESSION_GONE.has(error?.code)) {
+      return { ok: false, status: 401, data: { error: 'Necesitas iniciar sesión.' } }
+    }
+    throw error
   }
 
-  const response = await fetch('/api/inmuebles', {
-    method: 'POST',
-    headers: { Authorization: `Bearer ${token}` },
-    body: form,
+  const response = await fetch(path, {
+    ...options,
+    headers: { ...options.headers, Authorization: `Bearer ${token}` },
     cache: 'no-store',
   })
 
@@ -28,4 +34,47 @@ export async function publishProperty(values, photos) {
     data = null
   }
   return { ok: response.ok, status: response.status, data }
+}
+
+export function getActiveProperties() {
+  return authenticatedRequest('/api/inmuebles')
+}
+
+export function exploreProperties(offset = 0) {
+  return authenticatedRequest(`/api/inmuebles/explorar?limit=10&offset=${offset}`)
+}
+
+export function decideProperty(propertyId, decision) {
+  return authenticatedRequest('/api/inmuebles/decidir', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ property_id: propertyId, decision }),
+  })
+}
+
+export function publishProperty(fields, photos) {
+  const values = {
+    title: fields.title,
+    street: fields.street ?? fields.address,
+    city: fields.city ?? fields.locality,
+    postal_code: fields.postal_code ?? fields.postalCode,
+    description: fields.description,
+    price: fields.price,
+    surface: fields.surface ?? fields.area,
+    bedrooms: fields.bedrooms,
+    bathrooms: fields.bathrooms,
+    people: fields.people ?? fields.tenants,
+    shared_accommodation:
+      fields.shared_accommodation ??
+      (fields.shared === 'yes' ? 'Sí' : fields.shared === 'no' ? 'No' : ''),
+  }
+  const form = new FormData()
+  for (const [name, value] of Object.entries(values)) {
+    form.append(name, value)
+  }
+  for (const photo of photos) {
+    form.append('photos', photo?.file ?? photo)
+  }
+
+  return authenticatedRequest('/api/inmuebles', { method: 'POST', body: form })
 }

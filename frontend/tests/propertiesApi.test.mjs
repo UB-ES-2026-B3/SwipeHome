@@ -53,11 +53,39 @@ test('returns API rejection without changing the caller data', async () => {
   assert.equal(values.title, 'Keep this title')
 })
 
-test('reports absent sessions and network errors instead of fabricating success', async () => {
+test('returns an authentication rejection and preserves network errors', async () => {
   const anonymous = harness({ user: null })
   anonymous.auth.currentUser = null
-  await assert.rejects(anonymous.api.publishProperty({}, []), /sesión autenticada/)
+  const unauthenticated = await anonymous.api.publishProperty({}, [])
+  assert.equal(unauthenticated.ok, false)
+  assert.equal(unauthenticated.status, 401)
 
   const offline = harness({ networkFailure: true })
   await assert.rejects(offline.api.publishProperty({}, []), /offline/)
+})
+
+test('maps the dashboard form aliases to the backend contract', async () => {
+  const { api, calls } = harness()
+  await api.publishProperty({
+    title: 'Piso',
+    address: 'Calle 1',
+    locality: 'Barcelona',
+    postalCode: '08001',
+    description: 'Luminoso',
+    price: '950',
+    area: '65',
+    bedrooms: '2',
+    bathrooms: '1',
+    tenants: '3',
+    shared: 'yes',
+  }, [{ file: new File(['photo'], 'photo.webp', { type: 'image/webp' }) }])
+
+  const [, options] = calls[0]
+  assert.equal(options.body.get('street'), 'Calle 1')
+  assert.equal(options.body.get('city'), 'Barcelona')
+  assert.equal(options.body.get('postal_code'), '08001')
+  assert.equal(options.body.get('surface'), '65')
+  assert.equal(options.body.get('people'), '3')
+  assert.equal(options.body.get('shared_accommodation'), 'Sí')
+  assert.equal(options.body.get('photos').name, 'photo.webp')
 })

@@ -1,3 +1,33 @@
+# Pautas vigentes de trabajo en SwipeHome
+
+## Continuidad US4 — 8 noviembre 2026
+
+Este archivo es documentación del equipo, no una skill instalada.
+El usuario autorizó implementar US 4.4–4.7 usando Firebase/Firestore.
+Revisar [US4 backend](us4_backend.md), [US6 backend](us6_backend.md) y
+[README backend](../backend/README.md) antes de continuar.
+
+- Conservar Firebase Auth/Firestore y sus cuentas/anuncios/fotografías.
+- Identidad desde `request.user`, construido con token y perfil verificados.
+- LIKE crea directamente decisión, match y aviso. No añadir aceptación.
+- Mantener todas las escrituras US4 en `repository.record_decision`; no
+  escribir documentos equivalentes con IDs arbitrarios ni omitir la transacción.
+- No atribuir CHECK/FK SQL a Firestore: unicidad de path y controles del
+  servicio son garantías distintas. Accesos directos de clientes siguen cerrados.
+- Mantener fechas e identidades inmutables y paginación por fecha/ID sin OFFSET.
+- Conservar avisos históricos; no fabricarles relaciones ausentes.
+- Ejecutar las pruebas reales de concurrencia en los emuladores demo.
+- Actualizar documentación con resultados reales; no tocar credenciales.
+- Preservar cambios ajenos y el registro local excluido de Git.
+  No se han creado commits, push ni PR durante esta implementación.
+
+Las pautas y ramas de tareas anteriores que siguen se conservan como historial;
+sus restricciones específicas de una tarea documental anterior no impiden el
+desarrollo autorizado por el usuario.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
 # Pautas de trabajo en SwipeHome
 
 Este archivo recoge pautas para agentes y colaboradores. No es un catálogo de skills instaladas, no instala herramientas y no sustituye un `AGENTS.md` ni las instrucciones explícitas del usuario.
@@ -45,3 +75,5 @@ nombre/email editable; Firestore conserva rol y relaciones. Reutilizar
 `repository.get_user_profile` y la verificación con revocación persistente.
 Nunca tratar los emails históricos de Firestore como el perfil vigente.
 Las nuevas pruebas de integración usan solo Firebase Auth Emulator demo.
+
+</details>

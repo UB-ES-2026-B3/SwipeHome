@@ -1,3 +1,26 @@
+# Firebase Auth y Firestore: continuidad vigente
+
+## Estado US4 — 8 noviembre 2026
+
+El usuario autorizó mantener Firebase Auth/Firestore para US 4.4–4.7.
+La migración a Firebase ya está implementada en esta rama; el plan original
+que sigue se conserva como historial y no debe ejecutarse de nuevo.
+
+Los contratos de autenticación/perfil/logout vigentes están en
+[US6 backend](us6_backend.md). Exploración, decisiones y avisos están en
+[US4 backend](us4_backend.md) y [README backend](../backend/README.md).
+LIKE crea directamente match y aviso; no requiere aceptación posterior.
+Se reutilizan `listings` y `notifications`, se añaden `swipes/matches` con
+claves canónicas y transacciones. No se añaden ORM ni sesiones por cookies.
+La evolución es aditiva; los índices se definen pero no se despliegan remotamente.
+
+La suite actual pasa 140 pruebas con Auth y Firestore Emulator, sin omisiones,
+incluidas las regresiones US6. Los resultados históricos y pendientes del plan
+de octubre que siguen no sustituyen ese estado comprobado.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
 # Especificación: migración de autenticación a Firebase
 
 > Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
@@ -375,8 +398,8 @@ si algún día cambia el proyecto.
 ## 11. Alcance original de esta rama de migración
 
 Esta sección registra el alcance original de `feature/firebase-auth`, no el
-estado actual del repositorio. La publicación y subida a Storage se añadieron
-después; su verificación vigente de API y repositorio está en el
+estado actual del repositorio. La publicación y subida a Azure Blob Storage se
+añadieron después; su verificación vigente de API y repositorio está en el
 [README backend](../backend/README.md) (US3-7).
 
 - Hosting del frontend y CORS (con el proxy de Vite no hace falta todavía).
@@ -561,3 +584,5 @@ desplegando desde la rama de trabajo mientras se revisa.
    son las mismas; solo cambia de qué rama sale el código.
 4. Desde aquí, cada push a `dev` despliega. `deploy/render-bootstrap` deja de usarse;
    borrarla o conservarla es decisión aparte.
+
+</details>

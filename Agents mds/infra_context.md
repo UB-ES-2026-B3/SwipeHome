@@ -1,3 +1,81 @@
+# Infraestructura vigente de SwipeHome
+
+## Estado comprobado — 8 noviembre 2026
+
+Django usa Firebase Auth y Firestore; las fotografías de anuncios se sirven
+desde Azure Blob Storage.
+`DATABASES = {}`; no se reintroducen ORM, SQLite activa, sesiones Django ni
+CSRF por cookies. El usuario confirmó este stack para US 4.4–4.7.
+US6 continúa según [su contrato](us6_backend.md); US4 según
+[US4 backend](us4_backend.md) y el [README backend](../backend/README.md).
+
+El registro/publicación existentes y el alojamiento Render no se sustituyen.
+No se ha comprobado ni cambiado el plan de facturación o el despliegue remoto.
+
+### Fotografías de anuncios: Azure Blob Storage
+
+Las fotografías se guardan en **Azure Blob Storage** (Azure for Students,
+sugerido por el profesor; sin tarjeta). Firebase se usa para Auth y Firestore;
+la configuración de fotos ya no forma parte del cliente Firebase.
+
+- Cuenta de almacenamiento creada por Arnau; contenedor `listings` con nivel
+  de acceso anónimo **«Blob»**: cada foto se lee por su URL sin credenciales,
+  pero el contenedor no se puede listar. No subir nada privado a ese contenedor.
+- Blobs `{uid}/{uuid}` con su `Content-Type`, sin prefijo: el contenedor ya
+  separa las fotos de anuncios (el prefijo `listings/` solo tenía sentido con
+  el bucket único de Firebase). Firestore guarda la URL pública
+  `https://<cuenta>.blob.core.windows.net/listings/{uid}/{uuid}`. No hay token
+  de descarga ni SAS.
+- `accounts/repository.py` sigue siendo el único módulo que sube y borra fotos
+  (misma compensación: se borran si Firestore falla con certeza, se conservan
+  si la escritura pudo confirmarse). `accounts/azure_storage.py` crea el
+  cliente de forma perezosa, como `firebase.py`.
+- Variables: `AZURE_STORAGE_CONNECTION_STRING` (obligatoria para publicar;
+  **secreto**, contiene la clave de la cuenta; solo en Render o en la sesión
+  local) y `AZURE_STORAGE_CONTAINER` (por defecto `listings`). Se exige la
+  cadena con `AccountKey`; una con `SharedAccessSignature` se rechaza porque el
+  token acabaría en las URLs públicas. La cadena nunca aparece en logs ni
+  mensajes de error: solo se registran nombres de clase de las excepciones.
+- En local se carga con `$env:AZURE_STORAGE_CONNECTION_STRING =
+  (Get-Clipboard -Raw).Trim()` y se comprueba `.Length` y `.Substring(0, 30)`;
+  `Read-Host -AsSecureString` puede no recibir el pegado y dejarla vacía.
+- **Límites de red** (`azure_storage.py`): 2 reintentos lineales de ~1 s
+  (±1 s), conexión 5 s y lectura 5 s. Son tiempos sin progreso por operación,
+  no límites a la duración total de una subida de 5 MB. Una operación fallida
+  tarda como máximo ~19 s (medido: 17,5 s contra un host que descarta paquetes;
+  2 s con DNS inexistente), por debajo de los 30 s de timeout de gunicorn, así
+  que la limpieza llega a ejecutarse. Con los valores por defecto del SDK eran
+  84 s. **No se sube `--timeout` de gunicorn:** Render gratuito tiene un único
+  worker síncrono y una subida lenta bloquearía a todos. Las subidas usan
+  `overwrite=True` para que un reintento tras una respuesta perdida no dé 409.
+  Límite conocido: si Azure cae entre dos fotos, borrar las ya subidas también
+  falla; quedan huérfanas y el log lo indica.
+- Los tests no usan Azure: el cliente se simula. El SDK es `azure-storage-blob`
+  (puro Python) con `azure-core` e `isodate`, fijados en `requirements.txt`.
+
+La evolución US4 añade `swipes/matches` y amplía la colección existente
+`notifications`. No hay migraciones SQL ni conversión/borrado de datos.
+LIKE genera directamente match y aviso en una transacción Firestore.
+La unicidad es la del path canónico; las referencias/valores los impone el
+servicio Admin, que no debe saltarse. Se mantienen cerrados los accesos directos
+de clientes a Firestore.
+
+Se conservan los índices de avisos y se incorpora el índice de exploración:
+`backend/firestore.indexes.json`. `backend/firebase.json` configura despliegue
+solo de índices. El comando y la revisión de compatibilidad de datos remotos
+están en el README. Los índices no se han publicado en esta tarea.
+
+Pruebas únicamente con emuladores demo en loopback: Auth 9099, Firestore 8080,
+Node 24 y Java 21. 152 pruebas pasan sin omisiones. CI prepara ambos emuladores
+y Java 21. El emulador no certifica índices de producción. No se emplearon
+credenciales de producción, ni se modificaron cuentas, anuncios o fotos remotos.
+
+El plan de migración y las situaciones de ramas/despliegue de octubre que
+siguen son historial; no son instrucciones para cambiar ahora la arquitectura.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
 # Contexto de infraestructura (base de datos, despliegue y autenticación)
 
 > Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
@@ -29,7 +107,7 @@ autenticación.** Donde contradiga a `backend_context.md` o a
 | Hosting backend | **Render**, plan gratuito |
 | Hosting frontend | Firebase Hosting o Vercel (pendiente) |
 | Docker | **No se usa.** Solo si el profesor lo exige. |
-| Fotos de anuncios | El código de US3 sube a Firebase Storage; habilitar/usar el bucket en el proyecto sigue condicionado por el plan y coste. Los tests de US3-7 mockean Storage y no prueban una subida real. |
+| Fotos de anuncios | Azure Blob Storage; los tests de US3-7 usan mocks y no prueban una subida real. Ver la sección de fotografías de anuncios anterior. |
 
 Restricción dura del proyecto: **coste cero, sin tarjeta de crédito.**
 Cualquier propuesta que requiera un servicio de pago queda descartada.
@@ -195,3 +273,5 @@ anunciado.
 - Implementar la migración a Firebase Auth (sección 4).
 - CI con GitHub Actions: ejecutar los tests en cada PR y proteger `main`.
 - Hosting del frontend y configuración de CORS.
+
+</details>

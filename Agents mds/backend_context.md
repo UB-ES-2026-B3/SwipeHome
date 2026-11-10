@@ -1,5 +1,45 @@
 # Contexto backend de SwipeHome
 
+## Estado vigente — US4 y US6 (8 noviembre 2026)
+
+El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
+cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
+para US 4.4–4.7. Los contratos vigentes están en el
+[README backend](../backend/README.md), [US4 backend](us4_backend.md) y
+[US6 backend](us6_backend.md).
+
+US4 reutiliza usuarios y anuncios actuales, fotografías ordenadas en
+`listings.photos`, autenticación con revocación y la colección `notifications`.
+LIKE crea directamente decisión, match y aviso; PASS solo crea decisión.
+No hay aceptación posterior del Vendedor ni reserva del inmueble.
+
+`accounts/repository.py` centraliza todo Firestore/Storage, incluida la
+transacción y las claves canónicas `swipes/{key}`, `matches/{key}` y
+`notifications/match-{key}`. Firestore garantiza unicidad de path; valores,
+referencias y conjunto completo son garantías del servicio, no CHECK/FK.
+Los reintentos equivalentes son 200, nuevos 201 y contrarios 409.
+Abortos de lectura/commit y colisiones usan transacciones nuevas acotadas.
+
+GET `/api/inmuebles/explorar` y POST `/api/inmuebles/{id}/decision` son BUYER;
+GET `/api/notificaciones` es solo SELLER. `request.user` se construye desde el
+token verificado y el perfil, sin aceptar selectores de identidad del cliente.
+Los GET comparten `limit/cursor` 20/50, orden fecha/ID descendentes y cursor
+firmado. Exploración carga decisiones en batch, sin OFFSET ni consultas por foto.
+
+La evolución de esquema es aditiva y conserva avisos históricos; no hay
+migraciones ORM. Los índices están en `backend/firestore.indexes.json` y su
+configuración en `backend/firebase.json`; no se han desplegado remotamente.
+El detalle de compatibilidad y límites de garantías está en US4 backend.
+
+Verificación: 140 pruebas pasan con Auth/Firestore Emulator, sin omisiones;
+sin emuladores pasan 116 y se omiten 24 integraciones. Django check, comprobación
+de migraciones, pip check y diff check correctos. No se ha probado producción.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
+# Contexto backend de SwipeHome
+
 > Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
 > El contrato vigente de edición del perfil, contraseña y logout está en
 > [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
@@ -14,9 +54,9 @@
 > por Firebase Auth. Ver `infra_context.md` y `firebase_auth_migration.md`. Pendiente
 > de actualizar.
 
-> Estado US3-8 (1 noviembre 2026): la interfaz `/publicar` integra el endpoint
+> Estado US3-8 tras el merge con Azure: la interfaz `/publicar` integra el endpoint
 > mediante FormData autenticado. La verificación usa Auth Emulator e intercepta
-> la API, sin escrituras reales en Firestore/Storage. Detalle en el
+> la API, sin escrituras reales en Firestore ni Azure Blob. Detalle en el
 > [README backend](../backend/README.md).
 
 ## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
@@ -42,9 +82,9 @@ US1-5 centraliza la normalizacion del email en el campo de persistencia.
 La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
 de email canonico; se mantienen UNIQUE de email y CHECK de rol.
 Las cifras 53/56 anteriores corresponden a ejecuciones históricas de US1/US2.
-La suite vigente `accounts properties` contiene 103 tests: todos pasan al
-ejecutarla bajo Firebase Auth Emulator; sin emulador solo se omiten los 2 tests
-de integración Auth. El comando y resultado vigentes están en el
+La suite vigente `accounts properties` contiene 165 tests: todos pasan al
+ejecutarla bajo Auth y Firestore Emulator. Azure Blob se simula con mocks. El
+comando y resultado vigentes están en el
 [README del backend](../backend/README.md).
 GET /api/auth/me esta implementado: 200 con id/name/email/role desde la sesion,
 401 sin autenticacion y 500 generico ante fallo interno, con Cache-Control no-store.
@@ -77,10 +117,10 @@ La referencia principal de las reglas de imágenes está en US3 del contexto del
 
 ## Verificación prevista
 
-La suite actual `accounts properties` ejecuta 103 tests. Con Firebase Auth
+La suite actual `accounts properties` ejecuta 165 tests. Con Auth y Firestore
 Emulator local pasan todos, incluidos los tests de carrera de email y de cambio
-de contraseña; sin el emulador se omiten explícitamente esos 2 casos. Las pruebas
-de US3-7 mockean Firestore y Storage, cuyas limitaciones de integración están en
+de contraseña. Las pruebas de US3-7 usan Firestore Emulator y mockean Azure Blob;
+sus limitaciones de integración están en
 el [README backend](../backend/README.md). Las pruebas heredadas de US1 y US2
 también figuran en las secciones históricas; los comandos y el estado vigente
 están en el README. La lista funcional está en el apartado 13 del contexto del
@@ -164,3 +204,5 @@ La documentación puede describir estas relaciones sin imponer tablas, clases, c
 Un vendedor puede tener varios inmuebles; cada inmueble pertenece a un vendedor. Cada anuncio publicado tiene al menos una fotografía, y las fotografías quedan asociadas al inmueble correspondiente.
 
 No está resuelto si «inmueble» y «anuncio» serán entidades separadas. Se han utilizado de forma conjunta en el backlog inicial; no duplicarlas automáticamente en el diseño.
+
+</details>

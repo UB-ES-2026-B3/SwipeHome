@@ -68,12 +68,12 @@ Se aceptan JPEG/PNG/WebP reales, hasta 10 fotos de 5 MiB cada una. Los errores
 de campo o de foto evitan la solicitud; los errores de red/servidor conservan
 los datos para reintentar.
 
-`npm test` cubre el helper de validación y la construcción de la petición. El
-recorrido de navegador de US3-8 se verificó con Auth Emulator y respuestas del
-endpoint interceptadas para no escribir en Firebase real. `backend/tests/firebase.json`
-solo declara Auth Emulator; Firestore y Storage no tienen emuladores configurados,
-así que esta comprobación no valida escritura real del anuncio ni subida real de
-fotos. Los resultados detallados están en
+`npm test` (18 pruebas) cubre validación y construcción del multipart. En la comprobación de
+navegador de US3-8, Firebase Auth Emulator gestiona la sesión y las respuestas
+de `POST /api/inmuebles` se interceptan. El backend usa Firestore Emulator en
+sus pruebas de integración y mocks para Azure Blob; el recorrido de navegador
+no prueba persistencia real en Firestore ni subida real a Azure. Los resultados
+detallados están en
 [README backend](../backend/README.md) y [project_context.md](../Agents%20mds/project_context.md).
 
 ## Integración US6

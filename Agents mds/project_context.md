@@ -1,5 +1,40 @@
 # Contexto del proyecto SwipeHome
 
+## Estado vigente — US4 backend (8 noviembre 2026)
+
+El stack vigente es Django con Firebase Auth y Firestore. La implementación
+de US 4.4–4.7 sobre ese stack fue autorizada explícitamente por el usuario.
+Las descripciones anteriores de sesiones Django/SQLite son historial.
+
+**Regla vigente:** el Comprador da LIKE y crea directamente match y aviso
+al propietario. No hay aceptación del Vendedor ni segundo swipe. PASS no
+crea match ni aviso. Un match no reserva el anuncio y varios Compradores
+pueden tener match con la misma vivienda.
+
+| Historia | Estado de backend |
+|---|---|
+| US 4.4 | Exploración BUYER, anuncios completos, decisiones propias excluidas, todas las fotografías ordenadas, cursor sin OFFSET. |
+| US 4.5 | Decisiones LIKE/PASS, creación atómica, reintentos idempotentes, conflictos sin sobrescritura. |
+| US 4.6 | Persistencia Firestore con claves canónicas, transacciones, controles de coherencia y unicidad de path. |
+| US 4.7 | Avisos privados SELLER, relaciones de match/Comprador/vivienda y paginación. |
+
+Implementación y pruebas backend terminadas: 140 pruebas correctas con ambos
+emuladores, sin omisiones. Queda pendiente desplegar/verificar los índices
+remotos antes de activar las consultas en producción. No se ha implementado
+frontend de US4, chat, email, push ni lectura de avisos.
+US6 permanece vigente según [su contrato](us6_backend.md).
+
+La referencia de modelos, atomicidad, concurrencia, compatibilidad histórica y
+resultados reales es [US4 backend](us4_backend.md). Los contratos HTTP completos,
+ejemplos y comandos están en el [README backend](../backend/README.md).
+El backlog original de Sprint 0 se conserva a continuación como historial:
+sus afirmaciones sobre funcionalidades futuras no describen el estado actual.
+
+<details>
+<summary>Historial anterior a US4 (conservado como referencia)</summary>
+
+# Contexto del proyecto SwipeHome
+
 > Estado US6 (22 octubre 2026): se conserva Firebase Auth + Firestore.
 > El contrato vigente de edición del perfil, contraseña y logout está en
 > [us6_backend.md](us6_backend.md). Nombre/email actuales se leen de Auth;
@@ -302,12 +337,10 @@ Estas son garantías de comportamiento. No imponen una tecnología de base de da
 
 La interfaz conserva los datos y las fotografías seleccionadas cuando ocurre un error para permitir reintentar. No se ha definido un sistema de borradores ni persistencia del formulario al cerrar el navegador.
 
-### Resultado de verificación de US3-7 (1 noviembre 2026)
+### Resultado de verificación de US3-7 tras el merge con Azure
 
-La suite `properties` y `accounts.test_repository` pasó 33 tests; la suite
-completa `accounts properties` pasó 103 tests con Firebase Auth Emulator
-activo, sin omisiones. Sin emulador se omiten explícitamente las 2 pruebas
-de integración Auth. Se cubrieron publicaciones de una y varias
+La suite completa `accounts properties` pasó 165 tests con Auth y Firestore
+Emulator activos, sin omisiones. Se cubrieron publicaciones de una y varias
 fotos, autenticación/rol, uid de vendedor, campos y valores inválidos, personas
 y alojamiento compartido, contenido/formato de imagen, límites, orden y
 asociación de URLs, compensación ante fallos confirmados y errores genéricos.
@@ -315,38 +348,33 @@ También pasan las integraciones Auth de concurrencia de email y continuidad de
 cambio de contraseña. El comando y la limitación ante escrituras Firestore
 ambiguas constan en el [README del backend](../backend/README.md).
 
-La suite utiliza servicios Firebase simulados; no verifica escritura real en
-Firestore/Storage. Si no puede confirmarse el resultado de una creación en
+La suite usa Firestore Emulator y simula Azure Blob; no verifica escritura real
+en Firestore ni en Azure. Si no puede confirmarse el resultado de una creación en
 Firestore, el repositorio conserva los objetos y registra el caso para
 conciliación, porque eliminarlos podría romper un anuncio que sí se guardó.
 No se declara atomicidad distribuida en ese escenario ambiguo.
 
-### Resultado de verificación de US3-8 (1 noviembre 2026)
+### Resultado de verificación de US3-8 tras el merge con Azure
 
 La interfaz de publicación está implementada en `/publicar`, protegida para
 Vendedores. El recorrido en navegador usó Firebase Auth Emulator y respuestas
-interceptadas de `/api/inmuebles`, sin crear anuncios ni subir fotos a Firebase
-real. Se verificaron:
+interceptadas de `/api/inmuebles`; no creó anuncios ni subió fotos a Azure. Se
+verificaron los criterios siguientes:
 
-- Acceso desde «Publicar» para SELLER y ausencia de esa opción para BUYER; el
-  acceso directo del comprador a la ruta vuelve a `/comprador/inicio`.
-- Validación de campos y rechazo sin fotos, ambos sin solicitud a la API; rechazo
-  de formato de archivo con motivo visible y preservación del formulario.
-- Previsualización, orden de selección y retirada de fotografías, incluido el
-  bloqueo al retirar la última.
-- Envío multipart con token Firebase, una fotografía y varias; indicador de
-  carga y botón deshabilitado mientras la respuesta está pendiente.
-- La opción de alojamiento compartido no tiene valor inicial: sin elegirla no
-  se envía la solicitud; se completó el flujo con «Sí» y con «No».
-- Error 500 y fallo de conexión seguidos de reintento, conservando los datos y
-  la imagen seleccionada; confirmación tras las respuestas 201 simuladas y
-  ausencia de detalles internos en el mensaje mostrado.
+| Criterio | Resultado | Evidencia y alcance |
+|---|---|---|
+| CA-01 | Pasa | Auth Emulator: Seller llega a `/publicar` desde «Publicar»; Buyer no ve la opción y la ruta directa vuelve a su inicio. |
+| CA-02 | Pasa con respuesta simulada | Multipart autenticado con una y varias fotos; respuesta 201 interceptada y confirmación visible. No acredita persistencia integrada. |
+| CA-03 | Pasa | Envío sin fotos/retirada de la última no genera solicitud y muestra el error. Suite backend comprueba fotos y asociación con Firestore Emulator y Azure mock. |
+| CA-04 | Pasa | Campos inválidos muestran errores sin solicitud; backend prueba además validación con solicitudes API directas. |
+| CA-05 | Pasa | Archivo GIF rechazado con motivo, conservando los campos y la foto válida; tests backend cubren formatos y contenido. |
+| CA-06 | Pasa con mocks/interceptación | Carga y bloqueo de reenvío, error 500 y desconexión conservan el formulario y permiten reintentar; backend prueba compensación sin Azure real. |
 
-`frontend`: 17 tests Node pasan; `npm run build` pasa y `npm run lint` deja solo
-el aviso Fast Refresh preexistente de `AuthContext.jsx`. La prueba de navegador
-intercepta la API. Firestore y Storage no tienen emuladores en la configuración
-actual, así que no se afirma persistencia real de archivos ni de anuncios desde
-la interfaz; el contrato API de US3-7 se verificó con esos servicios simulados.
+`frontend`: 18 tests Node pasan; `npm run build` pasa. `npm run lint` termina con
+código 0 y avisos en `AuthContext.jsx`, `SellerHome.jsx` y `BuyerHome.jsx`. La
+prueba de navegador intercepta la API, así que no se afirma persistencia real
+de anuncios en Firestore ni de archivos en Azure Blob. La suite backend de
+US3-7 usa Firestore Emulator y mocks de Azure Blob.
 
 ## 12. Tablero Kanban y límites de trabajo
 
@@ -418,3 +446,5 @@ También están pendientes:
 12. Detalles de CI/CD y criterios comunes de finalización adicionales, si el equipo los acuerda.
 
 Separar las decisiones pendientes de los requisitos que ya se deben cumplir. Si es imprescindible resolver una para implementar, plantear una propuesta explícita; la documentación no debe simular que el equipo ya la aprobó.
+
+</details>
