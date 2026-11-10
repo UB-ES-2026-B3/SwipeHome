@@ -68,7 +68,7 @@ desde la consola de Firebase al terminar.
 
 | Método | Ruta | Resumen |
 |---|---|---|
-| `GET` | `/api/notificaciones` | Avisos privados SELLER paginados: 200 / 400 / 401 / 403 / 500 |
+| `GET` | `/api/notificaciones` | Avisos privados BUYER/SELLER paginados: 200 / 400 / 401 / 403 / 500 |
 | `GET` | `/api/inmuebles` | Inmuebles publicados del SELLER autenticado: 200 / 401 / 500 |
 | `GET` | `/api/inmuebles/explorar` | Viviendas pendientes BUYER paginadas. |
 | `POST` | `/api/inmuebles/{id}/decision` | Decisión BUYER; LIKE crea match y aviso: 201 / 200 / 400 / 401 / 403 / 404 / 409 / 500 |
@@ -300,7 +300,7 @@ aceptación del Vendedor, segundo swipe ni reserva o retirada automática del an
 |---|---|---|
 | GET | `/api/inmuebles/explorar` | BUYER |
 | POST | `/api/inmuebles/{id}/decision` | BUYER |
-| GET | `/api/notificaciones` | SELLER |
+| GET | `/api/notificaciones` | BUYER / SELLER (solo avisos de la identidad verificada) |
 
 Todos requieren `Authorization: Bearer <ID token Firebase>`.
 401 significa token ausente, inválido, caducado o sesión revocada;
@@ -600,3 +600,35 @@ console.log(response.status, await response.json());
 No se necesitan cookies ni token CSRF para este contrato Bearer.
 Detalle de arquitectura, garantías, compatibilidad y pruebas:
 [US4 backend](<../Agents mds/us4_backend.md>).
+
+## US 7.4: recepción y consulta de notificaciones
+
+`GET /api/notificaciones` requiere ID token Firebase vigente y perfil BUYER o
+SELLER. El UID se obtiene únicamente de `request.user`; `uid`,
+`recipient_uid` y cualquier otro selector de cuenta se rechazan. La lectura
+filtra por `recipient_uid`, ordena `created_at` e ID descendentes y no escribe
+en Firestore. Los cursores firmados están ligados a la cuenta. Las respuestas
+incluyen `items` y `next_cursor`.
+
+La comprobación del 10 de noviembre de 2026 pasó **172 tests** con Auth y
+Firestore Emulator de proyecto demo; Azure Blob se simula. El test de flujo
+integrado crea el aviso del LIKE para el propietario y comprueba su lectura,
+logout, rechazo del token revocado y persistencia tras nuevo inicio de sesión.
+Otra prueba escribe fixtures locales destinados a BUYER, SELLER y una tercera
+cuenta y verifica el aislamiento, parámetros manipulados y que las lecturas no
+alteran `swipes` ni `matches`. PASS no crea aviso y los reintentos LIKE no
+duplican aviso según las pruebas US4 existentes. No se usaron Firebase ni
+Azure de producción.
+
+La pantalla consulta al entrar, pagina con `next_cursor`, actualiza sin
+duplicados, presenta fecha/hora local junto al mensaje y distingue carga,
+vacío y error reintentable. `npm test` pasa 25 pruebas, `npm run lint` y
+`npm run build` finalizan; lint conserva advertencias del repositorio. La
+prueba visual usa Auth Emulator y respuestas API interceptadas; el navegador
+no consulta Firestore directamente. Se contrastaron viewports 1280×900 y
+390×844 emulados, no dispositivos físicos.
+
+**Límite US5:** este árbol no contiene endpoint ni productor de la confirmación
+US5 que cree un aviso para BUYER. La API puede consultar avisos BUYER si ya
+están persistidos, pero no se afirma que la confirmación los genere. Esa parte
+queda sin verificar y fuera de esta implementación de consulta.

@@ -103,6 +103,34 @@ Verificación registrada el 10 de noviembre de 2026:
 mantiene advertencias existentes. El test de API cubre también el rechazo de
 red de `decideProperty`; no se forzó una desconexión física del navegador.
 
+## Notificaciones (US 7.4)
+
+`/notificaciones` está protegida para BUYER y SELLER. Ambos roles consultan
+`GET /api/notificaciones` con el ID token Firebase; el backend deriva el
+destinatario del token/perfil, ignora cualquier identidad proporcionada por el
+cliente y filtra sus propios avisos. La pantalla consume `items/next_cursor`,
+conserva los avisos al fallar una actualización, permite reintentar, evita
+duplicados al paginar y presenta mensaje y fecha/hora local. En vacío muestra
+un estado vacío; fallo inicial y fallo de refresco se distinguen.
+
+Verificación US7.4: `npm test` pasa 25 pruebas, incluida la petición autenticada
+de avisos, cursor, `no-store`, ausencia de usuario, error HTTP y error de red.
+Lint y build finalizan; persisten avisos ya existentes (Fast Refresh, efecto
+de carga y una importación no utilizada en `App.jsx`). En navegador, Auth
+Emulator gestionó la sesión y la API se interceptó: se observó el indicador de
+carga con la petición retenida; se inyectó un 500 inicial y se reintentó con
+éxito; se paginó una respuesta solapada sin duplicados; un 503 al actualizar
+conservó los avisos y el retry incorporó uno nuevo; se verificaron mensaje,
+fecha/hora local y estado vacío. No hubo desbordamiento horizontal en
+1280×900 ni 390×844. Es responsive emulado en escritorio, no una prueba en
+hardware móvil ni persistencia real de UI en Firestore.
+
+No hay en este árbol implementación de confirmación US5 ni un escritor de
+avisos destinados al Comprador. Se puede consultar un aviso BUYER previamente
+persistido, pero su creación por US5 queda no verificada. La persistencia del
+aviso de interés al SELLER sí se comprobó con Auth/Firestore Emulator en
+backend, incluyendo cierre y nuevo inicio de sesión.
+
 ## Integración US6
 
 `api/auth.js` ofrece `updateProfile`, `changePassword` y logout con revocación

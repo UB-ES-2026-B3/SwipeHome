@@ -95,7 +95,7 @@ class FirestoreDecisionTests(SimpleTestCase):
         )
         self.assertEqual(
             buyer.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer buyer").status_code,
-            403,
+            200,
         )
         self.assertEqual(seller.get("/api/inmuebles/explorar").status_code, 401)
         self.assertEqual(
@@ -108,6 +108,41 @@ class FirestoreDecisionTests(SimpleTestCase):
         )
         self.assertEqual(buyer.get("/api/notificaciones").status_code, 401)
         self.assertEqual(self.counts(), (0, 0, 0))
+
+    def test_buyer_and_seller_can_read_only_their_own_notifications(self):
+        for identifier, recipient, message in (
+            ("buyer-confirmation", "buyer", "El propietario confirmó el interés."),
+            ("seller-interest", "seller", "Un comprador mostró interés."),
+            ("other-interest", "seller2", "Aviso de otra cuenta."),
+        ):
+            self.collection("notifications").document(identifier).create({
+                "recipient_uid": recipient, "type": "MATCH", "message": message,
+                "created_at": STAMP,
+            })
+
+        buyer = self.notices(uid="buyer")
+        seller = self.notices(uid="seller")
+        self.assertEqual(buyer.status_code, 200, buyer.content)
+        self.assertEqual(seller.status_code, 200, seller.content)
+        self.assertEqual([row["id"] for row in buyer.json()["items"]], ["buyer-confirmation"])
+        self.assertEqual([row["id"] for row in seller.json()["items"]], ["seller-interest"])
+        self.assertEqual(buyer.json()["items"][0]["message"], "El propietario confirmó el interés.")
+        buyer_created_at = buyer.json()["items"][0]["created_at"]
+        self.assertTrue(buyer_created_at.startswith("2026-11-08T00:00:00"))
+        self.assertTrue(buyer_created_at.endswith("Z"))
+        self.assertEqual(
+            self.client.get("/api/notificaciones?uid=seller", HTTP_AUTHORIZATION="Bearer buyer").status_code,
+            400,
+        )
+        self.assertEqual(
+            self.client.get(
+                "/api/notificaciones?recipient_uid=buyer", HTTP_AUTHORIZATION="Bearer seller"
+            ).status_code,
+            400,
+        )
+        self.assertEqual(len(self.rows("notifications")), 3)
+        self.assertEqual(self.rows("swipes"), [])
+        self.assertEqual(self.rows("matches"), [])
 
     def test_like_has_exactly_one_consistent_decision_match_and_notice(self):
         response = self.post()
@@ -319,10 +354,12 @@ class FirestoreDecisionTests(SimpleTestCase):
         self.assertEqual({row["listing"]["id"] for row in items}, {"home", "second"})
         self.assertEqual({row["buyer"]["name"] for row in items}, {"Name buyer", "Name buyer2"})
         for row in items:
+            self.assertEqual(row["message"], "Tienes un nuevo match.")
+            self.assertTrue(row["created_at"].startswith("2026-11-08T00:00:00"))
+            self.assertTrue(row["created_at"].endswith("Z"))
             self.assertEqual(row["listing"]["title"], listing()["title"])
             self.assertTrue(self.collection("matches").document(row["match_id"]).get().exists)
         self.assertEqual(len(self.notices(uid="seller2").json()["items"]), 1)
-        self.assertEqual(self.notices(uid="buyer").status_code, 403)
         self.assertEqual(self.notices(recipient_uid="seller2").status_code, 400)
         self.assertEqual(self.notices(uid="seller2", cursor=first["next_cursor"]).status_code, 400)
 
@@ -404,6 +441,28 @@ class FirebaseFlowTests(SimpleTestCase):
         notices = client.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + tokens["SELLER"])
         self.assertEqual(notices.status_code, 200, notices.content)
         self.assertEqual(len([row for row in notices.json()["items"] if row.get("match_id") == liked.json()["match"]["id"]]), 1)
+        seller_notice = notices.json()["items"][0]
+        self.assertEqual(seller_notice["message"], "Tienes un nuevo match.")
+        self.assertTrue(seller_notice["created_at"].endswith("Z"))
+
+        self.assertEqual(client.post(
+            "/api/auth/logout", HTTP_AUTHORIZATION="Bearer " + tokens["SELLER"]
+        ).status_code, 204)
+        self.assertEqual(client.get(
+            "/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + tokens["SELLER"]
+        ).status_code, 401)
+        time.sleep(1.05)
+        seller_token = self.login(
+            users["SELLER"]["email"], "Test password value 123!", requests
+        )
+        persisted_notice = client.get(
+            "/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + seller_token
+        )
+        self.assertEqual(persisted_notice.status_code, 200, persisted_notice.content)
+        self.assertEqual(
+            [row["id"] for row in persisted_notice.json()["items"]],
+            [seller_notice["id"]],
+        )
 
     def test_published_multi_photo_listings_survive_full_buyer_flow(self):
         import requests
