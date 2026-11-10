@@ -1,4 +1,5 @@
 from io import BytesIO
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -6,6 +7,8 @@ from django.test import SimpleTestCase
 from PIL import Image
 
 from accounts.authentication import AuthenticationFailed
+from accounts import repository
+from accounts.repository import get_seller_listings
 
 
 def image_file(name, image_format, content_type):
@@ -56,6 +59,12 @@ class PropertyPublicationTests(SimpleTestCase):
                 return_value={"id": "listing-1"},
             )
         )
+        self.get_seller_listings = self.enterContext(
+            patch(
+                "properties.views.repository.get_seller_listings",
+                return_value=[{"id": "listing-1", "title": "Piso luminoso"}],
+            )
+        )
 
     def publish(self, values=None, photos=None):
         data = dict(VALID if values is None else values)
@@ -91,6 +100,32 @@ class PropertyPublicationTests(SimpleTestCase):
             [photo.name for photo in self.create_listing.call_args.kwargs["photos"]],
             ["first.jpg", "second.jpg", "third.jpg"],
         )
+
+    def test_get_returns_only_the_authenticated_sellers_listings(self):
+        response = self.client.get("/api/inmuebles")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json(), {"properties": [{"id": "listing-1", "title": "Piso luminoso"}]})
+        self.get_seller_listings.assert_called_once_with(self.uid)
+
+    def test_seller_listings_ignore_published_records_without_an_owner(self):
+        with patch(
+            "accounts.repository._listings",
+        ):
+            snapshots = [
+                SimpleNamespace(id="legacy-listing", to_dict=lambda: {"published": True}),
+                SimpleNamespace(
+                    id="listing-1",
+                    to_dict=lambda: {
+                        "published": True,
+                        "seller_uid": self.uid,
+                        "title": "Piso luminoso",
+                        "photos": [],
+                    },
+                ),
+            ]
+            repository._listings.return_value.stream.return_value = snapshots
+            self.assertEqual(get_seller_listings(self.uid)[0]["title"], "Piso luminoso")
 
     def test_anonymous_user_is_rejected_before_body_validation(self):
         self.uid_from_request.side_effect = AuthenticationFailed("missing")
