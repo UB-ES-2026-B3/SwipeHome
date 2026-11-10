@@ -99,6 +99,10 @@ def firebase_auth(view=None):
 
 
 def firebase_role(role):
+    return firebase_roles(role)
+
+
+def firebase_roles(*roles):
     """Construye request.user solo desde Auth verificado y perfil del servidor."""
     from functools import wraps
     from types import SimpleNamespace
@@ -111,7 +115,7 @@ def firebase_role(role):
             try:
                 session = verified_session(request)
                 profile = repository.get_user_profile(session["uid"])
-                if profile is None or profile["role"] != role:
+                if profile is None or profile["role"] not in roles:
                     return JsonResponse({"error": "La cuenta no tiene acceso a esta operación."}, status=403)
                 request.user = SimpleNamespace(
                     uid=session["uid"], role=profile["role"], name=profile.get("name", ""),

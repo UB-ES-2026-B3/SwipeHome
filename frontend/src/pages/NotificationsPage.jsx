@@ -35,23 +35,12 @@ export function NotificationsPage() {
   const [hasMore, setHasMore] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   
-  // Ref para evitar solicitudes simultáneas
   const isRefreshingRef = useRef(false)
+  const isLoadingMoreRef = useRef(false)
 
-  // Formato de fecha en español
   const formatDate = (dateString) => {
     const date = new Date(dateString)
-    const now = new Date()
-    const diffMs = now - date
-    const diffMins = Math.floor(diffMs / 60000)
-    const diffHours = Math.floor(diffMs / 3600000)
-    const diffDays = Math.floor(diffMs / 86400000)
-
-    if (diffMins < 1) return 'Hace unos segundos'
-    if (diffMins < 60) return `Hace ${diffMins} minuto${diffMins > 1 ? 's' : ''}`
-    if (diffHours < 24) return `Hace ${diffHours} hora${diffHours > 1 ? 's' : ''}`
-    if (diffDays < 7) return `Hace ${diffDays} día${diffDays > 1 ? 's' : ''}`
-    
+    if (Number.isNaN(date.getTime())) return dateString
     return date.toLocaleDateString('es-ES', {
       year: 'numeric',
       month: 'long',
@@ -61,92 +50,80 @@ export function NotificationsPage() {
     })
   }
 
-  /**
-   * Cargar notificaciones del servidor.
-   * 
-   * @param {string|null} nextCursor - Cursor para paginación. Si es null, carga desde el inicio.
-   * @param {boolean} isRefresh - Si es true, es una actualización (no duplica)
-   */
-  const loadNotifications = async (nextCursor = null, isRefresh = false) => {
-    try {
-      // CA-06: Evitar solicitudes repetidas
-      if (nextCursor === null && isRefreshingRef.current) {
-        return
-      }
+  const loadNotifications = async (nextCursor = null) => {
+    const loadingMoreRequest = Boolean(nextCursor)
+    if (isRefreshingRef.current || isLoadingMoreRef.current) return
 
-      if (!nextCursor) {
-        // CA-01: Consultar al entrar en la pantalla y al recargar
-        // CA-03: Se evita duplicar notificaciones ya mostradas
-        setLoading(true)
-        setError(null)
-        isRefreshingRef.current = true
-      } else {
-        // CA-02: Cargar más resultados conserva los anteriores
-        setLoadingMore(true)
-      }
-      
-      // CA-01: Reutiliza GET /api/notificaciones
-      // CA-02: Las solicitudes utilizan la sesión existente (vía Authorization header en getNotifications)
+    if (loadingMoreRequest) {
+      isLoadingMoreRef.current = true
+      setLoadingMore(true)
+    } else {
+      isRefreshingRef.current = true
+      setLoading(true)
+      setError(null)
+    }
+
+    try {
       const result = await getNotifications({ cursor: nextCursor })
       
       if (!result.ok) {
-        // CA-05: Manejo de errores según status
         if (result.status === 401) {
-          // CA-05: Un 401 activa el tratamiento de sesión expirada
           setError('Tu sesión ha caducado. Por favor, inicia sesión de nuevo.')
           await logout()
           navigate('/login')
           return
         }
         
-        // CA-05: Un 500 se trata como error reintentable, sin cerrar la sesión
         const errorMessage = result.data?.error || 'No se pudieron cargar las notificaciones. Inténtalo de nuevo.'
         setError(errorMessage)
         return
       }
 
-      const { items = [], cursor: newCursor, has_more } = result.data
-      
-      // CA-03: Las notificaciones proceden del servidor, no de datos ficticios
-      if (nextCursor) {
-        // CA-02: Cargar más resultados conserva los anteriores
-        setNotifications(prev => [...prev, ...items])
+      const { items = [], next_cursor: newCursor } = result.data
+
+      if (loadingMoreRequest) {
+        setNotifications((previous) => {
+          const knownIds = new Set(previous.map((notification) => notification.id))
+          const uniqueItems = items.filter((notification) => {
+            if (knownIds.has(notification.id)) return false
+            knownIds.add(notification.id)
+            return true
+          })
+          return [...previous, ...uniqueItems]
+        })
       } else {
-        // CA-03: Actualizar no duplica las notificaciones ya mostradas
         setNotifications(items)
       }
       
       setCursor(newCursor || null)
-      setHasMore(has_more || false)
+      setHasMore(Boolean(newCursor))
     } catch (err) {
       console.error('Error fetching notifications:', err)
-      // CA-05: Un fallo se trata como error reintentable
       setError('Hubo un error al cargar las notificaciones. Inténtalo de nuevo.')
     } finally {
-      setLoading(false)
-      setLoadingMore(false)
-      isRefreshingRef.current = false
+      if (loadingMoreRequest) {
+        isLoadingMoreRef.current = false
+        setLoadingMore(false)
+      } else {
+        isRefreshingRef.current = false
+        setLoading(false)
+      }
     }
   }
 
-  // CA-01: Se consultan los avisos al entrar en la pantalla
   useEffect(() => {
     loadNotifications()
   }, [])
 
-  // CA-02: Cargar más resultados
   const handleLoadMore = () => {
-    // CA-06: Mientras se actualiza, se evita enviar solicitudes repetidas
-    if (cursor && hasMore && !loadingMore && !isRefreshingRef.current) {
-      loadNotifications(cursor, false)
+    if (cursor && hasMore && !isLoadingMoreRef.current && !isRefreshingRef.current) {
+      loadNotifications(cursor)
     }
   }
 
-  // CA-01: «Actualizar» vuelve a consultar los resultados más recientes
   const handleRefresh = () => {
-    // CA-06: Se evita enviar solicitudes repetidas mediante el mismo control
-    if (!isRefreshingRef.current) {
-      loadNotifications(null, true)
+    if (!isRefreshingRef.current && !isLoadingMoreRef.current) {
+      loadNotifications()
     }
   }
 
@@ -171,7 +148,7 @@ export function NotificationsPage() {
             type="button" 
             className="btn"
             onClick={handleRefresh}
-            disabled={loading || isRefreshingRef.current}
+            disabled={loading || loadingMore}
             aria-label="Actualizar notificaciones"
           >
             Actualizar
@@ -187,11 +164,11 @@ export function NotificationsPage() {
         {error && notifications.length === 0 && (
           <div className="notifications-page__error" role="alert">
             <p className="notifications-page__error-message">{error}</p>
-            <button 
-              type="button" 
+            <button
+              type="button"
               className="btn btn--error"
               onClick={handleRefresh}
-              disabled={isRefreshingRef.current}
+              disabled={loading || loadingMore}
             >
               Reintentar
             </button>
@@ -211,6 +188,14 @@ export function NotificationsPage() {
             {error && (
               <div className="notifications-page__error-inline" role="alert">
                 <p className="notifications-page__error-message">{error}</p>
+                <button
+                  type="button"
+                  className="btn btn--error"
+                  onClick={handleRefresh}
+                  disabled={loading || loadingMore}
+                >
+                  Reintentar
+                </button>
               </div>
             )}
             
@@ -222,7 +207,7 @@ export function NotificationsPage() {
                       <h3 className="notification-card__message">
                         {notification.message}
                       </h3>
-                      <time className="notification-card__timestamp">
+                      <time className="notification-card__timestamp" dateTime={notification.created_at}>
                         {formatDate(notification.created_at)}
                       </time>
                     </div>
@@ -257,7 +242,7 @@ export function NotificationsPage() {
                   type="button"
                   className="btn"
                   onClick={handleLoadMore}
-                  disabled={loadingMore || isRefreshingRef.current}
+                  disabled={loadingMore || loading}
                 >
                   {loadingMore ? 'Cargando...' : 'Cargar más'}
                 </button>

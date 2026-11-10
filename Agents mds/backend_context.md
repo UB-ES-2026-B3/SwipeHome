@@ -1,6 +1,6 @@
 # Contexto backend de SwipeHome
 
-## Estado vigente — US4 y US6 (10 noviembre 2026)
+## Estado vigente — US4, US6 y US7.4 (10 noviembre 2026)
 
 El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
 cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
@@ -21,8 +21,9 @@ Los reintentos equivalentes son 200, nuevos 201 y contrarios 409.
 Abortos de lectura/commit y colisiones usan transacciones nuevas acotadas.
 
 GET `/api/inmuebles/explorar` y POST `/api/inmuebles/{id}/decision` son BUYER;
-GET `/api/notificaciones` es solo SELLER. `request.user` se construye desde el
-token verificado y el perfil, sin aceptar selectores de identidad del cliente.
+GET `/api/notificaciones` permite BUYER y SELLER para consultar solo avisos de
+la cuenta autenticada. `request.user` se construye desde el token verificado y
+el perfil, sin aceptar selectores de identidad del cliente.
 Los GET comparten `limit/cursor` 20/50, orden fecha/ID descendentes y cursor
 firmado. Exploración carga decisiones en batch, sin OFFSET ni consultas por foto.
 
@@ -59,6 +60,19 @@ contraseña, reintento de logout y rutas protegidas. Un logout 500 ahora muestra
 «Reintentar cierre de sesión». Persistencia y revocación del backend se apoyan
 en las pruebas US6.8 con Auth/Firestore Emulator; UI no representa persistencia
 real de Firestore.
+
+US7.4 amplía la lectura privada de notificaciones a ambos roles. La suite
+indicada en README backend pasó **172 tests** con Auth/Firestore Emulator;
+incluye aviso de interés del US4 al propietario, exclusión de PASS, paginación,
+fecha/mensaje/orden, aislamiento BUYER/SELLER/tercero, rechazo de selectores,
+consulta sin escrituras y persistencia del aviso tras logout y re-login del
+SELLER. Azure Blob se simula. La UI pasó 25 tests Node, lint/build y pruebas
+de navegador con Auth Emulator/API interceptada y viewports 1280×900/390×844
+emulados. No se usaron servicios reales ni hardware móvil.
+
+El repositorio no contiene un productor ni endpoint de confirmación US5 que
+genere avisos para BUYER. La consulta de un aviso BUYER previamente persistido
+sí está cubierta con Firestore Emulator; su creación desde US5 no está verificada.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

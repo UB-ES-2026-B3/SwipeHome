@@ -316,3 +316,35 @@ certificación de dispositivos móviles físicos.
 `npm test`: 22 tests pasan; `npm run lint` y `npm run build` finalizan. Lint
 mantiene advertencias existentes. No se modificaron dependencias ni se probaron
 servicios de producción.
+
+## US 7.4 — recepción y consulta de notificaciones
+
+Se corrigió la consulta para que BUYER y SELLER puedan obtener únicamente
+avisos destinados a su UID verificado. La vista rechaza parámetros de identidad,
+usa el contrato `items/next_cursor`, orden descendente estable, e implementa
+refresco/paginación sin IDs duplicados. La pantalla muestra mensaje y fecha/hora
+local, estado vacío, carga y errores diferenciados, con retry inicial y tras
+fallo de actualización; una actualización fallida conserva la lista.
+
+### Evidencia por criterio
+
+| Criterio | Prueba/comprobación | Resultado |
+|---|---|---|
+| CA-01 — Acceso a avisos propios | `FirestoreDecisionTests.test_buyer_and_seller_can_read_only_their_own_notifications` consulta como BUYER/SELLER con Firestore Emulator; pantalla `/notificaciones` autenticada en navegador. | Pasa con emuladores en API; pasa con mocks de API en UI. |
+| CA-02 — Mensaje, fecha y hora | `test_private_notices_include_match_buyer_home_and_stable_pagination` verifica aviso generado al propietario; fixture buyer verifica mensaje/fecha; navegador comprueba presentación de fecha y hora local. | Pasa con Firestore Emulator y mocks de UI. |
+| CA-03 — Orden y actualización | Prueba de backend fija fechas iguales y valida desempate por ID/cursor; navegador prueba refresco y paginación con solapamiento. | Pasa con emuladores y mocks de API; sin duplicados. |
+| CA-04 — Privacidad | Avisos fixture para tres cuentas; consulta BUYER/SELLER devuelve exclusivamente el recipient propio; `uid` y `recipient_uid` manipulados y cursor de otra cuenta se rechazan. | Pasa con Firestore Emulator y tests API. |
+| CA-05 — Conservación | `FirebaseFlowTests.test_real_registration_login_publication_like_logout_and_relogin`: Auth Emulator, aviso SELLER, logout/revocación, nuevo login y reconsulta en Firestore Emulator. | Pasa con emuladores locales; no es Firebase de producción. |
+| CA-06 — Vacío, fallo y retry | `NotificationApiTests` cubre vacío; navegador fuerza carga, 500 inicial y retry, 500 al actualizar conservando datos y retry exitoso. | Vacío pasa; fallos/retry pasan con mocks. |
+| Interés US4 al propietario | `test_private_notices_include_match_buyer_home_and_stable_pagination` y flujo integrado de Auth/Firestore Emulator tras LIKE. | Pasa con emuladores. |
+| PASS no crea aviso; consultar no altera matches | `test_pass_creates_only_decision_and_no_notice`; test de lectura compara estado de `swipes/matches` antes/después. | Pasa con Firestore Emulator. |
+| Confirmación US5 crea aviso BUYER | Inspección de rutas/vistas/servicios del árbol: no existe endpoint/productor US5 de confirmación. La API puede leer una notificación BUYER ya persistida, pero no se puede generar este evento en la implementación presente. | **No verificado** (productor ausente, no se inventó ni amplió US5). |
+| Sesión y responsive | Ruta protegida probada sin sesión; navegador emulado en 1280×900 y 390×844, sin desbordamiento horizontal. | Pasa con Auth Emulator/API mockeada; no probado en móvil físico. |
+
+Validación: `npx.cmd --yes --package firebase-tools@15.34.1 firebase
+emulators:exec --project demo-swipehome-us4 --only auth,firestore --config
+tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts
+properties --verbosity 2"` — 172 tests; Azure Blob mockeado.
+Frontend: `npm test` — 25 tests; `npm run lint` y `npm run build` finalizan.
+Lint reporta advertencias no bloqueantes de proyecto. No se usaron servicios ni
+credenciales reales y no se modificaron dependencias.

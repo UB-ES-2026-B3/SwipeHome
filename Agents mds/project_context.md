@@ -1,6 +1,6 @@
 # Contexto del proyecto SwipeHome
 
-## Estado vigente — US4 (10 noviembre 2026)
+## Estado vigente — US4, US6 y US7.4 (10 noviembre 2026)
 
 El stack vigente es Django con Firebase Auth y Firestore. La implementación
 de US 4.4–4.7 sobre ese stack fue autorizada explícitamente por el usuario.
@@ -19,6 +19,7 @@ pueden tener match con la misma vivienda.
 | US 4.7 | Avisos privados SELLER, relaciones de match/Comprador/vivienda y paginación. |
 | US 4.9 | Verificación de permisos, datos, paginación, privacidad, concurrencia y rollback con persistencia local aislada. |
 | US 4.10 | Verificación integrada del recorrido de exploración, decisiones y avisos; UI contrastada con API mockeada y persistencia backend en emuladores. |
+| US 7.4 | Lectura privada de avisos para BUYER y SELLER, pantalla, paginación, errores, estados vacíos y persistencia del aviso de interés. |
 | US 6.8 | Verificación de perfil, cambio de contraseña y logout para BUYER/SELLER; concurrencia, integridad y continuidad probadas con emuladores. |
 | US 6.9 | Recorrido de perfil y logout para ambos roles verificado en navegador con Auth Emulator y API interceptada; cobertura de persistencia backend reutilizada de US6.8. |
 
@@ -43,6 +44,10 @@ El fallo de logout ahora ofrece un botón explícito de reintento.
 La referencia de modelos, atomicidad, concurrencia, compatibilidad histórica y
 resultados reales es [US4 backend](us4_backend.md). Los contratos HTTP completos,
 ejemplos y comandos están en el [README backend](../backend/README.md).
+US7.4 pasó 172 pruebas backend con Auth/Firestore Emulator y Azure Blob mock,
+25 pruebas frontend, lint/build y verificación visual con API interceptada en
+viewports emulados. La consulta BUYER está disponible, pero no existe en este
+árbol el productor de aviso de confirmación US5: esa generación no se verificó.
 El backlog original de Sprint 0 se conserva a continuación como historial:
 sus afirmaciones sobre funcionalidades futuras no describen el estado actual.
 

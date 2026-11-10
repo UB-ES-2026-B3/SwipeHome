@@ -13,7 +13,7 @@ proveedor ni se incorpora un segundo sistema de usuarios.
 | 4.4 | GET `/api/inmuebles/explorar`, solo BUYER. Publicaciones completas, pendientes del Comprador; fotografías completas en el orden existente; paginación por fecha e ID. |
 | 4.5 | POST `/api/inmuebles/{id}/decision`, solo BUYER. LIKE crea directamente decisión, match y aviso. PASS solo crea decisión. 201 nuevo, 200 reintento, 409 contradicción. |
 | 4.6 | Colecciones `swipes`, `matches` y `notifications` con claves canónicas y escritura transaccional centralizada. Persistencia independiente de la sesión y del proceso Django. |
-| 4.7 | GET `/api/notificaciones`, solo SELLER. Avisos privados con match, Comprador y vivienda; paginación estable y lectura de avisos históricos. |
+| 4.7 | LIKE genera un aviso privado al SELLER con match, Comprador y vivienda. Lectura paginada; US7.4 amplía el GET a consulta propia BUYER/SELLER. |
 
 **Un LIKE del Comprador crea el match y el aviso al propietario directamente.**
 No existe aceptación del Vendedor, segundo swipe ni reserva del inmueble.
@@ -25,7 +25,7 @@ push ni marcado de lectura.
 
 ## Arquitectura reutilizada
 
-`accounts.authentication.firebase_role` verifica el ID token con revocación
+`accounts.authentication.firebase_roles` verifica el ID token con revocación
 Firebase y con las revocaciones persistentes US6. Lee el perfil real mediante
 `repository.get_user_profile` y construye `request.user` con UID, rol y nombre
 verificados. Las operaciones utilizan ese objeto, nunca un UID del cuerpo o query.
@@ -205,7 +205,7 @@ como en las fixtures de navegador.
 - `backend/accounts/authentication.py`: autorización y request.user verificado.
 - `backend/accounts/repository.py`: escritura transaccional y consultas Firestore.
 - `backend/accounts/pagination.py`: validación y cursores compartidos.
-- `backend/accounts/notification_service.py` y `notification_views.py`: avisos SELLER.
+- `backend/accounts/notification_service.py` y `notification_views.py`: consulta privada de avisos.
 - `backend/properties/discovery_views.py`, `discovery_service.py`,
   `serialization.py`: decisiones y exploración.
 - `backend/config/urls.py`: rutas exactas.
@@ -216,3 +216,31 @@ como en las fixtures de navegador.
 - `backend/.gitignore`: logs del emulador; `.github/workflows/ci.yml`: integración.
 - Documentación vigente: este archivo, `backend/README.md` y los documentos
   de contexto backend, proyecto, infraestructura, frontend, Firebase y pautas.
+
+## Continuidad US 7.4: consulta de notificaciones
+
+El endpoint GET acepta BUYER y SELLER, pero los resultados siempre se filtran
+por el UID del perfil autenticado. `uid` y `recipient_uid` no son parámetros
+permitidos; el cursor firmado queda asociado al UID, por lo que tampoco se puede
+reutilizar desde otra cuenta. La operación es solo lectura y conserva el orden
+descendente estable por fecha/ID.
+
+La suite pasó 172 tests con Auth/Firestore Emulator y mocks de Azure Blob.
+`FirestoreDecisionTests.test_private_notices_include_match_buyer_home_and_stable_pagination`
+verifica el interés US4 al propietario correcto, mensaje, fecha, orden, cursor y
+aislamiento entre vendedores. `test_pass_creates_only_decision_and_no_notice`
+verifica que PASS no crea aviso. `test_buyer_and_seller_can_read_only_their_own_notifications`
+siembra avisos locales aislados para BUYER, SELLER y una tercera cuenta, prueba
+selección privada, parámetros manipulados y que leer no altera decisiones ni
+matches. `FirebaseFlowTests.test_real_registration_login_publication_like_logout_and_relogin`
+comprueba Auth real del emulador, aviso US4, revocación al salir y conservación
+del aviso tras volver a iniciar sesión. No se usó Firebase/Azure de producción.
+
+La UI está cubierta con 25 tests Node y navegador con Auth Emulator y API
+interceptada; esos mocks verifican estados, reintentos, actualización,
+paginación sin IDs repetidos, fecha/hora y viewports 1280×900/390×844. Lint y
+build finalizan con advertencias preexistentes; no se probó hardware móvil.
+
+**Límite de alcance:** no hay endpoint ni productor de la confirmación US5 en
+este repositorio. La API puede leer una notificación BUYER ya persistida, pero
+la generación de ese aviso no se atribuye ni se considera verificada por US7.4.

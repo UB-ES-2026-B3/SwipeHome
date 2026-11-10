@@ -1,6 +1,6 @@
 # Contexto frontend de SwipeHome
 
-## Integración y verificación vigente US4.10 — 10 noviembre 2026
+## Integración y verificación vigente US7.4 — 10 noviembre 2026
 
 La autenticación vigente sigue siendo Firebase Auth con ID token Bearer y
 revocación US6.
@@ -11,7 +11,7 @@ BUYER: GET `/api/inmuebles/explorar` y POST
 `/api/inmuebles/{id}/decision` con `{"decision":"LIKE"}` o PASS.
 LIKE crea directamente match y aviso; no requiere aceptación del Vendedor ni
 redirige a una pantalla US5.
-SELLER: GET `/api/notificaciones` devuelve sus propios avisos.
+BUYER y SELLER: GET `/api/notificaciones` devuelve sus propios avisos.
 Ambos GET usan `items/next_cursor`, `limit` 20 por defecto, máximo 50.
 Conservar el cursor al decidir sobre páginas previas para continuar sin saltos.
 401 requiere recuperar el acceso; 500 permite reintentar sin cerrar la sesión.
@@ -45,6 +45,21 @@ pendientes, error y retry explícito desde el aviso. Tras 204, volver atrás y
 abrir `/mi-perfil` llevan a la página pública; se pudo iniciar sesión de nuevo.
 Auth Emulator fue real; las APIs se interceptaron. Viewports 390×844 y
 1280×900 pasaron en navegador de escritorio emulado, no en hardware físico.
+
+US7.4 corrige el consumo de `next_cursor` y permite leer la API desde ambos
+roles. La pantalla muestra mensaje y fecha/hora local, estados diferenciados
+de carga/vacío/error, reintento de fallo inicial y de actualización, y conserva
+la lista si falla el refresco. La paginación descarta IDs repetidos. `npm test`
+pasa 25 pruebas; lint/build terminan con advertencias existentes.
+
+En navegador se utilizó Auth Emulator real y respuestas API interceptadas:
+se comprobó ruta protegida sin sesión, datos/fecha, carga, vacío, fallo inicial
+y retry, fallo de actualización conservando avisos y retry, paginación con
+solapamiento sin duplicados y refresco con nuevos resultados. Viewports 1280×900
+y 390×844 en navegador de escritorio emulado; no certifica hardware físico ni
+persistencia Firestore de la UI. Persistencia backend del aviso SELLER tras
+re-login sí se probó aparte en Auth/Firestore Emulator. En este árbol no existe
+el productor de confirmación US5 para aviso BUYER; ese evento queda no verificado.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
