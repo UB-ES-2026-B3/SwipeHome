@@ -8,7 +8,9 @@ from unittest.mock import Mock, patch
 
 from django.test import Client, SimpleTestCase
 from firebase_admin import auth, delete_app, initialize_app
+from google.auth.credentials import AnonymousCredentials
 from google.api_core.exceptions import ServiceUnavailable
+from google.cloud import firestore
 
 from . import repository
 from .passwords import IncorrectPassword, change_password
@@ -299,6 +301,8 @@ class EmailRaceIntegrationTests(SimpleTestCase):
                             )
                     self.assertEqual(response.status_code, 200, response.content)
                     self.assertNotIn("passwordHash", response.json())
+                    self.assertNotIn(old, response.content.decode())
+                    self.assertNotIn(new.strip(), response.content.decode())
                     exchange = post("accounts:signInWithCustomToken", {
                         "token": response.json()["custom_token"], "returnSecureToken": True,
                     })
@@ -315,3 +319,182 @@ class EmailRaceIntegrationTests(SimpleTestCase):
         finally:
             auth.delete_user(user.uid, app=app)
             delete_app(app)
+
+
+@skipUnless(
+    os.environ.get("FIREBASE_AUTH_EMULATOR_HOST") and os.environ.get("FIRESTORE_EMULATOR_HOST"),
+    "Requiere Firebase Auth y Firestore Emulators locales.",
+)
+class ProfileSessionIntegrationTests(SimpleTestCase):
+    """Pruebas de API con Auth y Firestore aislados en emuladores loopback."""
+
+    def setUp(self):
+        self.auth_host = os.environ["FIREBASE_AUTH_EMULATOR_HOST"]
+        self.firestore_host = os.environ["FIRESTORE_EMULATOR_HOST"]
+        for host in (self.auth_host, self.firestore_host):
+            self.assertTrue(host.startswith(("127.0.0.1:", "localhost:")))
+        self.project = os.environ.get("GCLOUD_PROJECT", "demo-swipehome-us4")
+        self.assertTrue(self.project.startswith("demo-"))
+        self.app = initialize_app(
+            options={"projectId": self.project}, name="us6-profile-" + UID
+        )
+        self.db = firestore.Client(
+            project=self.project, credentials=AnonymousCredentials()
+        )
+        self.enterContext(patch("accounts.authentication.get_app", return_value=self.app))
+        self.enterContext(patch("accounts.repository.get_app", return_value=self.app))
+        self.enterContext(patch("accounts.profile_views.get_app", return_value=self.app))
+        self.enterContext(patch("accounts.passwords.get_app", return_value=self.app))
+        self.enterContext(patch("accounts.repository.firestore.client", return_value=self.db))
+        self.users = []
+        self.addCleanup(self.cleanup_emulator_data)
+
+    def cleanup_emulator_data(self):
+        for user in self.users:
+            self.db.collection("users").document(user.uid).delete()
+            auth.delete_user(user.uid, app=self.app)
+        delete_app(self.app)
+        self.db.close()
+
+    def create_account(self, role, number):
+        email = f"us68-{number}@example.com"
+        password = "Original password value"
+        user = auth.create_user(
+            email=email, password=password, display_name=f"Nombre {number}", app=self.app
+        )
+        self.users.append(user)
+        self.db.collection("users").document(user.uid).create({
+            "name": f"Nombre {number}", "email": email, "role": role,
+        })
+        return user, email, password
+
+    def sign_in(self, email, password):
+        import requests
+
+        base = f"http://{self.auth_host}/identitytoolkit.googleapis.com/v1/"
+        response = requests.post(
+            base + "accounts:signInWithPassword",
+            params={"key": "demo-key"},
+            json={"email": email, "password": password, "returnSecureToken": True},
+            timeout=10,
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        return response.json()["idToken"]
+
+    @staticmethod
+    def authenticated_client(token):
+        client = Client(enforce_csrf_checks=True)
+        client.defaults["HTTP_AUTHORIZATION"] = "Bearer " + token
+        return client
+
+    def test_buyer_and_seller_read_and_update_only_their_current_profile(self):
+        for number, role in enumerate(("BUYER", "SELLER"), start=1):
+            user, email, password = self.create_account(role, number)
+            token = self.sign_in(email, password)
+            client = self.authenticated_client(token)
+
+            initial = client.get("/api/auth/me")
+            self.assertEqual(initial.status_code, 200)
+            self.assertEqual(initial.json(), {
+                "uid": user.uid, "name": f"Nombre {number}",
+                "email": email, "role": role,
+            })
+
+            response = client.patch(
+                "/api/auth/me",
+                json.dumps({"name": f"  Perfil {number}  ", "email": f"  {email.upper()}  "}),
+                content_type="application/json",
+            )
+            self.assertEqual(response.status_code, 200, response.content)
+            self.assertEqual(
+                {key: response.json()[key] for key in ("uid", "name", "email", "role")},
+                {"uid": user.uid, "name": f"Perfil {number}", "email": email, "role": role},
+            )
+            self.assertTrue(response.json()["custom_token"])
+            after = client.get("/api/auth/me")
+            self.assertEqual(after.status_code, 200)
+            self.assertEqual(after.json()["name"], f"Perfil {number}")
+            self.assertEqual(after.json()["role"], role)
+            relogin = self.authenticated_client(self.sign_in(email, password))
+            persisted = relogin.get("/api/auth/me")
+            self.assertEqual(persisted.status_code, 200)
+            self.assertEqual(persisted.json()["name"], f"Perfil {number}")
+
+    def test_concurrent_profile_email_updates_have_one_winner_without_partial_write(self):
+        accounts = [self.create_account("BUYER", i) for i in (3, 4)]
+        clients = [
+            self.authenticated_client(self.sign_in(email, password))
+            for _, email, password in accounts
+        ]
+        barrier = Barrier(2)
+
+        def update(index):
+            barrier.wait(timeout=10)
+            return clients[index].patch(
+                "/api/auth/me",
+                json.dumps({
+                    "name": f"Concurrent {index}",
+                    "email": "  Shared-Profile@example.com  ",
+                }),
+                content_type="application/json",
+            )
+
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            responses = list(pool.map(update, range(2)))
+        self.assertCountEqual([response.status_code for response in responses], [200, 409])
+        winner = next(index for index, response in enumerate(responses) if response.status_code == 200)
+        loser = 1 - winner
+
+        for index, (user, original_email, _) in enumerate(accounts):
+            stored = auth.get_user(user.uid, app=self.app)
+            if index == winner:
+                self.assertEqual(stored.email, "shared-profile@example.com")
+                self.assertEqual(stored.display_name, f"Concurrent {index}")
+            else:
+                self.assertEqual(stored.email, original_email)
+                self.assertEqual(stored.display_name, f"Nombre {index + 3}")
+            self.assertNotIn("passwordHash", responses[index].content.decode())
+
+    def test_injected_profile_write_failure_leaves_auth_profile_unchanged(self):
+        user, email, password = self.create_account("SELLER", 5)
+        token = self.sign_in(email, password)
+        client = self.authenticated_client(token)
+
+        with patch(
+            "accounts.repository.auth.update_user",
+            side_effect=RuntimeError("internal provider detail"),
+        ):
+            with self.assertLogs("accounts.profile_views", level="ERROR") as logs:
+                response = client.patch(
+                    "/api/auth/me",
+                    json.dumps({"name": "No debe guardarse"}),
+                    content_type="application/json",
+                )
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn("internal provider detail", response.content.decode())
+        self.assertNotIn("internal provider detail", "\n".join(logs.output))
+        stored = auth.get_user(user.uid, app=self.app)
+        self.assertEqual(stored.display_name, "Nombre 5")
+        self.assertEqual(stored.email, email)
+        self.assertEqual(client.get("/api/auth/me").status_code, 200)
+
+    def test_logout_revokes_old_token_idempotently_without_affecting_other_account(self):
+        first, email, password = self.create_account("BUYER", 6)
+        other, other_email, other_password = self.create_account("SELLER", 7)
+        first_client = self.authenticated_client(self.sign_in(email, password))
+        other_client = self.authenticated_client(self.sign_in(other_email, other_password))
+
+        before = first_client.get("/api/auth/me")
+        self.assertEqual(before.status_code, 200)
+        auth_time = auth.verify_id_token(
+            first_client.defaults["HTTP_AUTHORIZATION"].split(" ", 1)[1],
+            app=self.app,
+        )["auth_time"]
+        self.assertEqual(first_client.get("/api/auth/logout").status_code, 405)
+        self.assertEqual(first_client.post("/api/auth/logout").status_code, 204)
+        self.assertEqual(first_client.get("/api/auth/me").status_code, 401)
+        self.assertEqual(first_client.post("/api/auth/logout").status_code, 204)
+        revocation = repository._revocation_document(first.uid, auth_time).get()
+        self.assertTrue(revocation.exists)
+        self.assertEqual(revocation.to_dict(), {"revoked": True})
+        self.assertEqual(other_client.get("/api/auth/me").status_code, 200)

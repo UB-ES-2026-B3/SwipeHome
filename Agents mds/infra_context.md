@@ -66,9 +66,10 @@ solo de índices. El comando y la revisión de compatibilidad de datos remotos
 están en el README. Los índices no se han publicado en esta tarea.
 
 Pruebas únicamente con emuladores demo en loopback: Auth 9099, Firestore 8080,
-Node 24 y Java 21. 152 pruebas pasan sin omisiones. CI prepara ambos emuladores
-y Java 21. El emulador no certifica índices de producción. No se emplearon
-credenciales de producción, ni se modificaron cuentas, anuncios o fotos remotos.
+Node 24 y Java 21. La última suite completa de US6.8 pasa 171 tests sin
+omisiones; CI prepara ambos emuladores y Java 21. El emulador no certifica
+índices de producción. No se emplearon credenciales de producción, ni se
+modificaron cuentas, anuncios o fotos remotos.
 
 El plan de migración y las situaciones de ramas/despliegue de octubre que
 siguen son historial; no son instrucciones para cambiar ahora la arquitectura.

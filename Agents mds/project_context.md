@@ -19,6 +19,7 @@ pueden tener match con la misma vivienda.
 | US 4.7 | Avisos privados SELLER, relaciones de match/Comprador/vivienda y paginación. |
 | US 4.9 | Verificación de permisos, datos, paginación, privacidad, concurrencia y rollback con persistencia local aislada. |
 | US 4.10 | Verificación integrada del recorrido de exploración, decisiones y avisos; UI contrastada con API mockeada y persistencia backend en emuladores. |
+| US 6.8 | Verificación de perfil, cambio de contraseña y logout para BUYER/SELLER; concurrencia, integridad y continuidad probadas con emuladores. |
 
 Verificación US 4.9: 166 pruebas correctas con Auth y Firestore Emulator, sin
 omisiones. Contra los CA oficiales, CA-03 a CA-06 pasan en la API/persistencia;
@@ -29,6 +30,11 @@ Queda pendiente desplegar/verificar los índices remotos antes de activar las
 consultas en producción. La verificación de interfaz de US4.10 no incluye
 lectura visual de avisos US5, chat, email ni push.
 US6 permanece vigente según [su contrato](us6_backend.md).
+US6.8 pasa 171 tests de backend con Auth/Firestore Emulator y 22 tests de
+frontend. El navegador comprobó el flujo de perfil/logout con Auth Emulator y
+API interceptada; las operaciones y revocación se verificaron aparte en los
+emuladores. No se usaron servicios de producción. La petición solo con cookie
+no autentica el logout; CSRF Django no aplica al contrato Bearer vigente.
 
 La referencia de modelos, atomicidad, concurrencia, compatibilidad histórica y
 resultados reales es [US4 backend](us4_backend.md). Los contratos HTTP completos,

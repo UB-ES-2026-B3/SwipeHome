@@ -14,9 +14,10 @@ Se reutilizan `listings` y `notifications`, se añaden `swipes/matches` con
 claves canónicas y transacciones. No se añaden ORM ni sesiones por cookies.
 La evolución es aditiva; los índices se definen pero no se despliegan remotamente.
 
-La suite actual pasa 140 pruebas con Auth y Firestore Emulator, sin omisiones,
-incluidas las regresiones US6. Los resultados históricos y pendientes del plan
-de octubre que siguen no sustituyen ese estado comprobado.
+La última suite completa de backend pasa 171 tests con Auth y Firestore
+Emulator, sin omisiones, incluidas las regresiones de US6.8. Los resultados
+históricos y pendientes del plan de octubre que siguen no sustituyen ese estado
+comprobado.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

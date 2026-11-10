@@ -30,6 +30,14 @@ del navegador contra Firestore: el flujo de publicación, decisiones, avisos,
 re-login y dos Compradores se verificó aparte en el test backend con Firestore
 Emulator y Azure Blob mockeado. No se accedió a Firebase/Azure de producción.
 
+US6.8: `ProfilePage` consulta/actualiza el perfil, cambia contraseña y permite
+reintentar el logout cuando no se confirma. Si el servidor guardó el cambio pero
+falló el intercambio de continuidad, el mensaje indica que hay que iniciar
+sesión de nuevo. `npm test` pasa 22 tests; lint/build terminan con advertencias
+de lint. Auth Emulator y API interceptada cubrieron en navegador validación,
+errores, conservación del formulario, retry, recarga y logout. La API y la
+revocación persistente se comprobaron aparte con emuladores en backend.
+
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
 

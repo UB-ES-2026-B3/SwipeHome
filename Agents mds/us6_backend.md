@@ -2,8 +2,8 @@
 
 > Continuidad US4 (8 noviembre 2026): Auth/perfil/logout conservados.
 > [US4 backend](us4_backend.md) documenta los nuevos endpoints y avisos SELLER.
-> LIKE crea directamente match y aviso. La suite actual de 140 pruebas pasa
-> con ambos emuladores; los resultados de octubre se conservan como historial US6.
+> LIKE crea directamente match y aviso. La suite completa de 171 tests pasa
+> con ambos emuladores; los resultados de US6.8 se registran más abajo.
 
 
 Implementado en la rama `US6-backend`. Adaptación a Firebase autorizada por el
@@ -142,6 +142,39 @@ Si el cambio persistió pero falla el intercambio de continuidad, devuelve
 cambio guardado y pedir iniciar sesión de nuevo. Si se pierde la respuesta HTTP,
 puede ser necesario iniciar sesión con los datos nuevos. No se incluyen
 pantallas de edición en esta tarea backend.
+
+## US6.8: APIs e integridad de perfil y sesión
+
+La suite completa pasó **171 tests** con el comando de Auth y Firestore
+Emulators de `backend/README.md`. Los tests nuevos usan cuentas sintéticas,
+proyecto `demo-*`, Auth Emulator y Firestore Emulator en loopback; no usan
+servicios ni credenciales de producción. La concurrencia sincroniza dos
+solicitudes HTTP con una barrera y comprueba el estado final de ambas cuentas.
+
+| CA oficial | Evidencia | Resultado |
+|---|---|---|
+| CA-01 — Consulta del perfil propio | `ProfileSessionIntegrationTests.test_buyer_and_seller_read_and_update_only_their_current_profile`; navegador con Auth Emulator y respuesta de perfil interceptada. | **Pasa con emuladores/mocks:** GET entrega nombre, email y rol para BUYER y SELLER; interfaz muestra el perfil de BUYER. |
+| CA-02 — Actualización de datos | Mismo test integra PATCH para ambos roles, normaliza valores y vuelve a consultar con la misma sesión. Browser prueba guardar, error temporal y retry con API interceptada. | **Pasa con Auth Emulator** para persistencia backend; **pasa con mocks** en la interfaz. |
+| CA-03 — Datos inválidos o email duplicado | `ProfileTests.test_identity_role_unknown_fields_empty_and_types`, `test_duplicate_maps_to_conflict` y `ProfileSessionIntegrationTests.test_concurrent_profile_email_updates_have_one_winner_without_partial_write`; browser comprueba error de campo sin petición y conserva el formulario tras 500. | **Pasa:** API devuelve 400/409; en concurrencia, dos PATCH reales al emulador dan un 200 y un 409 sin cambio parcial de la cuenta perdedora. |
+| CA-04 — Cambio de contraseña | `ProfileTests.test_password_validation_current_check_and_continuity`, `PasswordServiceTests.test_wrong_password_or_uid_never_changes_password` y `EmailRaceIntegrationTests.test_password_change_continuity_with_real_emulator_tokens`; browser comprueba campos ocultos y confirmación con API interceptada. | **Pasa con Auth Emulator:** contraseña nueva inicia sesión, la anterior se rechaza, custom token permite continuidad y no se devuelve hash ni contraseña. |
+| CA-05 — Acceso exclusivo al perfil propio | El endpoint no acepta selector de UID; `ProfileTests.test_identity_role_unknown_fields_empty_and_types` rechaza `uid`, `id` y `role`; `test_requires_authentication` rechaza perfil anónimo. | **Pasa:** la identidad procede del Bearer verificado; no se modifican perfiles ajenos. |
+| CA-06 — Persistencia y continuidad de sesión | La integración de ambos roles consulta tras PATCH con el mismo token y vuelve a iniciar sesión; la prueba de contraseña consulta `/me` con el custom token. Browser recarga con fixture de API persistida. | **Pasa con Auth Emulator** para datos de Auth y continuidad; recarga visual probada con mock. No se conectó Firebase de producción. |
+| CA-07 — Fallos durante la actualización | `ProfileSessionIntegrationTests.test_injected_profile_write_failure_leaves_auth_profile_unchanged` inyecta fallo real antes de la escritura y comprueba nombre/email finales; la carrera de email comprueba también el estado de las dos cuentas. | **Pasa:** respuesta 500 genérica sin detalle interno y sin cambios parciales. No se puede revertir un caso remoto ambiguo donde Firebase aceptó la escritura pero se perdió la respuesta. |
+| CA-08 — Cierre de sesión | `ProfileSessionIntegrationTests.test_logout_revokes_old_token_idempotently_without_affecting_other_account` comprueba revocación Firestore, token anterior rechazado y otra cuenta activa; navegador verifica salida y ruta protegida. | **Pasa con emuladores/mocks:** revocación y API reales en emuladores; navegación comprobada con API interceptada. |
+| CA-09 — Fallos y reintentos al cerrar sesión | `LogoutTests.test_storage_failure_is_500_not_success`, tests `logout failure preserves SDK session` y browser: primer logout 500 conserva la sesión y permite retry; segundo 204 vuelve a `/`. | **Pasa con mocks en UI** y con Firestore Emulator en backend. |
+
+Se verificó además que GET `/api/auth/logout` responde 405 y una petición con
+cookie pero sin Bearer no crea una revocación. Esta adaptación no tiene CSRF
+Django: la autenticación vigente usa un encabezado Bearer que el navegador no
+adjunta automáticamente. Por idempotencia, POST logout sin identidad responde
+204 sin escribir; no se considera prueba de logout autenticado ni una
+autenticación por cookie.
+
+Límites: las respuestas del backend en la prueba de navegador fueron
+interceptadas; no se probó Firebase de producción. La inyección de error verifica
+un fallo anterior a la escritura, mientras que los resultados de Auth Emulator y
+la carrera comprueban persistencia/atomicidad de operaciones confirmadas. No se
+promete rollback distribuido tras una respuesta remota perdida.
 
 ## Verificación reproducible
 

@@ -252,3 +252,34 @@ vista en viewport 1280×900/390×844 (tarjeta móvil 343 px). No se certificó
 hardware móvil físico. La ruta de creación de match no depende de la existencia
 de la pantalla US5; el test backend y la confirmación de BuyerHome no navegan a
 ella.
+
+## QA US 6.8 — API e integridad del perfil y la sesión (10 noviembre 2026)
+
+Se añadieron pruebas de integración que ejecutan solicitudes HTTP contra Django
+con Auth y Firestore Emulator en loopback. La suite pedida pasó **171 tests**,
+sin omisiones. También pasaron los **22 tests frontend**, `npm run lint` y
+`npm run build`; lint terminó con advertencias no bloqueantes en `App.jsx`,
+`SellerHome.jsx`, `AuthContext.jsx`, `NotificationsPage.jsx` y `BuyerHome.jsx`.
+No se modificaron dependencias ni se probaron servicios de producción.
+
+| CA oficial US6 | Evidencia | Resultado |
+|---|---|---|
+| CA-01 — Consulta del perfil propio | `ProfileSessionIntegrationTests.test_buyer_and_seller_read_and_update_only_their_current_profile`; navegador muestra la cuenta Buyer tras login real en Auth Emulator y GET de perfil interceptado. | **Pasa con emuladores/mocks:** GET real para Buyer y Seller; presentación UI con API mock. |
+| CA-02 — Actualización de datos | Integración PATCH con ambos roles, nombre/email normalizados, lectura posterior con token actual y re-login. Browser guarda el formulario, muestra confirmación y recarga desde fixture. | **Pasa con Auth Emulator** para persistencia del proveedor; **pasa con mocks** para recorrido UI. |
+| CA-03 — Datos inválidos o email duplicado | `ProfileTests.test_identity_role_unknown_fields_empty_and_types`, `test_duplicate_maps_to_conflict`, carrera HTTP simultánea `test_concurrent_profile_email_updates_have_one_winner_without_partial_write`; browser comprueba error de nombre sin enviar y conserva entrada después de 500. | **Pasa:** 400/409; solicitudes concurrentes dan 200/409 y el perfil perdedor queda intacto. |
+| CA-04 — Cambio de contraseña | `ProfileTests.test_password_validation_current_check_and_continuity`, `PasswordServiceTests.test_wrong_password_or_uid_never_changes_password`, `EmailRaceIntegrationTests.test_password_change_continuity_with_real_emulator_tokens`; browser prueba los campos y confirmación con API interceptada. | **Pasa con Auth Emulator:** la nueva contraseña autentica, la anterior se rechaza, la sesión continúa con custom token; respuesta sin contraseña ni hash. |
+| CA-05 — Acceso exclusivo al perfil propio | Identidad derivada del Bearer; `test_identity_role_unknown_fields_empty_and_types` rechaza `uid`, `id` y `role`; `test_requires_authentication` comprueba acceso anónimo. | **Pasa:** no se admite selector de otra cuenta y no se cambia identidad/rol. |
+| CA-06 — Persistencia y continuidad de sesión | Integración comprueba perfil tras PATCH con el mismo token y después de nuevo login; cambio de contraseña consulta `/me` con el custom token; reload de browser usa fixture actualizado. | **Pasa con Auth Emulator** para persistencia/continuidad; persistencia visible del navegador con mock. |
+| CA-07 — Fallos durante la actualización | `ProfileSessionIntegrationTests.test_injected_profile_write_failure_leaves_auth_profile_unchanged` inyecta excepción antes de `auth.update_user` y verifica nombre/email finales; carrera verifica también el estado perdedor. Browser retiene los datos tras 500 y permite retry. | **Pasa:** error genérico, sin cambios parciales en el fallo inyectado; respuestas y retry visual con mock. Un resultado remoto ambiguo tras aceptación no es reversible/garantizable. |
+| CA-08 — Cierre de sesión | `ProfileSessionIntegrationTests.test_logout_revokes_old_token_idempotently_without_affecting_other_account`: Firestore guarda solo `{revoked:true}`, el token anterior da 401 en `/api/auth/me`, repetir logout da 204 y la otra cuenta sigue autenticada. Browser vuelve a `/` y protege `/mi-perfil`. | **Pasa con emuladores** para revocación/API; **pasa con mocks** para navegación. |
+| CA-09 — Fallos y reintentos al cerrar sesión | `LogoutTests.test_storage_failure_is_500_not_success`, tests Node de error 500/red que mantienen Firebase SDK, y browser con 500 seguido de 204. | **Pasa:** no se muestra éxito antes de confirmar; retry disponible y completa la salida. |
+
+Adaptación explícita: la arquitectura vigente es Firebase Bearer, no sesión
+Django por cookie. GET logout devuelve 405. Una solicitud que solo incluye una
+cookie y ningún Bearer no crea revocación; no existe CSRF Django para este
+contrato. POST logout anónimo devuelve 204 como no-op idempotente, no como
+autenticación ni cambio persistido. La prueba de navegador usó Auth Emulator
+real y respuestas API interceptadas; no acredita persistencia de esa sesión en
+Firestore. La inyección de fallo se hace antes de la escritura; no se promete
+rollback ante una respuesta remota perdida después de que Auth haya aceptado el
+cambio.

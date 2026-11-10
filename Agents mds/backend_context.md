@@ -45,6 +45,14 @@ La suite completa pasó 167 tests con Auth/Firestore Emulator y mocks de Azure
 Blob. La interfaz se comprobó aparte en navegador con Auth Emulator y respuestas
 de API interceptadas; no se afirmó integración de navegador con Firestore real.
 
+US6.8: la suite actual pasó 171 tests con ambos emuladores. `ProfileSessionIntegrationTests`
+comprueba consultas/actualizaciones como BUYER y SELLER, normalización, carrera
+HTTP simultánea por email (un 200 y un 409 sin actualización parcial), fallo
+inyectado antes de escritura y revocación persistida de logout. El cambio de
+contraseña y el inicio de sesión con la nueva/anterior contraseña se prueban con
+Auth Emulator. Azure Blob sigue simulado en el comando completo; no hay servicios
+ni credenciales de producción. CSRF Django no se usa en este contrato Bearer.
+
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
 

@@ -111,3 +111,21 @@ en servidor antes de limpiar el SDK. Contrato y límites:
 El consumidor debe tratar `reauthentication_required` como cambio guardado con
 necesidad de iniciar sesión de nuevo. Ejecutar `npm test` para los tests Node
 del cliente de API, además de `npm run lint` y `npm run build`.
+
+### Verificación US 6.8 — perfil y sesión
+
+`npm test` pasa **22 tests**; `npm run lint` y `npm run build` finalizan. Lint
+mantiene advertencias en archivos del proyecto, incluidas advertencias
+preexistentes.
+
+Con Auth Emulator y respuestas de `/api/auth/me`, contraseña y logout
+interceptadas en navegador se comprobó: visualización de perfil/rol; validación
+de nombre sin solicitud; conservación de valores ante 500 y retry exitoso;
+recarga con perfil actualizado en fixture; error de contraseña; confirmación
+de cambio; y logout que conserva la sesión ante 500 y permite reintentar hasta
+204, regresar a `/` y bloquear `/mi-perfil`. Esto es verificación de interfaz
+con mocks, no persistencia del navegador en Firestore.
+
+La continuidad de token, persistencia de nombre/email y contraseña, carrera
+con email duplicado y revocación del Bearer anterior están probadas aparte en
+Auth/Firestore Emulators desde el backend. No se conectó Firebase de producción.

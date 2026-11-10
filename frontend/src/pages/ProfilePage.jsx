@@ -95,9 +95,14 @@ export function ProfilePage() {
         email: profile.email.trim().toLowerCase(),
       })
       if (result.ok) {
-        setUser(result.data)
-        setProfile({ name: result.data.name, email: result.data.email })
-        setProfileMessage('Cambios guardados correctamente.')
+        const { reauthentication_required: reauthenticationRequired, ...updatedProfile } = result.data
+        setUser(updatedProfile)
+        setProfile({ name: updatedProfile.name, email: updatedProfile.email })
+        setProfileMessage(
+          reauthenticationRequired
+            ? 'Cambios guardados, pero no se pudo mantener la sesión. Inicia sesión de nuevo.'
+            : 'Cambios guardados correctamente.',
+        )
       } else if (result.status === 400) {
         setProfileErrors(result.data?.errors || {})
       } else if (result.status === 409) {
@@ -126,7 +131,11 @@ export function ProfilePage() {
       if (result.ok) {
         setPasswords({ currentPassword: '', newPassword: '', confirmation: '' })
         setVisiblePasswords({ current: false, new: false, confirmation: false })
-        setPasswordMessage('Contraseña actualizada correctamente.')
+        setPasswordMessage(
+          result.data?.reauthentication_required
+            ? 'La contraseña se cambió, pero no se pudo mantener la sesión. Inicia sesión de nuevo con la contraseña nueva.'
+            : 'Contraseña actualizada correctamente.',
+        )
       } else if (result.status === 400) {
         setPasswordErrors(result.data?.errors || {})
       } else {

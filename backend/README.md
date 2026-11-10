@@ -244,6 +244,35 @@ El cliente intercambia `custom_token` tras cambiar email/contraseña.
 Si el intercambio falla tras guardar, indica `reauthentication_required`.
 Los consumidores deben pedir iniciar sesión de nuevo en ese caso.
 
+#### Resultado US 6.8: API de perfil y sesión
+
+El comando de emuladores descrito en este README pasó **171 tests** (10 de
+noviembre de 2026), incluidos tests de API de ambos roles, edición normalizada,
+duplicidad concurrente, cambio de contraseña, continuidad, fallos y logout.
+Auth y Firestore usan emuladores locales; Azure Blob permanece con mocks.
+No se usaron servicios ni credenciales de producción.
+
+`ProfileSessionIntegrationTests` usa cuentas sintéticas y solicitudes HTTP
+reales contra la aplicación Django. Dos PATCH concurrentes con el mismo email
+normalizado producen un éxito y un conflicto; el estado final demuestra que la
+cuenta perdedora no recibe el cambio de nombre. Un fallo inyectado antes de
+`auth.update_user` deja intactos nombre y email. El logout guarda la revocación
+en Firestore Emulator, invalida el Bearer anterior para `/api/auth/me`, es
+idempotente y no afecta a otra cuenta.
+
+La prueba de contraseña inicia sesión con la nueva contraseña y confirma el
+rechazo de la anterior tras el cambio. La respuesta no incluye contraseña ni
+hash. Se verifican GET logout = 405 y que una cookie sin Bearer no crea una
+revocación. CSRF Django no forma parte del contrato Firebase Bearer; una
+petición POST anónima responde 204 por idempotencia, pero no se autentica ni
+modifica la persistencia.
+
+En navegador se validaron consulta del perfil, validación cliente sin petición,
+error y retry conservando el formulario, confirmación, recarga, error de
+contraseña y logout con fallo 500 seguido de retry 204. Auth Emulator gestionó
+el inicio de sesión; la API se interceptó, así que las respuestas visuales no
+demuestran persistencia del navegador en Firestore.
+
 ## US 4.4–4.7: exploración, decisiones y avisos privados
 
 La adaptación a **Firebase Auth/Firestore** fue autorizada expresamente.
