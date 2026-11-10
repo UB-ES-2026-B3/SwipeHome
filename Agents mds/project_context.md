@@ -1,6 +1,6 @@
 # Contexto del proyecto SwipeHome
 
-## Estado vigente — US4 backend (8 noviembre 2026)
+## Estado vigente — US4 (10 noviembre 2026)
 
 El stack vigente es Django con Firebase Auth y Firestore. La implementación
 de US 4.4–4.7 sobre ese stack fue autorizada explícitamente por el usuario.
@@ -17,11 +17,17 @@ pueden tener match con la misma vivienda.
 | US 4.5 | Decisiones LIKE/PASS, creación atómica, reintentos idempotentes, conflictos sin sobrescritura. |
 | US 4.6 | Persistencia Firestore con claves canónicas, transacciones, controles de coherencia y unicidad de path. |
 | US 4.7 | Avisos privados SELLER, relaciones de match/Comprador/vivienda y paginación. |
+| US 4.9 | Verificación de permisos, datos, paginación, privacidad, concurrencia y rollback con persistencia local aislada. |
+| US 4.10 | Verificación integrada del recorrido de exploración, decisiones y avisos; UI contrastada con API mockeada y persistencia backend en emuladores. |
 
-Implementación y pruebas backend terminadas: 140 pruebas correctas con ambos
-emuladores, sin omisiones. Queda pendiente desplegar/verificar los índices
-remotos antes de activar las consultas en producción. No se ha implementado
-frontend de US4, chat, email, push ni lectura de avisos.
+Verificación US 4.9: 166 pruebas correctas con Auth y Firestore Emulator, sin
+omisiones. Contra los CA oficiales, CA-03 a CA-06 pasan en la API/persistencia;
+CA-01, CA-02, CA-07 y CA-08 quedan parciales por las partes de interfaz no
+cubiertas por pruebas backend. Evidencia y límites en [US4 backend](us4_backend.md)
+y el [README backend](../backend/README.md).
+Queda pendiente desplegar/verificar los índices remotos antes de activar las
+consultas en producción. La verificación de interfaz de US4.10 no incluye
+lectura visual de avisos US5, chat, email ni push.
 US6 permanece vigente según [su contrato](us6_backend.md).
 
 La referencia de modelos, atomicidad, concurrencia, compatibilidad histórica y

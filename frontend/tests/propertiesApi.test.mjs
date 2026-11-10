@@ -14,13 +14,14 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
   const context = vm.createContext({
     auth,
     FormData,
+    URLSearchParams,
     fetch: async (path, options) => {
       calls.push([path, options])
       if (networkFailure) throw new Error('offline')
       return { ok: response.ok, status: response.status, json: async () => response.data }
     },
   })
-  vm.runInContext(source + '\nthis.api = { publishProperty };', context)
+  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty };', context)
   return { api: context.api, calls, auth }
 }
 
@@ -62,6 +63,7 @@ test('returns an authentication rejection and preserves network errors', async (
 
   const offline = harness({ networkFailure: true })
   await assert.rejects(offline.api.publishProperty({}, []), /offline/)
+  await assert.rejects(offline.api.decideProperty('listing-1', 'LIKE'), /offline/)
 })
 
 test('maps the dashboard form aliases to the backend contract', async () => {
@@ -88,4 +90,26 @@ test('maps the dashboard form aliases to the backend contract', async () => {
   assert.equal(options.body.get('people'), '3')
   assert.equal(options.body.get('shared_accommodation'), 'Sí')
   assert.equal(options.body.get('photos').name, 'photo.webp')
+})
+
+test('explores with the cursor-based US4 API contract', async () => {
+  const { api, calls } = harness()
+
+  await api.exploreProperties('opaque cursor/with spaces')
+  await api.exploreProperties()
+
+  assert.equal(calls[0][0], '/api/inmuebles/explorar?limit=20&cursor=opaque+cursor%2Fwith+spaces')
+  assert.equal(calls[1][0], '/api/inmuebles/explorar?limit=20')
+  assert.match(calls[0][1].headers.Authorization, /^Bearer /)
+})
+
+test('sends decisions to the selected listing endpoint with only the decision', async () => {
+  const { api, calls } = harness()
+
+  await api.decideProperty('listing/id', 'LIKE')
+
+  assert.equal(calls[0][0], '/api/inmuebles/listing%2Fid/decision')
+  assert.equal(calls[0][1].method, 'POST')
+  assert.equal(calls[0][1].headers['Content-Type'], 'application/json')
+  assert.deepEqual(JSON.parse(calls[0][1].body), { decision: 'LIKE' })
 })

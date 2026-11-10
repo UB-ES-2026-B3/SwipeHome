@@ -40,15 +40,17 @@ export function getActiveProperties() {
   return authenticatedRequest('/api/inmuebles')
 }
 
-export function exploreProperties(offset = 0) {
-  return authenticatedRequest(`/api/inmuebles/explorar?limit=10&offset=${offset}`)
+export function exploreProperties(cursor = null) {
+  const query = new URLSearchParams({ limit: '20' })
+  if (cursor) query.set('cursor', cursor)
+  return authenticatedRequest(`/api/inmuebles/explorar?${query}`)
 }
 
 export function decideProperty(propertyId, decision) {
-  return authenticatedRequest('/api/inmuebles/decidir', {
+  return authenticatedRequest(`/api/inmuebles/${encodeURIComponent(propertyId)}/decision`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ property_id: propertyId, decision }),
+    body: JSON.stringify({ decision }),
   })
 }
 

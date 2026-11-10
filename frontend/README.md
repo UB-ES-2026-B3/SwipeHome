@@ -76,6 +76,33 @@ no prueba persistencia real en Firestore ni subida real a Azure. Los resultados
 detallados están en
 [README backend](../backend/README.md) y [project_context.md](../Agents%20mds/project_context.md).
 
+## Exploración y decisiones (US4.10)
+
+BuyerHome consulta `GET /api/inmuebles/explorar?limit=20&cursor=...` y envía
+decisiones a `POST /api/inmuebles/{id}/decision` con solo
+`{"decision":"LIKE"|"PASS"}`. Conserva el cursor al vaciar cada página; cambia
+de foto sin decidir, ignora el desplazamiento vertical, permite gesto
+horizontal y flechas izquierda/derecha, y confirma únicamente respuestas cuya
+decisión y match corresponden al inmueble. LIKE muestra confirmación sin
+navegar a US5; PASS no muestra un match. Errores de carga/decisión conservan la
+vivienda y permiten reintentar; el servidor garantiza idempotencia. Una sesión
+expirada cierra el acceso y devuelve al usuario a la pantalla pública.
+
+Verificación registrada el 10 de noviembre de 2026:
+
+| Comprobación | Método | Resultado y límite |
+|---|---|---|
+| Campos, fotos múltiples, galería y no decidir al cambiar foto/desplazarse verticalmente | Navegador instrumentado con Auth Emulator y respuestas API interceptadas | Pasa con mocks; no descargó imágenes de Azure. |
+| Botón LIKE, doble clic, respuesta temporal y reintento | Browser automation con 503 simulado después de persistir en el fixture; reintento 200 | Pasa con mocks: un match/aviso en fixture; idempotencia real probada aparte en Firestore Emulator. |
+| PASS con teclado; gesto horizontal | Flecha izquierda y eventos pointer automatizados | Pasa con mocks; no se probó un dispositivo táctil físico. |
+| Recarga, exclusión, pantalla vacía, fallo de carga y sesión expirada | Auth Emulator con perfil/API interceptados; respuestas 500 y 401 simuladas | Pasa con mocks. |
+| Responsive | Viewport 1280×900 y 390×844; tarjeta móvil de 343 px | Pasa en navegador de escritorio emulado, no equivale a certificación en dispositivos físicos. |
+| Publicación US3, persistencia, notificación, re-login y segundo Comprador | `test_published_multi_photo_listings_survive_full_buyer_flow` con Auth/Firestore Emulator y Azure Blob mock | Pasa con emuladores; Firestore/Azure de producción no verificados. |
+
+`npm test`: 20 tests pasan. `npm run lint` y `npm run build` finalizan; lint
+mantiene advertencias existentes. El test de API cubre también el rechazo de
+red de `decideProperty`; no se forzó una desconexión física del navegador.
+
 ## Integración US6
 
 `api/auth.js` ofrece `updateProfile`, `changePassword` y logout con revocación

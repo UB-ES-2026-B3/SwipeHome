@@ -77,6 +77,38 @@ class FirestoreDecisionTests(SimpleTestCase):
     def counts(self):
         return tuple(len(self.rows(name)) for name in ("swipes", "matches", "notifications"))
 
+    def test_all_three_endpoints_enforce_roles_without_persisting_changes(self):
+        seller = Client(enforce_csrf_checks=True)
+        buyer = Client(enforce_csrf_checks=True)
+        self.assertEqual(
+            seller.get("/api/inmuebles/explorar", HTTP_AUTHORIZATION="Bearer seller").status_code,
+            403,
+        )
+        self.assertEqual(
+            seller.post(
+                "/api/inmuebles/home/decision",
+                '{"decision":"LIKE"}',
+                content_type="application/json",
+                HTTP_AUTHORIZATION="Bearer seller",
+            ).status_code,
+            403,
+        )
+        self.assertEqual(
+            buyer.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer buyer").status_code,
+            403,
+        )
+        self.assertEqual(seller.get("/api/inmuebles/explorar").status_code, 401)
+        self.assertEqual(
+            seller.post(
+                "/api/inmuebles/home/decision",
+                '{"decision":"LIKE"}',
+                content_type="application/json",
+            ).status_code,
+            401,
+        )
+        self.assertEqual(buyer.get("/api/notificaciones").status_code, 401)
+        self.assertEqual(self.counts(), (0, 0, 0))
+
     def test_like_has_exactly_one_consistent_decision_match_and_notice(self):
         response = self.post()
         self.assertEqual(response.status_code, 201, response.content)
@@ -372,6 +404,116 @@ class FirebaseFlowTests(SimpleTestCase):
         notices = client.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + tokens["SELLER"])
         self.assertEqual(notices.status_code, 200, notices.content)
         self.assertEqual(len([row for row in notices.json()["items"] if row.get("match_id") == liked.json()["match"]["id"]]), 1)
+
+    def test_published_multi_photo_listings_survive_full_buyer_flow(self):
+        import requests
+        from types import SimpleNamespace
+        from properties.tests import VALID, jpeg
+
+        app = initialize_app(options={"projectId": PROJECT}, name="us410-" + uuid4().hex)
+        self.addCleanup(delete_app, app)
+        db = firestore.Client(project=PROJECT, credentials=AnonymousCredentials())
+        self.addCleanup(db.close)
+        prefix = "us410_" + uuid4().hex
+        for collection in ("LISTINGS_COLLECTION", "SWIPES_COLLECTION", "MATCHES_COLLECTION", "NOTIFICATIONS_COLLECTION"):
+            self.enterContext(patch.object(repository, collection, prefix + "_" + collection.lower()))
+        for target in ("accounts.views.get_app", "accounts.authentication.get_app", "accounts.repository.get_app"):
+            self.enterContext(patch(target, return_value=app))
+        self.enterContext(patch("accounts.repository.firestore.client", return_value=db))
+        photo_urls = [f"https://example.com/{uuid4().hex}.jpg" for _ in range(4)]
+        urls = iter(photo_urls)
+        container = self.enterContext(patch("accounts.repository.get_container_client"))
+        container.return_value.get_blob_client.side_effect = lambda name: SimpleNamespace(
+            url=next(urls), upload_blob=lambda *args, **kwargs: None,
+        )
+
+        client = Client(enforce_csrf_checks=True)
+        registered_users = {"SELLER": [], "BUYER": []}
+        tokens = {}
+        for role in ("SELLER", "BUYER", "BUYER"):
+            email = f"{role.lower()}-{uuid4().hex}@example.com"
+            payload = {
+                "name": f"Test {role}", "email": email,
+                "password": "Test password value 123!", "role": role,
+            }
+            registered = client.post("/api/auth/register", json.dumps(payload), content_type="application/json")
+            self.assertEqual(registered.status_code, 201, registered.content)
+            uid = registered.json()["uid"]
+            self.addCleanup(auth.delete_user, uid, app=app)
+            self.addCleanup(db.collection("users").document(uid).delete)
+            registered_users[role].append({"email": email, "uid": uid})
+            tokens.setdefault(role, []).append(self.login(email, payload["password"], requests))
+
+        seller_token = tokens["SELLER"][0]
+        published = []
+        for title in ("Piso para LIKE", "Piso para PASS"):
+            response = client.post(
+                "/api/inmuebles",
+                {**VALID, "title": title, "photos": [jpeg("first.jpg"), jpeg("second.jpg")]},
+                HTTP_AUTHORIZATION="Bearer " + seller_token,
+            )
+            self.assertEqual(response.status_code, 201, response.content)
+            published.append(response.json()["id"])
+
+        first_page = client.get(
+            "/api/inmuebles/explorar?limit=20",
+            HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"][0],
+        )
+        self.assertEqual(first_page.status_code, 200, first_page.content)
+        listings_by_id = {item["id"]: item for item in first_page.json()["items"]}
+        self.assertEqual(set(listings_by_id), set(published))
+        self.assertEqual(listings_by_id[published[0]]["photos"], photo_urls[:2])
+        self.assertEqual(listings_by_id[published[0]]["title"], "Piso para LIKE")
+        self.assertEqual(listings_by_id[published[0]]["street"], VALID["street"])
+        self.assertEqual(listings_by_id[published[0]]["price"], "950.50")
+        self.assertEqual(listings_by_id[published[0]]["people"], 3)
+
+        def decide(token, listing_id, value):
+            return client.post(
+                f"/api/inmuebles/{listing_id}/decision",
+                json.dumps({"decision": value}),
+                content_type="application/json",
+                HTTP_AUTHORIZATION="Bearer " + token,
+            )
+
+        liked = decide(tokens["BUYER"][0], published[0], "LIKE")
+        passed = decide(tokens["BUYER"][0], published[1], "PASS")
+        self.assertEqual(liked.status_code, 201, liked.content)
+        self.assertEqual(liked.json()["match"]["listing_id"], published[0])
+        self.assertEqual(passed.status_code, 201, passed.content)
+        self.assertIsNone(passed.json()["match"])
+
+        notices = client.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + seller_token)
+        self.assertEqual(notices.status_code, 200, notices.content)
+        self.assertEqual(len(notices.json()["items"]), 1)
+        self.assertEqual(notices.json()["items"][0]["listing"]["id"], published[0])
+        self.assertEqual(notices.json()["items"][0]["buyer"]["id"], registered_users["BUYER"][0]["uid"])
+
+        self.assertEqual(client.post(
+            "/api/auth/logout", HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"][0],
+        ).status_code, 204)
+        time.sleep(1.05)
+        relogged_token = self.login(
+            registered_users["BUYER"][0]["email"], "Test password value 123!", requests,
+        )
+        relogged_client = Client(enforce_csrf_checks=True)
+        self.assertEqual(relogged_client.get(
+            "/api/inmuebles/explorar", HTTP_AUTHORIZATION="Bearer " + relogged_token,
+        ).json(), {"items": [], "next_cursor": None})
+        repeated_like = decide(relogged_token, published[0], "LIKE")
+        self.assertEqual(repeated_like.status_code, 200, repeated_like.content)
+        self.assertEqual(repeated_like.json(), liked.json())
+
+        second_buyer = client.get(
+            "/api/inmuebles/explorar", HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"][1],
+        )
+        self.assertEqual({item["id"] for item in second_buyer.json()["items"]}, set(published))
+        second_like = decide(tokens["BUYER"][1], published[0], "LIKE")
+        self.assertEqual(second_like.status_code, 201, second_like.content)
+        self.assertNotEqual(second_like.json()["match"]["id"], liked.json()["match"]["id"])
+        final_notices = client.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + seller_token)
+        self.assertEqual(final_notices.status_code, 200, final_notices.content)
+        self.assertEqual(len(final_notices.json()["items"]), 2)
 
     def login(self, email, password, requests):
         host = os.environ["FIREBASE_AUTH_EMULATOR_HOST"]

@@ -133,37 +133,72 @@ El archivo [firebase.json](../backend/firebase.json) permite desplegar solo
 índices. Los comandos están en el README. No se han desplegado índices remotos.
 El emulador no certifica el requisito de índices de producción.
 
-## Verificación real
+## Verificación US 4.9
 
-Resultado final: **140 pruebas correctas, sin omisiones** con Auth y Firestore
-Emulator, proyecto `demo-swipehome-us4`, Node 24 y Java 21.
-La última ejecución completa tardó 46,564 s. Incluye 37 pruebas nuevas sobre las
-103 previas; las pruebas existentes de avisos se ajustan a SELLER y las US6
-usan el proyecto demo del emulador activo.
+Ejecutado el 10 de noviembre de 2026 mediante el comando de emuladores del
+[README backend](../backend/README.md): **166 pruebas correctas, sin omisiones**.
+Auth Emulator y Firestore Emulator ejecutan localmente con el proyecto demo
+`demo-swipehome-us4`; Azure Blob se mockea donde aplica. No se usaron servicios
+ni credenciales de producción. La prueba adicional
+`test_all_three_endpoints_enforce_roles_without_persisting_changes` hace
+solicitudes autenticadas e anónimas a los tres endpoints y comprueba códigos y
+ausencia de escrituras indebidas.
 
-- Tres solicitudes simultáneas LIKE: 201/200/200, mismo match y un aviso.
-- Tres solicitudes simultáneas PASS: 201/200/200, sin match ni aviso.
-- LIKE y PASS simultáneos: un 201 y un 409; se conserva el ganador.
-- Barreras e hilos con clientes HTTP independientes; persistencia y transacciones
-  contra Firestore Emulator real, sin simular el motor.
-- Rollback ante fallo inducido de cada guardado y rechazo real de commit por
-  precondición incumplida; unicidad real de `create`; orígenes inconsistentes.
-- Permisos, identidad verificada, JSON inválido, reintentos, privacidad,
-  fotografías, fechas empatadas, lotes, cursores, última página y colección vacía.
-- Persistencia tras logout, nueva sesión y nuevo cliente Firestore.
-- Recorrido con Auth real del emulador: registro, login, publicación, LIKE,
-  logout, token revocado y nuevo login; Azure Blob se simula en ese recorrido.
-- Suite sin emuladores: **116 correctas y 24 integraciones omitidas**.
-- `manage.py check`: sin incidencias; `makemigrations --check --dry-run`:
-  sin cambios; `pip check`: dependencias correctas; `git diff --check`: correcto.
-- No hay formatter/linter Python configurado en el repositorio.
-  No se añaden dependencias de formato para esta tarea.
+| CA | Evidencia automatizada | Resultado |
+|---|---|---|
+| CA-01 — Acceso al explorador | `test_all_three_endpoints_enforce_roles_without_persisting_changes`, `test_authentication_and_buyer_permissions_for_both_endpoints`: BUYER autorizado; otro rol o ausencia de token rechazados. | Parcial (solo API): ruta/inicio de Comprador en UI no se prueba aquí. Firebase verifier/perfil están mockeados en el test de roles; Firestore usa emulador. |
+| CA-02 — Información y fotografías | `test_explore_excludes_only_own_decisions_and_preserves_all_photos`, `test_all_public_fields_and_ordered_photos_without_internal_data`: datos completos y orden de URLs conservado en API. | Parcial (solo API): tarjeta y navegación de fotos en UI, y acceso a blobs, no verificados. |
+| CA-03 — Creación del match | `test_like_has_exactly_one_consistent_decision_match_and_notice`, `test_same_decision_retries_return_identical_records`: LIKE asocia decisión/match a comprador y vivienda; repetición no duplica. | Pasa en API/Firestore Emulator; swipe o botón de interfaz no verificado. |
+| CA-04 — Aviso al Vendedor | `test_private_notices_include_match_buyer_home_and_stable_pagination`: aviso identifica comprador y vivienda y solo lo consulta el vendedor destinatario. | Pasa con Firestore Emulator; vista visual no verificada. |
+| CA-05 — Descarte persistente | `test_pass_creates_only_decision_and_no_notice`, `test_explore_excludes_only_own_decisions_and_preserves_all_photos`, `test_empty_and_exact_limit_pages_have_no_next_cursor`: PASS persiste sin match/aviso y excluye la vivienda para ese comprador. | Pasa en API/Firestore Emulator; control «No me interesa» de UI no verificado. |
+| CA-06 — Independencia entre Compradores | `test_two_buyers_match_same_home_without_reserving_or_hiding_it`: dos compradores tienen documentos/matches propios para la misma vivienda. | Pasa con Firestore Emulator. |
+| CA-07 — Continuidad y fin de la exploración | `test_pagination_ties_previous_page_decisions_and_last_page`, `test_scan_multiple_batches_of_decided_homes_without_skip_or_n_plus_one`, `test_empty_and_exact_limit_pages_have_no_next_cursor`: cursor continúa con pendientes y responde lista vacía al final. | Parcial (solo API): tarjeta siguiente y mensaje de fin en UI no verificados. |
+| CA-08 — Fallos y reintentos | `test_each_staged_write_failure_rolls_back_entire_operation`, `test_rejected_commit_does_not_persist_any_staged_document`, `test_same_decision_retries_return_identical_records`, `test_simultaneous_identical_likes_converge_to_same_match_and_notice`, `test_internal_failures_are_safe_for_both_endpoints`: rollback, estado final y retry idempotente. | Parcial (solo backend): mensajes/control de reintento de UI no verificados. |
 
-Las primeras ejecuciones identificaron y corrigieron aislamiento de revocaciones,
-proyectos distintos en las regresiones US6 y abortos de lectura bajo concurrencia.
-Los resultados anteriores fallidos no se presentan como comprobaciones superadas.
-No se ha probado producción ni Azure Blob real en ese recorrido, ni se ha lanzado CI remoto.
-El workflow queda actualizado para Java 21 y la suite completa con ambos emuladores.
+La suite completa también ejecuta el flujo de Auth con Auth Emulator; el test
+de rol específico de CA-01 inyecta identidad/perfil y no prueba Auth.
+
+No se ejecutaron Azure Blob ni Firestore de producción, no se desplegaron los
+índices remotos ni se lanzó CI remoto. La persistencia real verificada aquí es
+la del Firestore Emulator; las pruebas de rollback usan Firestore Emulator con
+fallos de escritura inyectados. No hay linter/formatter Python configurado.
+
+## Verificación integrada US 4.10
+
+El comando de emuladores del README backend pasó **167 tests** con Auth y
+Firestore Emulator, incluido
+`FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`.
+El test registra vendedor y dos Compradores, publica dos anuncios válidos de
+US3 con dos fotos cada uno y URLs Azure simuladas, explora los campos/fotos
+ordenados, registra LIKE y PASS, consulta el aviso como propietario, cierra y
+reabre sesión, verifica exclusión/reintento idempotente y confirma que el
+segundo Comprador obtiene otro match para la misma vivienda.
+
+La interfaz BuyerHome se probó en navegador con Auth Emulator y la API
+interceptada (fixtures), no contra Firestore. Se verificaron visualización de
+campos y fotos, cambio de foto y desplazamiento vertical sin decisión, botón
+LIKE/doble clic, confirmación, PASS por teclado, evento de puntero horizontal,
+respuesta temporal 503 y reintento, error de carga/reintento, lista vacía,
+respuesta 401/fin de sesión, recarga y viewport de escritorio/móvil. Los
+eventos de puntero se enviaron mediante automatización del navegador; no se
+certificó un dispositivo móvil físico ni una pérdida de red física. El test de
+API Node comprueba que una decisión propaga un rechazo de red para que la UI
+mantenga la publicación y ofrezca reintento.
+
+| CA oficial | Evidencia para el recorrido US4.10 | Resultado y límite |
+|---|---|---|
+| CA-01 — Acceso al explorador | Permisos backend de US4.9; Auth Emulator en navegador y perfil/API mockeados. | Parcial: navegación Buyer verificada; permisos sin sesión/rol indebido están en tests backend, no se repitió UI de esos roles. |
+| CA-02 — Información y fotografías | Publicación/exploración en Firestore Emulator; fixture de navegador con campos y varias fotos, cambio de galería. | Pasa con mocks para UI; Azure Blob no se descargó y navegador no leyó Firestore. |
+| CA-03 — Creación del match | Backend publica y registra LIKE; botón/doble clic y confirmación de UI con API interceptada. | Pasa con Firestore Emulator en backend y mocks en UI; no se requiere pantalla US5. |
+| CA-04 — Aviso al Vendedor | GET de avisos backend verifica Comprador/vivienda para el propietario. | Pasa con Firestore Emulator; pantalla visual de avisos US5 no verificada. |
+| CA-05 — Descarte persistente | PASS, ausencia de match/aviso y exclusión tras re-login en Firestore Emulator; tecla izquierda en navegador. | Pasa con Firestore Emulator y mock UI. |
+| CA-06 — Independencia entre Compradores | El test integrado registra dos Compradores y confirma dos matches distintos sobre una publicación. | Pasa con Firestore Emulator. |
+| CA-07 — Continuidad y fin de la exploración | El backend consulta cursor/fin; BuyerHome avanza al siguiente elemento y muestra lista vacía en prueba de navegador. | Pasa en API/fixture; el listado de navegador no procede de Firestore. |
+| CA-08 — Fallos y reintentos | Retry de backend idempotente tras re-login; UI con 503 mock, fallo de carga, 401 y test Node de rechazo de red. | Parcial: retry backend y tratamiento de errores pasan; no se provocó pérdida física de conexión en navegador. |
+
+Todas las persistencias descritas como reales son del emulador local, no de
+servicios de producción. Azure Blob se mockea tanto en el test de publicación
+como en las fixtures de navegador.
 
 ## Archivos de implementación
 

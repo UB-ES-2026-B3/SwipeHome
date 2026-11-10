@@ -762,11 +762,16 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .property-card {
   width: min(100%, 680px);
   overflow: hidden;
+  touch-action: pan-y;
   text-align: left;
   background: var(--c-white);
   border: 1px solid var(--c-gray-100);
   border-radius: var(--r-card);
   box-shadow: var(--shadow-card);
+}
+.property-card:focus-visible {
+  outline: 2px solid var(--c-black);
+  outline-offset: 3px;
 }
 .property-card__gallery {
   position: relative;

@@ -1,15 +1,16 @@
 # Contexto frontend de SwipeHome
 
-## Integración vigente con US4 backend — 8 noviembre 2026
+## Integración y verificación vigente US4.10 — 10 noviembre 2026
 
 La autenticación vigente sigue siendo Firebase Auth con ID token Bearer y
-revocación US6. No hay cambios de frontend en esta tarea.
+revocación US6.
 Los consumidores pueden usar los contratos documentados en el
 [README backend](../backend/README.md) y [US4 backend](us4_backend.md).
 
 BUYER: GET `/api/inmuebles/explorar` y POST
 `/api/inmuebles/{id}/decision` con `{"decision":"LIKE"}` o PASS.
-LIKE crea directamente match y aviso: no diseñar aceptación del Vendedor.
+LIKE crea directamente match y aviso; no requiere aceptación del Vendedor ni
+redirige a una pantalla US5.
 SELLER: GET `/api/notificaciones` devuelve sus propios avisos.
 Ambos GET usan `items/next_cursor`, `limit` 20 por defecto, máximo 50.
 Conservar el cursor al decidir sobre páginas previas para continuar sin saltos.
@@ -17,9 +18,17 @@ Conservar el cursor al decidir sobre páginas previas para continuar sin saltos.
 Los avisos nuevos incluyen match, Comprador y vivienda; los históricos sin
 match mantienen sus cuatro campos previos.
 
-Solo se ha verificado backend (140 pruebas, incluidos Auth/Firestore Emulator).
-No se certifica aquí un recorrido de interfaz nuevo. El material siguiente
-sobre el frontend de Sprint 0 y sesiones/SQLite es historial identificado.
+US4.10 corrigió la integración frontend: exploración con cursor, decisión por ID
+y cuerpo `{decision}`; confirma solo respuestas coherentes con decisión/match.
+Los controles soportan galería, gestos horizontales, teclado, retry y mensaje
+vacío. `npm test` pasa 20 tests; lint y build terminan correctamente.
+
+La comprobación de navegador usó Auth Emulator real y mock/interceptación de la
+API: se revisaron datos/fotos, botones, teclado, gestos de puntero, retry tras
+503, sesión expirada, recarga y viewport de 390 px/1280 px. No es persistencia
+del navegador contra Firestore: el flujo de publicación, decisiones, avisos,
+re-login y dos Compradores se verificó aparte en el test backend con Firestore
+Emulator y Azure Blob mockeado. No se accedió a Firebase/Azure de producción.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

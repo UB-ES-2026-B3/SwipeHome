@@ -1,10 +1,10 @@
 # Contexto backend de SwipeHome
 
-## Estado vigente — US4 y US6 (8 noviembre 2026)
+## Estado vigente — US4 y US6 (10 noviembre 2026)
 
 El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
 cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
-para US 4.4–4.7. Los contratos vigentes están en el
+para US 4.4–4.7 y la verificación US4.9. Los contratos vigentes están en el
 [README backend](../backend/README.md), [US4 backend](us4_backend.md) y
 [US6 backend](us6_backend.md).
 
@@ -13,7 +13,7 @@ US4 reutiliza usuarios y anuncios actuales, fotografías ordenadas en
 LIKE crea directamente decisión, match y aviso; PASS solo crea decisión.
 No hay aceptación posterior del Vendedor ni reserva del inmueble.
 
-`accounts/repository.py` centraliza todo Firestore/Storage, incluida la
+`accounts/repository.py` centraliza Firestore y Azure Blob Storage, incluida la
 transacción y las claves canónicas `swipes/{key}`, `matches/{key}` y
 `notifications/match-{key}`. Firestore garantiza unicidad de path; valores,
 referencias y conjunto completo son garantías del servicio, no CHECK/FK.
@@ -31,9 +31,19 @@ migraciones ORM. Los índices están en `backend/firestore.indexes.json` y su
 configuración en `backend/firebase.json`; no se han desplegado remotamente.
 El detalle de compatibilidad y límites de garantías está en US4 backend.
 
-Verificación: 140 pruebas pasan con Auth/Firestore Emulator, sin omisiones;
-sin emuladores pasan 116 y se omiten 24 integraciones. Django check, comprobación
-de migraciones, pip check y diff check correctos. No se ha probado producción.
+Verificación US4.9: 166 pruebas pasan con Auth/Firestore Emulator, sin
+omisiones. Con los CA oficiales: CA-03 a CA-06 pasan en API/persistencia local;
+CA-01, CA-02, CA-07 y CA-08 quedan parciales porque sus partes de navegación,
+presentación, continuación visible y reintento de interfaz no son pruebas de
+esta US de backend. Evidencia y límites por CA en [US4 backend](us4_backend.md).
+Azure Blob se mockea y no se probó producción.
+
+US4.10 añade `test_published_multi_photo_listings_survive_full_buyer_flow`:
+publicación multipart US3 con dos fotos, exploración, LIKE/PASS, aviso privado,
+re-login, exclusión persistente y segundo Comprador con match independiente.
+La suite completa pasó 167 tests con Auth/Firestore Emulator y mocks de Azure
+Blob. La interfaz se comprobó aparte en navegador con Auth Emulator y respuestas
+de API interceptadas; no se afirmó integración de navegador con Firestore real.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
