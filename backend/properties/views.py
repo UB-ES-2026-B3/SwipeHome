@@ -91,9 +91,9 @@ def create_property(request):
 
     if request.method == "GET":
         try:
-            return JsonResponse({"properties": repository.get_active_listings()})
+            return JsonResponse({"properties": repository.get_seller_listings(uid)})
         except Exception as error:
-            logger.error("No se pudieron leer los inmuebles activos (%s).", type(error).__name__)
+            logger.error("No se pudieron leer los inmuebles del vendedor (%s).", type(error).__name__)
             return JsonResponse({"error": "No se pudieron cargar las viviendas. Inténtalo de nuevo."}, status=500)
 
     try:
