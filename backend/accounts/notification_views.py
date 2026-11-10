@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
-from .authentication import firebase_auth
+from .authentication import firebase_role
 from .notification_service import InvalidNotificationQuery, list_notifications
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @never_cache
 @require_GET
-@firebase_auth
+@firebase_role("SELLER")
 def notifications(request):
     try:
         return JsonResponse(list_notifications(request.user, request.GET))
