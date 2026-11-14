@@ -24,6 +24,7 @@ def decide(user, listing_id, value):
         },
         "match": None if match is None else {
             "id": match["id"], "decision_id": match["decision_id"],
-            "listing_id": match["listing_id"], "created_at": timestamp(match["created_at"]),
+            "listing_id": match["listing_id"], "status": match.get("status", "PENDING"),
+            "created_at": timestamp(match["created_at"]),
         },
     }, 201 if created else 200

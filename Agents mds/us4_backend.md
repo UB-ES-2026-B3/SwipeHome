@@ -15,8 +15,9 @@ proveedor ni se incorpora un segundo sistema de usuarios.
 | 4.6 | Colecciones `swipes`, `matches` y `notifications` con claves canónicas y escritura transaccional centralizada. Persistencia independiente de la sesión y del proceso Django. |
 | 4.7 | LIKE genera un aviso privado al SELLER con match, Comprador y vivienda. Lectura paginada; US7.4 amplía el GET a consulta propia BUYER/SELLER. |
 
-**Un LIKE del Comprador crea el match y el aviso al propietario directamente.**
-No existe aceptación del Vendedor, segundo swipe ni reserva del inmueble.
+**Un LIKE del Comprador crea un match con estado PENDING y un aviso de interés al propietario.**
+El match queda pendiente de la decisión posterior del Vendedor (incorporada en US5). No existe
+segundo swipe por parte del comprador ni reserva del inmueble.
 Distintos Compradores pueden tener matches sobre la misma vivienda.
 
 Los contratos completos, ejemplos y códigos HTTP están en
@@ -53,8 +54,8 @@ determinista con JSON ASCII:
 | Documento | Campos obligatorios escritos por el servidor |
 |---|---|
 | `swipes/{key}` | `buyer_uid`, `listing_id`, `value` LIKE/PASS, `created_at` |
-| `matches/{key}` | `buyer_uid`, `listing_id`, `decision_id=key`, `created_at` |
-| `notifications/match-{key}` | `recipient_uid`, `match_id=key`, `buyer_uid`, `buyer_name`, `listing_id`, `listing_title`, `type=MATCH`, `message`, `created_at` |
+| `matches/{key}` | `buyer_uid`, `listing_id`, `decision_id=key`, `seller_uid`, `buyer_name`, `listing_title`, `status=PENDING`, `created_at` |
+| `notifications/match-{key}` | `recipient_uid`, `match_id=key`, `buyer_uid`, `buyer_name`, `listing_id`, `listing_title`, `type=INTEREST`, `message`, `created_at` |
 
 Las fechas nuevas son timestamps UTC fijados por el reloj del backend durante
 la operación; nunca proceden del cliente. El nombre del Comprador es una

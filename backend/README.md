@@ -293,8 +293,9 @@ Django ni migraciones ORM; no se añade `csrf_exempt`. Cookies por sí solas no
 autentican estos endpoints. La identidad procede de `request.user`, construido
 por el servidor con el token verificado, su revocación y el perfil actual.
 
-**LIKE crea directamente el match y un aviso al propietario.** No hay
-aceptación del Vendedor, segundo swipe ni reserva o retirada automática del anuncio.
+**LIKE crea un match en estado PENDING y un aviso INTEREST al propietario.**
+El match queda pendiente de la decisión posterior del Vendedor (US5). No hay
+segundo swipe ni reserva o retirada automática del anuncio.
 
 | Método | Ruta exacta | Rol |
 |---|---|---|
@@ -398,6 +399,7 @@ Respuesta LIKE 201, o 200 en un reintento idéntico:
     "id": "clave-canonica",
     "decision_id": "clave-canonica",
     "listing_id": "listing-123",
+    "status": "PENDING",
     "created_at": "2026-11-08T10:01:00Z"
   }
 }
@@ -427,8 +429,8 @@ Respuesta 200 para avisos nuevos de match:
   "items": [
     {
       "id": "match-clave-canonica",
-      "type": "MATCH",
-      "message": "Tienes un nuevo match.",
+      "type": "INTEREST",
+      "message": "Tienes un nuevo candidato interesado en tu vivienda.",
       "match_id": "clave-canonica",
       "created_at": "2026-11-08T10:01:00Z",
       "buyer": {"id": "buyer-uid", "name": "Ana"},
@@ -445,19 +447,101 @@ previos sin match siguen devolviendo solo `id/type/message/created_at`; no se
 les inventan identidades ni matches. Los avisos US4 tienen siempre las relaciones
 completas. No se marca lectura ni se cambia ningún registro al consultar.
 
+### GET /api/matches
+
+Consulta paginada de matches mutuos confirmados (`status == "CONFIRMED"`).
+- Para **BUYER**: devuelve exclusivamente sus viviendas confirmadas con datos completos del inmueble (`listing_item`).
+- Para **SELLER**: devuelve exclusivamente matches confirmados de sus viviendas con datos del Comprador y vivienda.
+- Admite parámetro opcional `inmueble`: solo permite consultar viviendas relacionadas con el usuario autenticado (403 si pertenece a otro o no hay relación).
+- Ordenación: `confirmed_at DESC, __name__ DESC`.
+
+Ejemplo respuesta Comprador (200):
+```json
+{
+  "items": [
+    {
+      "id": "clave-canonica",
+      "status": "CONFIRMED",
+      "confirmed_at": "2026-11-10T12:00:00Z",
+      "created_at": "2026-11-10T11:00:00Z",
+      "seller": {
+        "id": "seller-uid",
+        "name": "Joan Propietario"
+      },
+      "listing": {
+        "id": "listing-123",
+        "title": "Ático en Gràcia",
+        "price": "950.00",
+        "surface": "65.00",
+        "photos": ["https://..."],
+        "created_at": "2026-11-08T10:00:00Z"
+      }
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### GET /api/candidatos
+
+Consulta paginada de candidaturas pendientes (`status == "PENDING"`) para el Vendedor autenticado (`SELLER`).
+Un rol `BUYER` recibe 403.
+- Admite parámetro opcional `inmueble`: solo permite consultar viviendas del Vendedor (403 si no le pertenece).
+- Ordenación: `created_at DESC, __name__ DESC` (por fecha del interés inicial).
+- Paginación estable por cursor que previene saltos al confirmar o rechazar candidatos entre páginas.
+
+Ejemplo respuesta Vendedor (200):
+```json
+{
+  "items": [
+    {
+      "id": "clave-canonica",
+      "status": "PENDING",
+      "created_at": "2026-11-10T11:00:00Z",
+      "buyer": {"id": "buyer-uid", "name": "Ana"},
+      "listing": {"id": "listing-123", "title": "Ático en Gràcia"}
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### POST /api/matches/{id}/decision-vendedor
+
+Decisión del propietario sobre una candidatura (`SELLER`).
+`Content-Type: application/json`. Cuerpo admitido: `{"decision": "LIKE"}` o `{"decision": "PASS"}`.
+- Solo el propietario del inmueble asociado puede decidir (404 si no existe o es ajeno).
+- Comprueba que la candidatura procede de un interés positivo previo del Comprador.
+- `LIKE`: transforma `PENDING` en `CONFIRMED` y guarda `confirmed_at` y `decided_at`.
+- `PASS`: transforma `PENDING` en `REJECTED` y guarda `decided_at`.
+- No crea un segundo registro de match; actualiza el existente de forma atómica.
+- Idempotente: repetir la misma decisión devuelve 200 con el estado actual.
+- Conflicto: intentar contradecir una decisión ya tomada (`CONFIRMED` a `PASS` o `REJECTED` a `LIKE`) devuelve 409.
+
+Respuesta 200:
+```json
+{
+  "id": "clave-canonica",
+  "status": "CONFIRMED",
+  "decided_at": "2026-11-10T12:00:00Z",
+  "confirmed_at": "2026-11-10T12:00:00Z"
+}
+```
+
 ### Modelos Firestore, unicidad y transacciones
 
 Se reutilizan `users`, `listings` y `notifications`. La clave canónica es
 SHA-256 del JSON ASCII de `[buyer_uid, listing_id]`. Se añaden:
 
 - `swipes/{key}`: `buyer_uid, listing_id, value, created_at`.
-- `matches/{key}`: `buyer_uid, listing_id, decision_id, created_at`.
+- `matches/{key}`: `buyer_uid, listing_id, decision_id, seller_uid, buyer_name, listing_title, status, created_at` (y opcionalmente `decided_at, confirmed_at`).
 - `notifications/match-{key}`: destinatario propietario, match, Comprador,
-  nombre, vivienda, título, tipo, mensaje y fecha.
+  nombre, vivienda, título, tipo (INTEREST), mensaje y fecha.
 
-El propietario se resuelve desde `listings.seller_uid`. Un match no almacena
-otro propietario, reserva ni retira la vivienda. Un LIKE completo tiene un
-match y un aviso; PASS no los crea.
+El propietario se resuelve inicialmente desde `listings.seller_uid`. El match
+representa el interés mutuo pendiente o confirmado sin reservar ni retirar la vivienda.
+Un LIKE inicial del Comprador crea un match PENDING y un aviso de interés; la decisión
+favorable del Vendedor lo confirma.
 
 Firestore garantiza unicidad de documento y precondición de `create()`.
 El servicio central `repository.record_decision` garantiza valores permitidos,
@@ -515,53 +599,24 @@ Desde `backend/`:
 .\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2
 ```
 
-Este comando inicia/detiene Auth y Firestore Emulator en loopback (9099 y 8080),
-sin usar credenciales ni producción:
+Sin emuladores: **170 pruebas descubiertas, 138 correctas y 32 integraciones
+omitidas**. Para la verificación completa hacen falta Node 24 y Java 21.
+Este comando inicia/detiene Auth y Firestore Emulator en loopback
+(9099 y 8080), sin usar credenciales ni producción:
 
 ```powershell
 npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts properties --verbosity 2"
 ```
 
-Resultado de US 4.9, ejecutado el 10 de noviembre de 2026: **166 pruebas
-correctas, sin omisiones**, con Auth y Firestore Emulator. Incluye solicitudes
-realmente simultáneas mediante barreras, hilos y clientes HTTP separados;
-comprobación del estado Firestore después de cada operación/rollback; una prueba
-de rol integrada para los tres endpoints; Azure Blob permanece simulado donde
-lo necesita el recorrido de publicación. La ejecución no utilizó Firebase ni
-Azure de producción. El emulador no demuestra el despliegue de índices ni el
-funcionamiento en producción.
-
-#### US 4.9: evidencia por criterio de aceptación
-
-| CA | Prueba y método | Resultado y límite |
-|---|---|---|
-| CA-01 — Acceso al explorador | `test_all_three_endpoints_enforce_roles_without_persisting_changes`, `test_authentication_and_buyer_permissions_for_both_endpoints` y `test_private_notices_include_match_buyer_home_and_stable_pagination`: BUYER consulta y decide; vendedor/BUYER en endpoint no permitido reciben 403 y sin token 401. | **Parcial (solo API):** autenticación/autorización y exploración están verificadas; inicio/ruta de interfaz no pertenece a esta US. La prueba integrada de roles usa verifier/perfil mockeados; Firestore es emulado. |
-| CA-02 — Información y fotografías | `test_explore_excludes_only_own_decisions_and_preserves_all_photos` y `ListingContractTests.test_all_public_fields_and_ordered_photos_without_internal_data`: respuesta con datos del anuncio y todas las URLs de foto en el orden persistido. | **Parcial (solo API):** contrato, datos y orden pasan con Firestore Emulator; no se verifica mostrar tarjeta ni recorrer fotos en UI, ni recuperar los blobs de Azure. |
-| CA-03 — Creación del match | `test_like_has_exactly_one_consistent_decision_match_and_notice` y `test_same_decision_retries_return_identical_records`: un POST LIKE guarda decisión y match asociados al comprador/anuncio; repetición devuelve mismo match y no duplica. | **Pasa en API/persistencia local:** Firestore Emulator; interacción swipe/botón no verificada en esta US. |
-| CA-04 — Aviso al Vendedor | `test_private_notices_include_match_buyer_home_and_stable_pagination`: notificación contiene identidad del comprador, vivienda y match; consulta filtrada por vendedor. | **Pasa con Firestore Emulator:** no verifica presentación visual del aviso. |
-| CA-05 — Descarte persistente | `test_pass_creates_only_decision_and_no_notice`, `test_explore_excludes_only_own_decisions_and_preserves_all_photos` y `test_empty_and_exact_limit_pages_have_no_next_cursor`: PASS persiste sin match/aviso y deja de aparecer al mismo comprador. | **Pasa en API/persistencia local:** UI de «No me interesa» no verificada en esta US. |
-| CA-06 — Independencia entre Compradores | `test_two_buyers_match_same_home_without_reserving_or_hiding_it`: dos compradores guardan matches separados para la misma vivienda; sus decisiones no se comparten. | **Pasa con Firestore Emulator.** |
-| CA-07 — Continuidad y fin de la exploración | `test_pagination_ties_previous_page_decisions_and_last_page`, `test_scan_multiple_batches_of_decided_homes_without_skip_or_n_plus_one` y `test_empty_and_exact_limit_pages_have_no_next_cursor`: se decide en página previa, se obtiene la siguiente pendiente y la API devuelve lista vacía al terminar. | **Parcial (solo API):** cursor y fin de resultados pasan; mostrar la siguiente tarjeta y el mensaje de fin en interfaz no se verificó en esta US. |
-| CA-08 — Fallos y reintentos | `test_each_staged_write_failure_rolls_back_entire_operation`, `test_rejected_commit_does_not_persist_any_staged_document`, `test_same_decision_retries_return_identical_records`, `test_simultaneous_identical_likes_converge_to_same_match_and_notice` y `test_internal_failures_are_safe_for_both_endpoints`: se inspeccionan errores, rollback, respuesta idempotente y conteos finales. | **Parcial (solo backend):** errores y reintento sin duplicados pasan en emulador; aviso visual del problema y control para reintentar en UI no se verificaron en esta US. |
-
-La suite confirma la persistencia local emulada y usa fallos de escritura
-inyectados para algunos escenarios. No prueba Firebase/Azure de producción.
-
-#### US 4.10: recorrido integrado publicación-exploración-match
-
-En la ejecución conjunta de US4.10, la suite pasó **167 tests** con el comando
-anterior. `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`
-registra un Vendedor y dos Compradores mediante Auth Emulator, publica dos
-anuncios válidos con dos fotografías ordenadas cada uno, y consulta el
-explorador con datos persistidos en Firestore Emulator. Después comprueba que
-LIKE crea match/aviso al propietario, PASS no crea ninguno, el mismo Comprador
-continúa excluyendo los inmuebles tras cerrar y volver a iniciar sesión, un
-reintento devuelve el match existente, y otro Comprador crea su propio match
-para la misma vivienda. Azure Blob se simula y sus URLs se conservan ordenadas.
-
-La parte de navegador se verificó aparte con Auth Emulator y respuestas de API
-interceptadas: esto cubre presentación e interacción, no persistencia del
-navegador en Firestore. No se usaron Firestore ni Azure de producción.
+Resultado comprobado: **170 pruebas correctas, sin omisiones**, incluidos
+concurrencia con barreras/hilos y Firestore real emulado, rollback de los tres
+guardados y rechazo de commit, unicidad, privacidad, paginación tras decidir,
+persistencia y registro/login/publicación. El recorrido de Auth real simula
+únicamente Azure Blob Storage. `check`, `makemigrations --check --dry-run`, `pip check`
+y `git diff --check` también pasan. No hay lint/formatter Python configurado.
+CI está preparado para ejecutar esta misma suite con Java 21.
+El emulador no demuestra el despliegue de índices ni el funcionamiento de
+Storage o Firestore en producción.
 
 ### Ejemplo desde un consumidor Firebase existente
 

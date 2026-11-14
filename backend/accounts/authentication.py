@@ -98,10 +98,6 @@ def firebase_auth(view=None):
     return decorate(view)
 
 
-def firebase_role(role):
-    return firebase_roles(role)
-
-
 def firebase_roles(*roles):
     """Construye request.user solo desde Auth verificado y perfil del servidor."""
     from functools import wraps
@@ -109,13 +105,15 @@ def firebase_roles(*roles):
 
     from django.http import JsonResponse
 
+    allowed_roles = set(roles)
+
     def decorate(view):
         @wraps(view)
         def wrapped(request, *args, **kwargs):
             try:
                 session = verified_session(request)
                 profile = repository.get_user_profile(session["uid"])
-                if profile is None or profile["role"] not in roles:
+                if profile is None or profile.get("role") not in allowed_roles:
                     return JsonResponse({"error": "La cuenta no tiene acceso a esta operación."}, status=403)
                 request.user = SimpleNamespace(
                     uid=session["uid"], role=profile["role"], name=profile.get("name", ""),
@@ -131,3 +129,7 @@ def firebase_roles(*roles):
             return view(request, *args, **kwargs)
         return wrapped
     return decorate
+
+
+def firebase_role(*roles):
+    return firebase_roles(*roles)

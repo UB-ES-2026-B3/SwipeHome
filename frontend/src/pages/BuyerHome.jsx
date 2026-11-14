@@ -75,7 +75,7 @@ export function BuyerHome() {
         setRetryDecision(null)
         setFeedback(
           decision === 'LIKE'
-            ? '¡Match creado! El vendedor ha recibido tu interés.'
+            ? 'Interés enviado'
             : 'Vivienda descartada. Tu decisión se ha guardado.',
         )
         if (remaining.length === 0 && nextCursor.current) await loadProperties()
