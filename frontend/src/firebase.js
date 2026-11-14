@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app'
-import { getAuth } from 'firebase/auth'
+import { connectAuthEmulator, getAuth } from 'firebase/auth'
 
 /**
  * Inicialización del SDK de Firebase en el navegador.
@@ -26,3 +26,10 @@ if (missing.length > 0) {
 }
 
 export const auth = getAuth(initializeApp(firebaseConfig))
+if (import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_HOST) {
+  connectAuthEmulator(
+    auth,
+    `http://${import.meta.env.VITE_FIREBASE_AUTH_EMULATOR_HOST}`,
+    { disableWarnings: true },
+  )
+}

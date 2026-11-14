@@ -84,6 +84,33 @@ test('password success exchanges continuity credential and never exposes it to c
   assert.equal('custom_token' in result.data, false)
 })
 
+test('profile update exchanges an email-change continuity credential', async () => {
+  const { api, calls } = harness({
+    data: {
+      uid: 'user-1', name: 'Ana', email: 'ana@example.com', role: 'BUYER',
+      custom_token: 'sensitive-continuity',
+    },
+  })
+  const result = await api.updateProfile({ name: 'Ana', email: 'ana@example.com' })
+  assert.equal(result.ok, true)
+  assert.equal(calls[0][1], '/api/auth/me')
+  assert.equal(calls[0][2].method, 'PATCH')
+  assert.deepEqual(JSON.parse(calls[0][2].body), { name: 'Ana', email: 'ana@example.com' })
+  assert.equal(calls[1][0], 'exchange')
+  assert.equal('custom_token' in result.data, false)
+})
+
+test('failed profile continuity exchange reports the persisted update', async () => {
+  const { api } = harness({
+    data: { uid: 'user-1', name: 'Ana', email: 'new@example.com', role: 'BUYER', custom_token: 'invalid' },
+    exchangeFailure: true,
+  })
+  const result = await api.updateProfile({ name: 'Ana', email: 'new@example.com' })
+  assert.equal(result.ok, true)
+  assert.equal(result.data.reauthentication_required, true)
+  assert.equal('custom_token' in result.data, false)
+})
+
 test('failed continuity exchange reports persisted change and need to reauthenticate', async () => {
   const { api } = harness({ data: { custom_token: 'sensitive-continuity' }, exchangeFailure: true })
   const result = await api.changePassword('old', 'new password value')

@@ -1,11 +1,11 @@
-"""Consulta privada de avisos del propietario, sin escrituras."""
+"""Consulta privada de avisos del usuario, sin escrituras."""
 import logging
 
 from django.http import JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
-from .authentication import firebase_role
+from .authentication import firebase_roles
 from .notification_service import InvalidNotificationQuery, list_notifications
 
 logger = logging.getLogger(__name__)
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @never_cache
 @require_GET
-@firebase_role("SELLER")
+@firebase_roles("BUYER", "SELLER")
 def notifications(request):
     try:
         return JsonResponse(list_notifications(request.user, request.GET))

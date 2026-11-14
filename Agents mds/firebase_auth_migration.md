@@ -14,9 +14,16 @@ Se reutilizan `listings` y `notifications`, se añaden `swipes/matches` con
 claves canónicas y transacciones. No se añaden ORM ni sesiones por cookies.
 La evolución es aditiva; los índices se definen pero no se despliegan remotamente.
 
-La suite actual pasa 140 pruebas con Auth y Firestore Emulator, sin omisiones,
-incluidas las regresiones US6. Los resultados históricos y pendientes del plan
-de octubre que siguen no sustituyen ese estado comprobado.
+La última suite completa de backend pasa 171 tests con Auth y Firestore
+Emulator, sin omisiones, incluidas las regresiones de US6.8. Los resultados
+históricos y pendientes del plan de octubre que siguen no sustituyen ese estado
+comprobado.
+
+US6.9 verificó en la interfaz el perfil de ambos roles, edición, cambio de
+contraseña y logout con Auth Emulator y respuestas API interceptadas. El retry
+visual de logout usa una acción explícita; la revocación persistente sigue
+cubierta en backend por US6.8 con Firestore Emulator. No se conectó Firebase
+real.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
@@ -395,10 +402,15 @@ si algún día cambia el proyecto.
 8. PR a `dev` cuando todo funcione.
 9. Tras el merge, volver a apuntar Render a `dev` (último paso de §12).
 
-## 11. Lo que no entra en esta rama
+## 11. Alcance original de esta rama de migración
+
+Esta sección registra el alcance original de `feature/firebase-auth`, no el
+estado actual del repositorio. La publicación y subida a Azure Blob Storage se
+añadieron después; su verificación vigente de API y repositorio está en el
+[README backend](../backend/README.md) (US3-7).
+
 - Hosting del frontend y CORS (con el proxy de Vite no hace falta todavía).
-- Subida de fotos (Firebase Storage necesita plan de pago).
-- Las colecciones `listings`, `swipes`, `matches`.
+- Swipes y matches.
 - Arreglar `main`.
 
 ### Pendiente para después del merge

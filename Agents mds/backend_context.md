@@ -1,10 +1,10 @@
 # Contexto backend de SwipeHome
 
-## Estado vigente — US4 y US6 (8 noviembre 2026)
+## Estado vigente — US4, US6 y US7.4 (10 noviembre 2026)
 
 El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
 cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
-para US 4.4–4.7. Los contratos vigentes están en el
+para US 4.4–4.7 y la verificación US4.9. Los contratos vigentes están en el
 [README backend](../backend/README.md), [US4 backend](us4_backend.md) y
 [US6 backend](us6_backend.md).
 
@@ -13,7 +13,7 @@ US4 reutiliza usuarios y anuncios actuales, fotografías ordenadas en
 LIKE crea directamente decisión, match y aviso; PASS solo crea decisión.
 No hay aceptación posterior del Vendedor ni reserva del inmueble.
 
-`accounts/repository.py` centraliza todo Firestore/Storage, incluida la
+`accounts/repository.py` centraliza Firestore y Azure Blob Storage, incluida la
 transacción y las claves canónicas `swipes/{key}`, `matches/{key}` y
 `notifications/match-{key}`. Firestore garantiza unicidad de path; valores,
 referencias y conjunto completo son garantías del servicio, no CHECK/FK.
@@ -21,8 +21,9 @@ Los reintentos equivalentes son 200, nuevos 201 y contrarios 409.
 Abortos de lectura/commit y colisiones usan transacciones nuevas acotadas.
 
 GET `/api/inmuebles/explorar` y POST `/api/inmuebles/{id}/decision` son BUYER;
-GET `/api/notificaciones` es solo SELLER. `request.user` se construye desde el
-token verificado y el perfil, sin aceptar selectores de identidad del cliente.
+GET `/api/notificaciones` permite BUYER y SELLER para consultar solo avisos de
+la cuenta autenticada. `request.user` se construye desde el token verificado y
+el perfil, sin aceptar selectores de identidad del cliente.
 Los GET comparten `limit/cursor` 20/50, orden fecha/ID descendentes y cursor
 firmado. Exploración carga decisiones en batch, sin OFFSET ni consultas por foto.
 
@@ -31,9 +32,47 @@ migraciones ORM. Los índices están en `backend/firestore.indexes.json` y su
 configuración en `backend/firebase.json`; no se han desplegado remotamente.
 El detalle de compatibilidad y límites de garantías está en US4 backend.
 
-Verificación: 140 pruebas pasan con Auth/Firestore Emulator, sin omisiones;
-sin emuladores pasan 116 y se omiten 24 integraciones. Django check, comprobación
-de migraciones, pip check y diff check correctos. No se ha probado producción.
+Verificación US4.9: 166 pruebas pasan con Auth/Firestore Emulator, sin
+omisiones. Con los CA oficiales: CA-03 a CA-06 pasan en API/persistencia local;
+CA-01, CA-02, CA-07 y CA-08 quedan parciales porque sus partes de navegación,
+presentación, continuación visible y reintento de interfaz no son pruebas de
+esta US de backend. Evidencia y límites por CA en [US4 backend](us4_backend.md).
+Azure Blob se mockea y no se probó producción.
+
+US4.10 añade `test_published_multi_photo_listings_survive_full_buyer_flow`:
+publicación multipart US3 con dos fotos, exploración, LIKE/PASS, aviso privado,
+re-login, exclusión persistente y segundo Comprador con match independiente.
+La suite completa pasó 167 tests con Auth/Firestore Emulator y mocks de Azure
+Blob. La interfaz se comprobó aparte en navegador con Auth Emulator y respuestas
+de API interceptadas; no se afirmó integración de navegador con Firestore real.
+
+US6.8: la suite actual pasó 171 tests con ambos emuladores. `ProfileSessionIntegrationTests`
+comprueba consultas/actualizaciones como BUYER y SELLER, normalización, carrera
+HTTP simultánea por email (un 200 y un 409 sin actualización parcial), fallo
+inyectado antes de escritura y revocación persistida de logout. El cambio de
+contraseña y el inicio de sesión con la nueva/anterior contraseña se prueban con
+Auth Emulator. Azure Blob sigue simulado en el comando completo; no hay servicios
+ni credenciales de producción. CSRF Django no se usa en este contrato Bearer.
+
+US6.9 verificó el cliente de perfil para ambos roles en navegador con Auth
+Emulator y API mockeada: edición, cancelación, validación, guardado/recarga,
+contraseña, reintento de logout y rutas protegidas. Un logout 500 ahora muestra
+«Reintentar cierre de sesión». Persistencia y revocación del backend se apoyan
+en las pruebas US6.8 con Auth/Firestore Emulator; UI no representa persistencia
+real de Firestore.
+
+US7.4 amplía la lectura privada de notificaciones a ambos roles. La suite
+indicada en README backend pasó **172 tests** con Auth/Firestore Emulator;
+incluye aviso de interés del US4 al propietario, exclusión de PASS, paginación,
+fecha/mensaje/orden, aislamiento BUYER/SELLER/tercero, rechazo de selectores,
+consulta sin escrituras y persistencia del aviso tras logout y re-login del
+SELLER. Azure Blob se simula. La UI pasó 25 tests Node, lint/build y pruebas
+de navegador con Auth Emulator/API interceptada y viewports 1280×900/390×844
+emulados. No se usaron servicios reales ni hardware móvil.
+
+El repositorio no contiene un productor ni endpoint de confirmación US5 que
+genere avisos para BUYER. La consulta de un aviso BUYER previamente persistido
+sí está cubierta con Firestore Emulator; su creación desde US5 no está verificada.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
@@ -46,9 +85,18 @@ de migraciones, pip check y diff check correctos. No se ha probado producción.
 > rol y relaciones permanecen en Firestore. Los apartados anteriores a esta
 > adaptación que describen sesiones Django son históricos.
 
+> Estado US3-7 (1 noviembre 2026): `/api/inmuebles` usa Bearer ID token Firebase,
+> exige perfil SELLER y obtiene `seller_uid` del token. Los tests API/repositorio
+> y sus límites se documentan en el [README backend](../backend/README.md).
+
 > ⚠️ Partes de este documento describen el login por sesiones y cookies, sustituido
 > por Firebase Auth. Ver `infra_context.md` y `firebase_auth_migration.md`. Pendiente
 > de actualizar.
+
+> Estado US3-8 tras el merge con Azure: la interfaz `/publicar` integra el endpoint
+> mediante FormData autenticado. La verificación usa Auth Emulator e intercepta
+> la API, sin escrituras reales en Firestore ni Azure Blob. Detalle en el
+> [README backend](../backend/README.md).
 
 ## Correcci?n de desarrollo HTTP y superusuarios (16 octubre 2026)
 
@@ -72,12 +120,11 @@ La identidad y el rol se resuelven desde request.user en el servidor.
 US1-5 centraliza la normalizacion del email en el campo de persistencia.
 La migracion 0002 audita colisiones antes de modificar datos y añade un CHECK
 de email canonico; se mantienen UNIQUE de email y CHECK de rol.
-La verificación US1-6 ejecutada en HTTPS local pasó sus 53 tests. Tras ampliar
-la suite para US2-6, ahora cuenta con 56 tests: 55 pasan y se omite la prueba
-HTTPS cuando no se configura un certificado.
-El resultado y los comandos de verificación de US1-6 y US2-6 están en el
-[README del backend](../backend/README.md): las pruebas de API/persistencia y el
-recorrido integrado de ambos roles en navegador pasan.
+Las cifras 53/56 anteriores corresponden a ejecuciones históricas de US1/US2.
+La suite vigente `accounts properties` contiene 165 tests: todos pasan al
+ejecutarla bajo Auth y Firestore Emulator. Azure Blob se simula con mocks. El
+comando y resultado vigentes están en el
+[README del backend](../backend/README.md).
 GET /api/auth/me esta implementado: 200 con id/name/email/role desde la sesion,
 401 sin autenticacion y 500 generico ante fallo interno, con Cache-Control no-store.
 La consulta se verifica con rutas reales y HTTPS local. El recorrido integrado
@@ -109,16 +156,14 @@ La referencia principal de las reglas de imágenes está en US3 del contexto del
 
 ## Verificación prevista
 
-La suite actual tiene 56 pruebas de cuentas; 55 pasan y la prueba HTTPS se omite
-si no se configura un certificado. Para la verificación de US1-6 se ejecutaron
-53 tests con HTTPS local y todos pasaron. Las pruebas incluyen validación directa
-de API, unicidad de email bajo concurrencia, protección de credenciales,
-identidad y separación de sesiones, y rollback ante fallos. La cobertura de
-login US2-6 está descrita en [backend/README.md](../backend/README.md). El recorrido del registro desde
-la interfaz no está certificado: falta ejecutar el frontend y comprobar en
-navegador el destino y la recarga. Los permisos de publicación y la reversión
-de archivos corresponden a US3. La lista completa de casos está en el apartado
-13 del contexto del proyecto.
+La suite actual `accounts properties` ejecuta 165 tests. Con Auth y Firestore
+Emulator local pasan todos, incluidos los tests de carrera de email y de cambio
+de contraseña. Las pruebas de US3-7 usan Firestore Emulator y mockean Azure Blob;
+sus limitaciones de integración están en
+el [README backend](../backend/README.md). Las pruebas heredadas de US1 y US2
+también figuran en las secciones históricas; los comandos y el estado vigente
+están en el README. La lista funcional está en el apartado 13 del contexto del
+proyecto.
 
 ## 5. Reglas transversales y autenticación
 
@@ -152,7 +197,7 @@ Estos son los endpoints recogidos en el backlog. No confundirlos con rutas de na
 | `POST /api/auth/register` | `application/json`: `name`, `email`, `password`, `role` | Registro de persona sin cuenta | Crear la cuenta e iniciar sesión; `201 Created`. |
 | `GET /api/auth/me` | Sin cuerpo; cookie de sesion | Consulta del usuario actual | Implementado: 200 con id/name/email/role; 401 sin sesion; 500 generico. |
 | `POST /api/auth/login` | `application/json`: `email`, `password` | Comprobación de credenciales | Crear una sesión nueva y proporcionar identidad/rol. Código de éxito por cerrar. |
-| `POST /api/inmuebles` | `multipart/form-data`: datos del anuncio y una o más fotografías | Sesión válida con rol `SELLER` | Publicar el inmueble asociado al usuario; `201 Created` con identificador. |
+| `POST /api/inmuebles` | `multipart/form-data`: datos del anuncio y una o más fotografías | Bearer ID token Firebase válido y perfil `SELLER` | Publicar el inmueble asociado al uid verificado; `201 Created` con identificador. |
 
 ### Estados de respuesta
 
@@ -174,7 +219,8 @@ Para publicación se han definido los campos funcionales, pero no sus nombres t�
 
 Las respuestas exitosas de autenticación deben permitir conocer el usuario y su rol; las de publicación deben proporcionar el identificador del anuncio. No se expone el hash ni la contraseña.
 
-La sesión se entrega mediante cookie. No se ha definido un token en el cuerpo de respuesta.
+La autenticación vigente se realiza mediante Firebase ID token en `Authorization`;
+la fila de autenticación histórica de registro/login no describe el contrato actual.
 
 ### Endpoints auxiliares pendientes
 

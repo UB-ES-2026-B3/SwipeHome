@@ -136,6 +136,31 @@ class CreateListingTests(SimpleTestCase):
         self.assertEqual(written["photos"], [BLOB_URL])
         self.assertEqual(result, {"id": "listing-123"})
 
+    def test_multiple_photo_urls_keep_upload_order_and_listing_association(
+        self, container, client, get_app
+    ):
+        reference = client.return_value.collection.return_value.document.return_value
+        reference.id = "listing-with-ordered-photos"
+        first_blob = MagicMock(url="https://example/first")
+        second_blob = MagicMock(url="https://example/second")
+        container.return_value.get_blob_client.side_effect = [first_blob, second_blob]
+
+        repository.create_listing(
+            UID,
+            values=dict(VALUES),
+            photos=[
+                SimpleUploadedFile("first.jpg", b"first", content_type="image/jpeg"),
+                SimpleUploadedFile("second.webp", b"second", content_type="image/webp"),
+            ],
+        )
+
+        paths = [call.args[0] for call in container.return_value.get_blob_client.call_args_list]
+        saved = reference.create.call_args.args[0]
+        self.assertEqual(saved["seller_uid"], UID)
+        self.assertEqual(saved["photos"], ["https://example/first", "https://example/second"])
+        self.assertTrue(all(path.startswith(f"{UID}/") for path in paths))
+        self.assertNotEqual(paths[0], paths[1])
+
     def test_uploads_each_photo_with_its_content_type_and_naming(self, container, client, get_app):
         blobs = [MagicMock(url=f"https://example/{index}") for index in range(2)]
         container.return_value.get_blob_client.side_effect = blobs
@@ -195,6 +220,29 @@ class CreateListingTests(SimpleTestCase):
 
         self.assertIn("OSError", logs.output[0])
         self.assertNotIn("detalle-interno-del-error", logs.output[0])
+
+    def test_confirmed_firestore_failure_deletes_uploaded_photos(self, container, client, get_app):
+        reference = self.reference(client)
+        reference.create.side_effect = ServiceUnavailable("private firestore details")
+        reference.get.return_value.exists = False
+        first_blob = MagicMock()
+        second_blob = MagicMock()
+        container.return_value.get_blob_client.side_effect = [first_blob, second_blob]
+
+        with self.assertRaises(ServiceUnavailable):
+            repository.create_listing(
+                UID,
+                values=dict(VALUES),
+                photos=[
+                    SimpleUploadedFile("one.jpg", b"one", content_type="image/jpeg"),
+                    SimpleUploadedFile("two.jpg", b"two", content_type="image/jpeg"),
+                ],
+            )
+
+        reference.create.assert_called_once()
+        first_blob.delete_blob.assert_called_once_with()
+        second_blob.delete_blob.assert_called_once_with()
+        self.assertFalse(reference.get.return_value.exists)
 
     def test_firestore_confirmation_error_does_not_delete_confirmed_listing_photos(
         self, container, client, get_app

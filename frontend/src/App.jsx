@@ -3,6 +3,8 @@ import { useAuth } from './hooks/useAuth'
 import { BuyerHome } from './pages/BuyerHome'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
+import { PropertyPublish } from './pages/PropertyPublish'
+import { NotificationsPage } from './pages/NotificationsPage'
 import { PublishPropertyPage } from './pages/PublishPropertyPage'
 import { ProfilePage } from './pages/ProfilePage'
 import { RegisterPage } from './pages/RegisterPage'
@@ -66,15 +68,6 @@ export default function App() {
         }
       />
 
-      <Route
-        path="/publicar"
-        element={
-          <PrivateRoute requiredRole="SELLER">
-            <PublishPropertyPage />
-          </PrivateRoute>
-        }
-      />
-
       {/* Inicio Comprador */}
       <Route
         path="/comprador/inicio"
@@ -85,11 +78,30 @@ export default function App() {
         }
       />
 
+      {/* Solo un Vendedor autenticado puede abrir el formulario. */}
+      <Route
+        path="/publicar"
+        element={
+          <PrivateRoute requiredRole="SELLER">
+            <PropertyPublish />
+          </PrivateRoute>
+        }
+      />
+
       <Route
         path="/mi-perfil"
         element={
           <PrivateRoute>
             <ProfilePage />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/notificaciones"
+        element={
+          <PrivateRoute>
+            <NotificationsPage />
           </PrivateRoute>
         }
       />

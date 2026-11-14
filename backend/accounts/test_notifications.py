@@ -38,14 +38,16 @@ class NotificationApiTests(SimpleTestCase):
                 "created_at": stamp or datetime(2026, 11, 6, tzinfo=timezone.utc),
                 "password": "secret", "recipient_uid": "buyer"}
 
-    def test_empty_seller_default_limit_buyer_forbidden_and_no_writes(self):
+    def test_empty_page_is_allowed_for_both_roles_and_has_no_writes(self):
         response = self.get()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"items": [], "next_cursor": None})
         self.assertIn("no-store", response["Cache-Control"])
         self.read.assert_called_once_with("buyer", limit=21, position=None)
-        self.profile.return_value = {"role": "BUYER"}
-        self.assertEqual(self.get().status_code, 403)
+        self.profile.return_value = {"role": "SELLER"}
+        self.verify.return_value = {"uid": "seller", "auth_time": 100}
+        self.assertEqual(self.get().status_code, 200)
+        self.assertEqual(self.read.call_args.args[0], "seller")
         for write in self.writes:
             write.assert_not_called()
 

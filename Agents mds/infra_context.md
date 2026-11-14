@@ -2,7 +2,8 @@
 
 ## Estado comprobado — 8 noviembre 2026
 
-Django usa Firebase Auth, Firestore y las referencias de fotografías existentes.
+Django usa Firebase Auth y Firestore; las fotografías de anuncios se sirven
+desde Azure Blob Storage.
 `DATABASES = {}`; no se reintroducen ORM, SQLite activa, sesiones Django ni
 CSRF por cookies. El usuario confirmó este stack para US 4.4–4.7.
 US6 continúa según [su contrato](us6_backend.md); US4 según
@@ -13,10 +14,9 @@ No se ha comprobado ni cambiado el plan de facturación o el despliegue remoto.
 
 ### Fotografías de anuncios: Azure Blob Storage
 
-Firebase Storage no funciona en producción con el plan Spark del proyecto, así
-que las fotografías se guardan en **Azure Blob Storage** (Azure for Students,
-sugerido por el profesor; sin tarjeta). Firebase sigue siendo Auth y Firestore;
-la opción `storageBucket` y `FIREBASE_STORAGE_BUCKET` ya no existen.
+Las fotografías se guardan en **Azure Blob Storage** (Azure for Students,
+sugerido por el profesor; sin tarjeta). Firebase se usa para Auth y Firestore;
+la configuración de fotos ya no forma parte del cliente Firebase.
 
 - Cuenta de almacenamiento creada por Arnau; contenedor `listings` con nivel
   de acceso anónimo **«Blob»**: cada foto se lee por su URL sin credenciales,
@@ -66,9 +66,14 @@ solo de índices. El comando y la revisión de compatibilidad de datos remotos
 están en el README. Los índices no se han publicado en esta tarea.
 
 Pruebas únicamente con emuladores demo en loopback: Auth 9099, Firestore 8080,
-Node 24 y Java 21. 152 pruebas pasan sin omisiones. CI prepara ambos emuladores
-y Java 21. El emulador no certifica índices de producción. No se emplearon
-credenciales de producción, ni se modificaron cuentas, anuncios o fotos remotos.
+Node 24 y Java 21. La última suite completa de US6.8 pasa 171 tests sin
+omisiones; CI prepara ambos emuladores y Java 21. El emulador no certifica
+índices de producción. No se emplearon credenciales de producción, ni se
+modificaron cuentas, anuncios o fotos remotos.
+
+US6.9 verificó el cliente de perfil/logout contra Auth Emulator, con API
+interceptada, en viewports de escritorio y móvil emulado. No se usó Firebase de
+producción ni un dispositivo físico; detalles en el README frontend.
 
 El plan de migración y las situaciones de ramas/despliegue de octubre que
 siguen son historial; no son instrucciones para cambiar ahora la arquitectura.
@@ -107,7 +112,7 @@ autenticación.** Donde contradiga a `backend_context.md` o a
 | Hosting backend | **Render**, plan gratuito |
 | Hosting frontend | Firebase Hosting o Vercel (pendiente) |
 | Docker | **No se usa.** Solo si el profesor lo exige. |
-| Fotos de anuncios | Aplazado: Firebase Storage exige plan de pago. Usar URLs por ahora. *(Sustituido en noviembre 2026 por Azure Blob Storage; ver arriba.)* |
+| Fotos de anuncios | Azure Blob Storage; los tests de US3-7 usan mocks y no prueban una subida real. Ver la sección de fotografías de anuncios anterior. |
 
 Restricción dura del proyecto: **coste cero, sin tarjeta de crédito.**
 Cualquier propuesta que requiera un servicio de pago queda descartada.

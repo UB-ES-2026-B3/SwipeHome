@@ -68,7 +68,8 @@ desde la consola de Firebase al terminar.
 
 | Método | Ruta | Resumen |
 |---|---|---|
-| `GET` | `/api/notificaciones` | Avisos privados SELLER paginados: 200 / 400 / 401 / 403 / 500 |
+| `GET` | `/api/notificaciones` | Avisos privados BUYER/SELLER paginados: 200 / 400 / 401 / 403 / 500 |
+| `GET` | `/api/inmuebles` | Inmuebles publicados del SELLER autenticado: 200 / 401 / 500 |
 | `GET` | `/api/inmuebles/explorar` | Viviendas pendientes BUYER paginadas. |
 | `POST` | `/api/inmuebles/{id}/decision` | Decisión BUYER; LIKE crea match y aviso: 201 / 200 / 400 / 401 / 403 / 404 / 409 / 500 |
 | `GET` | `/api/health` | Comprobación de vida. No toca Firebase. |
@@ -80,6 +81,8 @@ desde la consola de Firebase al terminar.
 
 El login lo hace el frontend directamente contra Firebase; no hay `/api/auth/login`.
 La publicación se realiza mediante `POST /api/inmuebles`.
+La lectura mediante `GET /api/inmuebles` devuelve únicamente los inmuebles
+publicados por el vendedor autenticado.
 La publicación requiere un ID token Firebase válido y un perfil con rol `SELLER`.
 El cuerpo es `multipart/form-data`, admite nombres de campos en inglés o
 castellano y recibe entre 1 y 10 fotografías en `photos`, `fotografias` o
@@ -115,12 +118,38 @@ contraseña de 15–128 caracteres sin recortar y rol `SELLER` o `BUYER`.
 .\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2
 ```
 
-La suite cubre el registro y la autenticación Firebase, los permisos de
-publicación, la asociación del anuncio con el uid verificado, la validación de
-campos y fotografías reales, los alias en castellano, los límites de cantidad y
-tamaño, la detección de alias contradictorios, la serialización de respuestas y
-la compensación segura del almacenamiento cuando el resultado de Firestore es
-ambiguo.
+Para ejecutar las integraciones con Auth y Firestore locales (desde `backend`):
+
+```powershell
+npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts properties --verbosity 2"
+```
+
+La suite cubre registro y autenticación, permisos de publicación, propietario
+derivado del ID token, campos y fotografías, límites inclusivos de 10 imágenes
+y 5 MiB, formatos JPEG/PNG/WebP, URLs y orden, limpieza compensatoria ante
+fallos, serialización sin información interna, y lecturas/escrituras contra
+Firestore Emulator. Azure Blob se simula con mocks en los tests; no se requiere
+cadena de conexión y no se prueba persistencia real en Azure.
+
+#### Resultado US3-7 y regresión backend del merge
+
+El comando anterior pasó **165 tests**, sin omisiones, y `manage.py check`
+identificó cero incidencias. Se ejecutó Auth Emulator y Firestore Emulator; no se
+usaron credenciales Firebase reales. Los tests de Azure Blob usan mocks. Si una
+escritura Firestore falla y la lectura de conciliación también falla, el
+resultado es indeterminado: se conservan los blobs para no romper un anuncio
+que pudiera haberse guardado; ese caso requiere conciliación operativa y no
+demuestra rollback distribuido absoluto.
+
+#### Resultado US3-8: recorrido de publicación desde la interfaz
+
+La ruta `/publicar` está protegida para `SELLER` y envía `multipart/form-data`
+a `POST /api/inmuebles` con el ID token. La verificación en navegador emplea
+Auth Emulator y respuestas interceptadas del endpoint: comprueba el flujo y el
+contrato frontend, pero no crea el anuncio en Firestore ni sube las imágenes a
+Azure. Los resultados detallados, los casos cubiertos y las limitaciones se
+registran en el [contexto frontend](../Agents%20mds/frontend_context.md) y el
+[contexto del proyecto](../Agents%20mds/project_context.md).
 
 Referencias: [campos Django](https://docs.djangoproject.com/en/5.2/howto/custom-model-fields/),
 [restricciones](https://docs.djangoproject.com/en/5.2/ref/models/constraints/),
@@ -218,6 +247,44 @@ El cliente intercambia `custom_token` tras cambiar email/contraseña.
 Si el intercambio falla tras guardar, indica `reauthentication_required`.
 Los consumidores deben pedir iniciar sesión de nuevo en ese caso.
 
+#### Resultado US 6.8: API de perfil y sesión
+
+El comando de emuladores descrito en este README pasó **171 tests** (10 de
+noviembre de 2026), incluidos tests de API de ambos roles, edición normalizada,
+duplicidad concurrente, cambio de contraseña, continuidad, fallos y logout.
+Auth y Firestore usan emuladores locales; Azure Blob permanece con mocks.
+No se usaron servicios ni credenciales de producción.
+
+`ProfileSessionIntegrationTests` usa cuentas sintéticas y solicitudes HTTP
+reales contra la aplicación Django. Dos PATCH concurrentes con el mismo email
+normalizado producen un éxito y un conflicto; el estado final demuestra que la
+cuenta perdedora no recibe el cambio de nombre. Un fallo inyectado antes de
+`auth.update_user` deja intactos nombre y email. El logout guarda la revocación
+en Firestore Emulator, invalida el Bearer anterior para `/api/auth/me`, es
+idempotente y no afecta a otra cuenta.
+
+La prueba de contraseña inicia sesión con la nueva contraseña y confirma el
+rechazo de la anterior tras el cambio. La respuesta no incluye contraseña ni
+hash. Se verifican GET logout = 405 y que una cookie sin Bearer no crea una
+revocación. CSRF Django no forma parte del contrato Firebase Bearer; una
+petición POST anónima responde 204 por idempotencia, pero no se autentica ni
+modifica la persistencia.
+
+En navegador se validaron consulta del perfil, validación cliente sin petición,
+error y retry conservando el formulario, confirmación, recarga, error de
+contraseña y logout con fallo 500 seguido de retry 204. Auth Emulator gestionó
+el inicio de sesión; la API se interceptó, así que las respuestas visuales no
+demuestran persistencia del navegador en Firestore.
+
+#### US 6.9: recorrido de perfil desde la interfaz
+
+La verificación visual detallada de ambos roles, edición/cancelación,
+confirmación, carga y bloqueo de envíos, validación de contraseña, logout y
+rutas tras salir está en [README frontend](../frontend/README.md). Se usó Auth
+Emulator con respuestas API interceptadas; no se atribuye persistencia de UI a
+Firestore. La cobertura de persistencia, revocación y nuevas credenciales es la
+de los tests backend US6.8 con Auth/Firestore Emulator.
+
 ## US 4.4–4.7: exploración, decisiones y avisos privados
 
 La adaptación a **Firebase Auth/Firestore** fue autorizada expresamente.
@@ -234,7 +301,7 @@ segundo swipe ni reserva o retirada automática del anuncio.
 |---|---|---|
 | GET | `/api/inmuebles/explorar` | BUYER |
 | POST | `/api/inmuebles/{id}/decision` | BUYER |
-| GET | `/api/notificaciones` | SELLER |
+| GET | `/api/notificaciones` | BUYER / SELLER (solo avisos de la identidad verificada) |
 
 Todos requieren `Authorization: Bearer <ID token Firebase>`.
 401 significa token ausente, inválido, caducado o sesión revocada;
@@ -588,3 +655,35 @@ console.log(response.status, await response.json());
 No se necesitan cookies ni token CSRF para este contrato Bearer.
 Detalle de arquitectura, garantías, compatibilidad y pruebas:
 [US4 backend](<../Agents mds/us4_backend.md>).
+
+## US 7.4: recepción y consulta de notificaciones
+
+`GET /api/notificaciones` requiere ID token Firebase vigente y perfil BUYER o
+SELLER. El UID se obtiene únicamente de `request.user`; `uid`,
+`recipient_uid` y cualquier otro selector de cuenta se rechazan. La lectura
+filtra por `recipient_uid`, ordena `created_at` e ID descendentes y no escribe
+en Firestore. Los cursores firmados están ligados a la cuenta. Las respuestas
+incluyen `items` y `next_cursor`.
+
+La comprobación del 10 de noviembre de 2026 pasó **172 tests** con Auth y
+Firestore Emulator de proyecto demo; Azure Blob se simula. El test de flujo
+integrado crea el aviso del LIKE para el propietario y comprueba su lectura,
+logout, rechazo del token revocado y persistencia tras nuevo inicio de sesión.
+Otra prueba escribe fixtures locales destinados a BUYER, SELLER y una tercera
+cuenta y verifica el aislamiento, parámetros manipulados y que las lecturas no
+alteran `swipes` ni `matches`. PASS no crea aviso y los reintentos LIKE no
+duplican aviso según las pruebas US4 existentes. No se usaron Firebase ni
+Azure de producción.
+
+La pantalla consulta al entrar, pagina con `next_cursor`, actualiza sin
+duplicados, presenta fecha/hora local junto al mensaje y distingue carga,
+vacío y error reintentable. `npm test` pasa 25 pruebas, `npm run lint` y
+`npm run build` finalizan; lint conserva advertencias del repositorio. La
+prueba visual usa Auth Emulator y respuestas API interceptadas; el navegador
+no consulta Firestore directamente. Se contrastaron viewports 1280×900 y
+390×844 emulados, no dispositivos físicos.
+
+**Límite US5:** este árbol no contiene endpoint ni productor de la confirmación
+US5 que cree un aviso para BUYER. La API puede consultar avisos BUYER si ya
+están persistidos, pero no se afirma que la confirmación los genere. Esa parte
+queda sin verificar y fuera de esta implementación de consulta.

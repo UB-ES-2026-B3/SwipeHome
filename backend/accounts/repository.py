@@ -175,6 +175,33 @@ def get_active_listings():
     return records
 
 
+def get_seller_listings(uid):
+    """Devuelve los anuncios publicados por un vendedor concreto."""
+    records = []
+    for snapshot in _listings().stream():
+        data = snapshot.to_dict()
+        if data.get("published") is not True or data.get("seller_uid") != uid:
+            continue
+        records.append({
+            "id": snapshot.id,
+            "seller_uid": data.get("seller_uid"),
+            "title": data.get("title", ""),
+            "street": data.get("street", ""),
+            "city": data.get("city", ""),
+            "postal_code": data.get("postal_code", ""),
+            "description": data.get("description", ""),
+            "price": data.get("price_cents", 0) / 100,
+            "surface": data.get("surface_hundredths", 0) / 100,
+            "bedrooms": data.get("bedrooms", 0),
+            "bathrooms": data.get("bathrooms", 0),
+            "people": data.get("people", 0),
+            "shared_accommodation": bool(data.get("shared_accommodation", False)),
+            "photos": list(data.get("photos", [])),
+            "published": True,
+        })
+    return records
+
+
 def get_explorable_listings(uid, *, limit=10, offset=0):
     """Returns active listings not previously decided by the buyer."""
     client = firestore.client(app=get_app())
