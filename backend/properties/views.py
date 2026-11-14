@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.http import require_http_methods, require_GET, require_POST
 
 from accounts import repository
-from accounts.authentication import AuthenticationFailed, TokenVerificationUnavailable, uid_from_request
+from accounts.authentication import AuthenticationFailed, TokenVerificationUnavailable, firebase_role, uid_from_request
 from .validation import photo_uploads, validate_photos, validate_property
 
 logger = logging.getLogger(__name__)
@@ -43,11 +43,9 @@ def explore_properties(request):
 
 
 @require_POST
+@firebase_role("BUYER")
 def decide_property(request):
     try:
-        uid = _authenticated_uid(request)
-        if uid is None:
-            return JsonResponse({"error": "Se requiere una sesión autenticada."}, status=401)
         data = json.loads(request.body)
         property_id = data.get("property_id")
         decision = data.get("decision")
@@ -58,16 +56,20 @@ def decide_property(request):
             or decision not in {"LIKE", "PASS"}
         ):
             return JsonResponse({"error": "La decisión no es válida."}, status=400)
-        result = repository.save_property_decision(uid, property_id, decision)
-        return JsonResponse(result)
+        dec_rec, match_rec, created = repository.record_decision(
+            request.user.uid, property_id, decision, buyer_name=request.user.name
+        )
+        return JsonResponse({
+            "decision": decision,
+            "match": bool(match_rec),
+            "duplicate": not created,
+        }, status=201 if created else 200)
     except json.JSONDecodeError:
         return JsonResponse({"error": "Se requiere un objeto JSON válido."}, status=400)
-    except ValueError:
+    except repository.DecisionConflict:
         return JsonResponse({"error": "La vivienda ya tiene una decisión incompatible."}, status=409)
-    except LookupError:
+    except repository.ListingNotFound:
         return JsonResponse({"error": "La vivienda ya no está disponible."}, status=404)
-    except PermissionError:
-        return JsonResponse({"error": "No puedes decidir sobre esta vivienda."}, status=403)
     except TokenVerificationUnavailable:
         logger.error("No se pudo verificar el token al guardar una decisión.")
         return JsonResponse({"error": "No se pudo verificar la sesión. Inténtalo de nuevo."}, status=500)

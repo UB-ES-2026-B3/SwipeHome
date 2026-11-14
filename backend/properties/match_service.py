@@ -65,18 +65,50 @@ def list_matches(user, params):
             for snap in client.get_all(listing_refs)
             if snap.exists
         } if listing_refs else {}
+        seller_uids = {
+            r.get("seller_uid") or (listing_snaps[r["listing_id"]].to_dict().get("seller_uid") if r["listing_id"] in listing_snaps else None)
+            for r in records
+        }
+        seller_uids.discard(None)
+        seller_refs = [
+            client.collection(repository.USERS_COLLECTION).document(suid)
+            for suid in seller_uids
+        ]
+        seller_snaps = {
+            snap.id: snap.to_dict()
+            for snap in client.get_all(seller_refs)
+            if snap.exists
+        } if seller_refs else {}
         for r in records:
             snap = listing_snaps.get(r["listing_id"])
             listing_data = snap.to_dict() if snap else None
+            seller_uid = r.get("seller_uid") or (listing_data.get("seller_uid") if listing_data else "")
+            seller_name = ""
+            if seller_uid and seller_uid in seller_snaps:
+                seller_name = seller_snaps[seller_uid].get("name", "")
+            if not seller_name and seller_uid:
+                try:
+                    prof = repository.get_user_profile(seller_uid)
+                    if prof:
+                        seller_name = prof.get("name", "")
+                except Exception:
+                    pass
+            listing_obj = listing_item(snap.id, listing_data) if (snap and published_listing(listing_data)) else {
+                "id": r["listing_id"],
+                "title": r.get("listing_title", ""),
+            }
+            if seller_name:
+                listing_obj["seller_name"] = seller_name
             item = {
                 "id": r["id"],
                 "status": "CONFIRMED",
                 "confirmed_at": timestamp(r["confirmed_at"]),
                 "created_at": timestamp(r["created_at"]) if r.get("created_at") else None,
-                "listing": listing_item(snap.id, listing_data) if (snap and published_listing(listing_data)) else {
-                    "id": r["listing_id"],
-                    "title": r.get("listing_title", ""),
+                "seller": {
+                    "id": seller_uid or "",
+                    "name": seller_name,
                 },
+                "listing": listing_obj,
             }
             items.append(item)
     else:  # SELLER

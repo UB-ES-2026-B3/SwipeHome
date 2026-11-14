@@ -125,6 +125,8 @@ class FirestoreMatchesTests(SimpleTestCase):
         self.assertEqual(buyer_matches[0]["status"], "CONFIRMED")
         self.assertEqual(buyer_matches[0]["listing"]["id"], "home-1")
         self.assertIn("price", buyer_matches[0]["listing"])
+        self.assertEqual(buyer_matches[0]["seller"]["id"], "seller-1")
+        self.assertEqual(buyer_matches[0]["seller"]["name"], "Name seller-1")
 
         # Now appears in SELLER matches
         seller_matches = self.matches("seller-1").json()["items"]
@@ -236,3 +238,99 @@ class FirestoreMatchesTests(SimpleTestCase):
         p2_items = page2.json()["items"]
         # Candidate 3 must be returned on page 2 without being skipped!
         self.assertEqual(len(p2_items), 1)
+
+    def test_seller_decision_rejects_origin_swipe_mismatch(self):
+        # H3: Verify origin mismatch is rejected
+        self.seed("home-2", seller_uid="seller-1")
+        res1 = self.swipe("LIKE", uid="buyer-1", identifier="home-1")
+        res2 = self.swipe("LIKE", uid="buyer-2", identifier="home-2")
+        m1_id = res1.json()["match"]["id"]
+        m2_id = res2.json()["match"]["id"]
+
+        # Tamper: set decision_id of match-1 to swipe-2
+        self.collection("matches").document(m1_id).update({"decision_id": m2_id})
+
+        # Seller tries to confirm match-1
+        confirm_res = self.decide_seller(m1_id, "LIKE")
+        self.assertEqual(confirm_res.status_code, 500)
+
+        # Match-1 remains PENDING in Firestore
+        m1_doc = self.collection("matches").document(m1_id).get().to_dict()
+        self.assertEqual(m1_doc["status"], "PENDING")
+
+    def test_ownership_transfer_blocks_old_seller_and_allows_new(self):
+        # H4: Verify dynamic property ownership
+        swipe_res = self.swipe("LIKE")
+        match_id = swipe_res.json()["match"]["id"]
+
+        # Transfer home-1 ownership from seller-1 to seller-2
+        self.collection("listings").document("home-1").update({"seller_uid": "seller-2"})
+
+        # Old seller has 0 candidates
+        self.assertEqual(self.candidates("seller-1").json()["items"], [])
+
+        # New seller has 1 candidate
+        cands_s2 = self.candidates("seller-2").json()["items"]
+        self.assertEqual(len(cands_s2), 1)
+        self.assertEqual(cands_s2[0]["id"], match_id)
+
+        # Old seller cannot decide -> 404
+        dec_old = self.decide_seller(match_id, "LIKE", uid="seller-1")
+        self.assertEqual(dec_old.status_code, 404)
+
+        # New seller can decide -> 200 CONFIRMED
+        dec_new = self.decide_seller(match_id, "LIKE", uid="seller-2")
+        self.assertEqual(dec_new.status_code, 200)
+        self.assertEqual(dec_new.json()["status"], "CONFIRMED")
+
+    def test_legacy_schema_match_backfilled_and_visible_in_candidates(self):
+        # H1: Verify legacy match document is backfilled and visible
+        swipe_res = self.swipe("LIKE")
+        match_id = swipe_res.json()["match"]["id"]
+
+        # Replace match document with legacy US4 schema (4 fields only)
+        old_created = swipe_res.json()["match"]["created_at"]
+        self.collection("matches").document(match_id).set({
+            "buyer_uid": "buyer-1",
+            "listing_id": "home-1",
+            "decision_id": match_id,
+            "created_at": datetime.now(timezone.utc),
+        })
+
+        # Buyer retries LIKE
+        retry_res = self.swipe("LIKE")
+        self.assertEqual(retry_res.status_code, 200)
+        self.assertEqual(retry_res.json()["match"]["status"], "PENDING")
+
+        # Seller queries candidates -> must be visible!
+        cands = self.candidates("seller-1").json()["items"]
+        self.assertEqual(len(cands), 1)
+        self.assertEqual(cands[0]["id"], match_id)
+        self.assertEqual(cands[0]["status"], "PENDING")
+        self.assertEqual(cands[0]["buyer"]["id"], "buyer-1")
+
+    def test_decide_property_legacy_route_enforces_buyer_and_creates_canonical(self):
+        # H2: Route api/inmuebles/decidir requires BUYER and writes canonical match
+        # 1. SELLER gets 403
+        res_seller = self.client.post(
+            "/api/inmuebles/decidir",
+            json.dumps({"property_id": "home-1", "decision": "LIKE"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer seller-1",
+        )
+        self.assertEqual(res_seller.status_code, 403)
+
+        # 2. BUYER creates canonical decision + pending match
+        res_buyer = self.client.post(
+            "/api/inmuebles/decidir",
+            json.dumps({"property_id": "home-1", "decision": "LIKE"}),
+            content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer buyer-1",
+        )
+        self.assertEqual(res_buyer.status_code, 201)
+        self.assertTrue(res_buyer.json()["match"])
+
+        # Candidate is visible to seller
+        cands = self.candidates("seller-1").json()["items"]
+        self.assertEqual(len(cands), 1)
+        self.assertEqual(cands[0]["status"], "PENDING")

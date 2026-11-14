@@ -29,14 +29,20 @@ conservando la arquitectura, colecciones y autenticación Bearer por token del p
 - El filtro `inmueble` valida la relación con el usuario: si un SELLER intenta consultar un inmueble ajeno o un BUYER un inmueble con el que no interactuó, se devuelve 403. IDs malformados devuelven 400.
 - Paginación basada en cursores firmados con `DJANGO_SECRET_KEY`, usando nanosegundos y sin OFFSET. Para matches se indexa por `confirmed_at DESC`; para candidatos por `created_at DESC`. Confirmar o rechazar candidatos en una página no produce saltos ni duplicados al solicitar la siguiente página.
 
-## Verificación
+## Verificación y resolución de hallazgos de auditoría (H1–H6)
 
-- **170 pruebas totales**:
-  - Sin emuladores: **138 correctas y 32 integraciones omitidas**.
-  - Con emuladores locales (Auth 9099 y Firestore 8080 en loopback, proyecto `demo-swipehome-us4`): **170 correctas, sin omisiones** (`Ran 170 tests... OK`).
+- **175 pruebas totales**:
+  - Sin emuladores: **139 correctas y 36 integraciones omitidas**.
+  - Con emuladores locales (Auth 9099 y Firestore 8080 en loopback, proyecto `demo-swipehome-us4`): **175 correctas, sin omisiones** (`Ran 175 tests... OK`).
 - Incluyen:
   - Pruebas unitarias de autorización, parámetros, contratos y respuestas (`test_matches.py`).
   - Pruebas de integración con emulador real (`test_firestore_matches.py`): ciclo completo de LIKE Comprador -> PENDING -> decisión Vendedor -> CONFIRMED/REJECTED, idempotencia, colisiones concurrentes (hilos con `Barrier`), privacidad entre vendedores y estabilidad de cursores entre páginas.
+  - **H1 (compatibilidad histórica)**: `_write_decision` y `get_candidates` realizan backfill transaccional de documentos antiguos sin estado (`status=PENDING`, `seller_uid`, etc.) para hacerlos visibles y decidibles por el vendedor.
+  - **H2 (ruta heredada de decisión)**: `/api/inmuebles/decidir` delega en `record_decision` con rol estricto `BUYER` (403 para `SELLER`) y el frontend invoca la ruta REST canónica `/api/inmuebles/{id}/decision`.
+  - **H3 (integridad del origen)**: `_write_seller_decision` comprueba que la clave canónica, `decision_id`, `buyer_uid`, `listing_id` y el valor `LIKE` del swipe de origen coincidan exactamente con la candidatura antes de permitir la confirmación.
+  - **H4 (propiedad dinámica)**: la titularidad del inmueble se valida dinámicamente contra la colección `listings` en cada decisión y consulta, impidiendo que propietarios anteriores decidan o consulten candidaturas tras transferencias de inmuebles.
+  - **H5 (datos de pantalla del comprador)**: `GET /api/matches` para el rol `BUYER` incluye el objeto `seller` (`id` y `name`) y `seller_name` en el inmueble, cumpliendo los requisitos de US5.1.
+  - **H6 (coherencia documental)**: contratos de US4 y avisos (`INTEREST`, mensaje de candidato) alineados en `backend/README.md` y `Agents mds/us4_backend.md`.
 - Comprobaciones Django: `manage.py check` (0 issues), `makemigrations --check --dry-run` (sin cambios pendientes), diff limpio.
 
 ## Archivos de implementación

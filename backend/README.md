@@ -226,8 +226,9 @@ Django ni migraciones ORM; no se añade `csrf_exempt`. Cookies por sí solas no
 autentican estos endpoints. La identidad procede de `request.user`, construido
 por el servidor con el token verificado, su revocación y el perfil actual.
 
-**LIKE crea directamente el match y un aviso al propietario.** No hay
-aceptación del Vendedor, segundo swipe ni reserva o retirada automática del anuncio.
+**LIKE crea un match en estado PENDING y un aviso INTEREST al propietario.**
+El match queda pendiente de la decisión posterior del Vendedor (US5). No hay
+segundo swipe ni reserva o retirada automática del anuncio.
 
 | Método | Ruta exacta | Rol |
 |---|---|---|
@@ -361,8 +362,8 @@ Respuesta 200 para avisos nuevos de match:
   "items": [
     {
       "id": "match-clave-canonica",
-      "type": "MATCH",
-      "message": "Tienes un nuevo match.",
+      "type": "INTEREST",
+      "message": "Tienes un nuevo candidato interesado en tu vivienda.",
       "match_id": "clave-canonica",
       "created_at": "2026-11-08T10:01:00Z",
       "buyer": {"id": "buyer-uid", "name": "Ana"},
@@ -396,6 +397,10 @@ Ejemplo respuesta Comprador (200):
       "status": "CONFIRMED",
       "confirmed_at": "2026-11-10T12:00:00Z",
       "created_at": "2026-11-10T11:00:00Z",
+      "seller": {
+        "id": "seller-uid",
+        "name": "Joan Propietario"
+      },
       "listing": {
         "id": "listing-123",
         "title": "Ático en Gràcia",
@@ -462,13 +467,14 @@ Se reutilizan `users`, `listings` y `notifications`. La clave canónica es
 SHA-256 del JSON ASCII de `[buyer_uid, listing_id]`. Se añaden:
 
 - `swipes/{key}`: `buyer_uid, listing_id, value, created_at`.
-- `matches/{key}`: `buyer_uid, listing_id, decision_id, created_at`.
+- `matches/{key}`: `buyer_uid, listing_id, decision_id, seller_uid, buyer_name, listing_title, status, created_at` (y opcionalmente `decided_at, confirmed_at`).
 - `notifications/match-{key}`: destinatario propietario, match, Comprador,
-  nombre, vivienda, título, tipo, mensaje y fecha.
+  nombre, vivienda, título, tipo (INTEREST), mensaje y fecha.
 
-El propietario se resuelve desde `listings.seller_uid`. Un match no almacena
-otro propietario, reserva ni retira la vivienda. Un LIKE completo tiene un
-match y un aviso; PASS no los crea.
+El propietario se resuelve inicialmente desde `listings.seller_uid`. El match
+representa el interés mutuo pendiente o confirmado sin reservar ni retirar la vivienda.
+Un LIKE inicial del Comprador crea un match PENDING y un aviso de interés; la decisión
+favorable del Vendedor lo confirma.
 
 Firestore garantiza unicidad de documento y precondición de `create()`.
 El servicio central `repository.record_decision` garantiza valores permitidos,

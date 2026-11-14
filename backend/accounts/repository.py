@@ -194,28 +194,19 @@ def get_explorable_listings(uid, *, limit=10, offset=0):
 
 
 def save_property_decision(uid, property_id, decision):
-    """Persists a buyer decision and returns whether it created a match."""
-    client = firestore.client(app=get_app())
-    reference = client.collection(DECISIONS_COLLECTION).document(f"{uid}_{property_id}")
-    existing = reference.get()
-    if existing.exists:
-        previous = existing.to_dict().get("decision")
-        if previous == decision:
-            return {"decision": decision, "match": False, "duplicate": True}
-        raise ValueError("A different decision already exists.")
-    listing = client.collection(LISTINGS_COLLECTION).document(property_id).get()
-    if not listing.exists or not listing.to_dict().get("published"):
-        raise LookupError("Property not found.")
-    data = listing.to_dict()
-    if data.get("seller_uid") == uid:
-        raise PermissionError("A seller cannot decide on its own property.")
-    reference.create({
-        "buyer_uid": uid,
-        "property_id": property_id,
+    """Persists a buyer decision using canonical record_decision."""
+    profile = get_user_profile(uid)
+    if profile and profile.get("role") != "BUYER":
+        raise PermissionError("Solo un comprador puede registrar decisiones.")
+    buyer_name = profile.get("name", "") if profile else ""
+    decision_record, match_record, created = record_decision(
+        uid, property_id, decision, buyer_name=buyer_name
+    )
+    return {
         "decision": decision,
-        "created_at": firestore.SERVER_TIMESTAMP,
-    })
-    return {"decision": decision, "match": False, "duplicate": False}
+        "match": bool(match_record),
+        "duplicate": not created,
+    }
 
 
 def _cleanup_uploaded(uploaded):
@@ -411,6 +402,18 @@ def _write_decision(transaction, refs, buyer_uid, listing_id, value, buyer_name)
                 or notice.get("buyer_uid") != buyer_uid or notice.get("listing_id") != listing_id
             ):
                 raise InconsistentDecision()
+            needs_update = {}
+            if "status" not in match:
+                needs_update["status"] = "PENDING"
+            if "seller_uid" not in match:
+                needs_update["seller_uid"] = listing["seller_uid"]
+            if "buyer_name" not in match and buyer_name:
+                needs_update["buyer_name"] = buyer_name
+            if "listing_title" not in match and listing.get("title"):
+                needs_update["listing_title"] = listing["title"]
+            if needs_update:
+                transaction.update(refs["match"], needs_update)
+                match = {**match, **needs_update}
         elif snapshots["match"].exists or snapshots["notice"].exists:
             raise InconsistentDecision()
         return {"id": key, **decision}, None if match is None else {"id": key, "status": match.get("status", "PENDING"), **match}, False
@@ -544,19 +547,30 @@ def _write_seller_decision(transaction, match_ref, seller_uid, match_id, value):
         raise MatchNotFound()
     match_data = match_snap.to_dict()
 
-    actual_seller = match_data.get("seller_uid")
+    # H4: verify actual property owner dynamically from listings collection
     client = firestore.client(app=get_app())
-    if not actual_seller:
-        listing_snap = client.collection(LISTINGS_COLLECTION).document(match_data["listing_id"]).get(transaction=transaction)
-        if not listing_snap.exists:
-            raise MatchNotFound()
-        actual_seller = listing_snap.to_dict().get("seller_uid")
-    if actual_seller != seller_uid:
+    listing_snap = client.collection(LISTINGS_COLLECTION).document(match_data["listing_id"]).get(transaction=transaction)
+    if not listing_snap.exists:
+        raise MatchNotFound()
+    listing_data = listing_snap.to_dict()
+    if listing_data.get("seller_uid") != seller_uid:
         raise MatchNotFound()
 
+    # H3: verify swipe origin coherence
+    expected_key = decision_key(match_data.get("buyer_uid"), match_data.get("listing_id"))
     decision_id = match_data.get("decision_id", match_id)
+    if match_id != expected_key or decision_id != expected_key:
+        raise InconsistentDecision()
+
     swipe_snap = client.collection(SWIPES_COLLECTION).document(decision_id).get(transaction=transaction)
-    if not swipe_snap.exists or swipe_snap.to_dict().get("value") != "LIKE":
+    if not swipe_snap.exists:
+        raise InconsistentDecision()
+    swipe_data = swipe_snap.to_dict()
+    if (
+        swipe_data.get("value") != "LIKE"
+        or swipe_data.get("buyer_uid") != match_data.get("buyer_uid")
+        or swipe_data.get("listing_id") != match_data.get("listing_id")
+    ):
         raise InconsistentDecision()
 
     current_status = match_data.get("status", "PENDING")
@@ -577,6 +591,13 @@ def _write_seller_decision(transaction, match_ref, seller_uid, match_id, value):
                 "seller_uid": seller_uid,
                 "decided_at": now,
             }
+        if "buyer_name" not in match_data and match_data.get("buyer_uid"):
+            u_snap = client.collection(USERS_COLLECTION).document(match_data["buyer_uid"]).get(transaction=transaction)
+            if u_snap.exists:
+                updates["buyer_name"] = u_snap.to_dict().get("name", "")
+        if "listing_title" not in match_data and listing_data.get("title"):
+            updates["listing_title"] = listing_data["title"]
+
         transaction.update(match_ref, updates)
         return {
             "id": match_id,
@@ -615,6 +636,29 @@ def get_candidates(seller_uid, *, limit, position=None, listing_id=None):
     from google.cloud.firestore_v1.base_query import FieldFilter
 
     client = firestore.client(app=get_app())
+    seller_listings_query = client.collection(LISTINGS_COLLECTION).where("seller_uid", "==", seller_uid)
+    if listing_id:
+        seller_listings_query = seller_listings_query.where("__name__", "==", listing_id)
+    seller_listings = {doc.id: doc.to_dict() for doc in seller_listings_query.stream()}
+
+    # Backfill legacy matches or sync updated ownership for seller's listings (H1 and H4)
+    for lid, ldata in seller_listings.items():
+        for m in client.collection(MATCHES_COLLECTION).where("listing_id", "==", lid).stream():
+            m_dict = m.to_dict()
+            sync_updates = {}
+            if m_dict.get("status") is None:
+                sync_updates["status"] = "PENDING"
+            if m_dict.get("seller_uid") != seller_uid and m_dict.get("status", "PENDING") == "PENDING":
+                sync_updates["seller_uid"] = seller_uid
+            if not m_dict.get("listing_title") and ldata.get("title"):
+                sync_updates["listing_title"] = ldata["title"]
+            if not m_dict.get("buyer_name") and m_dict.get("buyer_uid"):
+                u_snap = client.collection(USERS_COLLECTION).document(m_dict["buyer_uid"]).get()
+                if u_snap.exists:
+                    sync_updates["buyer_name"] = u_snap.to_dict().get("name", "")
+            if sync_updates:
+                m.reference.update(sync_updates)
+
     collection = client.collection(MATCHES_COLLECTION)
     query = (
         collection.where(filter=FieldFilter("seller_uid", "==", seller_uid))
@@ -632,6 +676,8 @@ def get_candidates(seller_uid, *, limit, position=None, listing_id=None):
     records = []
     for snapshot in query.limit(limit).stream():
         data = snapshot.to_dict()
+        if data.get("listing_id") not in seller_listings:
+            continue
         records.append({
             "id": snapshot.id,
             "status": "PENDING",
@@ -649,6 +695,13 @@ def get_confirmed_matches(uid, role, *, limit, position=None, listing_id=None):
     from google.cloud.firestore_v1.base_query import FieldFilter
 
     client = firestore.client(app=get_app())
+    seller_listings = None
+    if role == "SELLER":
+        seller_listings_query = client.collection(LISTINGS_COLLECTION).where("seller_uid", "==", uid)
+        if listing_id:
+            seller_listings_query = seller_listings_query.where("__name__", "==", listing_id)
+        seller_listings = {doc.id: doc.to_dict() for doc in seller_listings_query.stream()}
+
     collection = client.collection(MATCHES_COLLECTION)
     filter_field = "buyer_uid" if role == "BUYER" else "seller_uid"
     query = (
@@ -667,6 +720,8 @@ def get_confirmed_matches(uid, role, *, limit, position=None, listing_id=None):
     records = []
     for snapshot in query.limit(limit).stream():
         data = snapshot.to_dict()
+        if role == "SELLER" and seller_listings is not None and data.get("listing_id") not in seller_listings:
+            continue
         records.append({
             "id": snapshot.id,
             "status": "CONFIRMED",

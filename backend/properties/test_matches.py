@@ -149,3 +149,29 @@ class MatchesApiTests(SimpleTestCase):
 
         self.record_seller.side_effect = RuntimeError("database connection crashed")
         self.assertEqual(self.post_decision().status_code, 500)
+
+    def test_buyer_matches_includes_seller_object(self):
+        self.profile.return_value = {"role": "BUYER", "name": "Comprador"}
+        now = datetime.now(timezone.utc)
+        self.get_confirmed.return_value = [{
+            "id": "match-1",
+            "status": "CONFIRMED",
+            "confirmed_at": now,
+            "created_at": now,
+            "buyer_uid": "buyer-1",
+            "seller_uid": "seller-1",
+            "listing_id": "listing-1",
+            "listing_title": "Piso Bonito",
+        }]
+        seller_doc = MagicMock()
+        seller_doc.exists = True
+        seller_doc.id = "seller-1"
+        seller_doc.to_dict.return_value = {"name": "Propietario Uno"}
+        self.mock_client.return_value.get_all.return_value = [seller_doc]
+
+        res = self.get_matches()
+        self.assertEqual(res.status_code, 200)
+        items = res.json()["items"]
+        self.assertEqual(len(items), 1)
+        self.assertEqual(items[0]["seller"]["id"], "seller-1")
+        self.assertEqual(items[0]["seller"]["name"], "Propietario Uno")
