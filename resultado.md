@@ -348,3 +348,198 @@ properties --verbosity 2"` — 172 tests; Azure Blob mockeado.
 Frontend: `npm test` — 25 tests; `npm run lint` y `npm run build` finalizan.
 Lint reporta advertencias no bloqueantes de proyecto. No se usaron servicios ni
 credenciales reales y no se modificaron dependencias.
+
+
+---
+
+# Entrega US8 backend, soporte US8.2 y pruebas US8.5 — 15/11/2026
+
+Este apartado registra la implementación actual; conserva el historial anterior.
+No se han modificado archivos del frontend, desplegado, creado commits ni publicado cambios.
+Git estaba limpio al comenzar. No se localizaron AGENTS.md aplicables en el repo
+ni en sus directorios ascendentes; se consultó la carpeta real `Agents mds`, README,
+contratos Firebase/US4/US5/US6, publicación US3, perfil, tests, CI, repositorio e índices.
+
+## Implementación y archivos
+
+- `backend/properties/preferences.py`: diez campos opcionales, validación estricta,
+  canonización, huella y comparaciones exactas con campos US3.
+- `backend/properties/preference_views.py`, `backend/config/urls.py`: GET/PUT/DELETE
+  `/api/exploracion/filtros` y GET `/api/inmuebles/opciones-filtro`, solo BUYER.
+- `backend/accounts/repository.py`: colección duradera `search_preferences/{uid}`,
+  sustitución atómica mediante un set, catálogo de localidades publicadas completas,
+  filtrado dentro del recorrido paginado antes de formar la página. Decisiones
+  propias consultadas por lotes solo para candidatos que superan los filtros.
+- `backend/properties/discovery_service.py`: lectura única de configuración por
+  petición y cursores Django firmados ligados a comprador, propósito y huella canónica.
+- `backend/properties/test_preferences.py` y `test_firestore_preferences.py`:
+  14 métodos nuevos de prueba con múltiples subcasos, integración real Firestore.
+- `backend/properties/test_discovery.py`: fixture de la nueva lectura de preferencias;
+  conserva el contrato y comprobaciones US4.
+- `backend/properties/test_firestore.py`: corrección de las dos expectativas,
+  PENDING explícito y persistencia de preferencias tras logout/login real.
+- `backend/properties/test_firestore_matches.py`: cobertura diferenciada de confirmación
+  CONFIRMED, conservando el aviso INTEREST original según el código vigente.
+- `backend/README.md`, `Agents mds/us8_backend.md` y contextos de proyecto,
+  infraestructura, backend, pautas, US4 y US5 actualizados. Este `resultado.md`
+  conserva decisiones, evidencia, comandos y límites de esta entrega.
+
+No hay campos nuevos en anuncios, migraciones SQL, dependencias versionadas nuevas,
+consultas que necesiten índices adicionales ni cambios de configuración CI.
+`manage.py test accounts properties` descubre automáticamente los nuevos módulos.
+
+## Causa comprobada de los dos fallos
+
+`accounts.repository._write_decision` crea un match `status=PENDING` y un aviso
+`type=INTEREST` con texto «Tienes un nuevo candidato interesado en tu vivienda.».
+`_write_seller_decision` requiere la decisión del propietario para pasar a
+CONFIRMED/REJECTED. Los dos tests de `test_firestore.py` aún esperaban el antiguo
+«Tienes un nuevo match.» tras el LIKE del comprador. Se corrigieron únicamente
+esas expectativas y se añadieron comprobaciones explícitas de PENDING; se mantienen
+comprador/vivienda/match_id, destinatario privado y paginación estable.
+
+El test `FirestoreMatchesTests.test_seller_confirms_candidate_and_mutuality`
+verifica CONFIRMED y visibilidad mutua; ahora comprueba además que el aviso
+original sigue siendo INTEREST, con mensaje, match y propietario correctos.
+Evidencia relevante: el flujo actual US5 no escribe notificaciones al confirmar;
+no existe productor de aviso de confirmación BUYER. No se ha creado ese productor
+fuera del alcance ni falseado su cobertura; queda documentado este límite del
+contrato existente. No se hicieron sustituciones globales de textos ni se
+modificó el mensaje de producción para adaptar los tests.
+
+## Decisiones técnicas y discrepancias resueltas
+
+Firebase Auth + Firestore es la arquitectura real (`DATABASES={}`, sin middleware
+de sesiones/CSRF). Se reutiliza `firebase_role`, `request.user`, comprobación de
+revocación Firebase y revocaciones US6. Bearer inválido -> 401; rol -> 403;
+infraestructura -> 500 seguro. US8.2 se adapta a este contrato sin autenticación
+paralela ni desactivación de protecciones. Selectores de identidad se rechazan.
+
+Mapeo: city/postal_code/bedrooms sin renombrar anuncios; min/max_price contra
+price_cents, min/max_area contra surface_hundredths, min_bathrooms contra bathrooms,
+people_offered contra people, is_shared contra shared_accommodation. US3 **ya**
+limita surface a dos decimales (`_decimal` por defecto); se respeta esa regla.
+Preferencias guardan cadenas decimales canónicas de dos posiciones y se comparan
+como enteros exactos de centésimas. No hay float ni redondeo de entradas excesivas.
+Los textos se recortan como US3; código postal sigue siendo cadena sin patrón
+territorial impuesto. null, false y 0 mantienen significados separados.
+
+PUT reemplaza todo, validando antes de escribir; `{}` y DELETE restablecen.
+DELETE idempotente responde 200 y configuración completa con nulls; usa un solo
+set atómico, sin borrar antes ni afectar decisiones/matches. GET inicial no escribe.
+Un fallo antes de commit conserva la configuración; tras un commit remoto con
+respuesta perdida GET permite reconciliar (no se promete rollback distribuido).
+
+Cursores: salt de exploración + SHA256 del JSON canónico, payload con UID/fecha/ID,
+misma integridad Django existente. Configuraciones equivalentes mantienen cursores
+compatibles; cambios incompatibles los rechazan con 400. Restablecer equivale a
+configuración vacía, no a un contador de versión; un cursor previo vacío sigue
+siendo compatible. Sin cursor empieza por la primera página. Toda petición usa
+una única instantánea de filtros para resultados y cursor. Fotografías/serialización
+US4 se conservan. No se filtra una página ya recortada.
+
+Se reutiliza consulta indexada de publicados US4 y se termina de filtrar por lotes
+Python, según el acuerdo documentado de infraestructura. Sin matches puede ser
+necesario agotar publicados; no se carga todo en memoria ni hay N+1. El catálogo
+de ciudades sí recorre todos los publicados para validar integridad y formar la
+lista completa, independiente de página/filtros/decisiones, única y ordenada.
+
+## Trazabilidad US8.5
+
+Abreviaturas: V = `PreferenceValidationTests`, A = `PreferenceApiTests`,
+F = `FirestorePreferenceTests`, B = `FirebaseFlowTests`, M = `FirestoreMatchesTests`.
+Los nombres completos de método están en los módulos indicados arriba.
+
+| Criterio solicitado | Cobertura automatizada ejecutada |
+|---|---|
+| 1. Permisos y credenciales de todos los endpoints | A.test_permissions_every_endpoint_and_credential_failure; verificadores Auth existentes. |
+| 2. Identidad verificada y selectores ajenos | A.test_identity_queries_unknown_fields_and_invalid_json; DiscoveryApiTests.test_request_user_is_overwritten_from_verified_token. |
+| 3. GET inicial, PUT completo/omitidos/null/vacío, DELETE repetido | F.test_initial_replace_omitted_null_empty_and_delete_idempotence; V.test_empty_null_and_canonical_equivalence. |
+| 4. Cada filtro, AND y todos juntos | V.test_individual_filters_and_all_filters_and_boundaries; F.test_filters_individually_and_together_with_exact_boundaries; F.test_and_combinations_empty_matches_and_options_independent_of_filters. |
+| 5. Precio: límites, 0, aislados, iguales e inversos | V.test_decimal_limits_precision_and_ranges y pruebas individuales V/F; mínimo 0 en F.test_tied_pagination_multiple_batches_and_configuration_bound_cursors. |
+| 6. Céntimos justo dentro/fuera y exceso de precisión | V.test_decimal_limits_precision_and_ranges; V/F filtros individuales con price_cents 95049/95050/95051. |
+| 7. Superficie positiva, límites, aislados, iguales e inversos | V.test_decimal_limits_precision_and_ranges; V/F filtros con surface_hundredths 6549/6550/6551. |
+| 8. Estudio/null/exacto, baños mínimos, personas exactas | V.test_individual_filters_and_all_filters_and_boundaries; F.test_filters_individually_and_together_with_exact_boundaries. |
+| 9. Localidad/postal separados/AND/normalización/formato US3 | V.test_empty_null_and_canonical_equivalence; V/F filtros; F.test_and_combinations_empty_matches_and_options_independent_of_filters (incluye AB 01). |
+| 10. true/false/null y personas independientes | V filtros; F filtros; F sustitución con nulls explícitos. |
+| 11. Tipos, booleanos, JSON y no finitos | V.test_all_invalid_types_and_nonfinite_values; A.test_identity_queries_unknown_fields_and_invalid_json. |
+| 12. LIKE/PASS propios y decisiones de otros | F.test_decisions_other_buyers_reset_and_isolation; regresiones US4. |
+| 13. Compradores independientes y nuevo login | F.test_decisions_other_buyers_reset_and_isolation; B.test_real_registration_login_publication_like_logout_and_relogin (Auth y Firestore reales emulados). |
+| 14. Reset conserva decisiones/matches y exclusiones | F.test_decisions_other_buyers_reset_and_isolation. |
+| 15. Empates, múltiples lotes, sin saltos/duplicados | F.test_tied_pagination_multiple_batches_and_configuration_bound_cursors: 65 descartes, seis coincidencias y páginas de dos. |
+| 16. Cursores manipulados, ajenos y configuración incompatible | Mismo test F, incluyendo equivalencia canónica y reinicio tras cambio/reset; pruebas previas de propósito/nanosegundos US4. |
+| 17. Validación y fallo anterior al commit sin perder documento | F.test_validation_and_rejected_commit_preserve_entire_document: WriteBatch.commit rechazado antes de petición remota; documento real emulado intacto. |
+| 18. Guardado seguido de fallo de exploración, retry | F.test_saved_preferences_survive_explore_failure_and_retry; A.test_read_write_failures_and_successful_save_then_explore_failure. |
+| 19. Cero coincidencias y errores separados de 401 | F combinaciones; A permisos/fallos internos, respuesta 200 vacía con next_cursor null. |
+| 20. Localidades completas, únicas, ordenadas y fuente | F.test_and_combinations_empty_matches_and_options_independent_of_filters: duplicados, borradores, incompletos y vacíos. |
+| 21. Dos avisos corregidos y diferencia PENDING/CONFIRMED | Dos métodos originales de test_firestore.py y M.test_seller_confirms_candidate_and_mutuality, con límite explícito del productor de avisos US5. |
+
+Los tests nuevos Firestore usan proyecto `demo-swipehome-us4` en loopback,
+colecciones únicas y limpieza de sus documentos; mocks de fallos complementan
+persistencia real local. Azure permanece simulado como en las regresiones previas.
+Ningún test se eliminó ni se convirtió en omitido para ocultar fallos.
+
+## Comandos ejecutados y resultados reales
+
+Desde `backend`, Python 3.13 del venv; Node v24.15.0 y Java 21.0.2:
+
+1. `.venv/Scripts/python.exe -B manage.py test properties.test_discovery properties.test_matches --verbosity 0`:
+   primer intento bloqueado por `ModuleNotFoundError: azure`; tras instalar los
+   requisitos **ya fijados** con `.venv/Scripts/python.exe -m pip install -r requirements.txt`,
+   **26 tests OK**. No se actualizaron archivos de dependencias.
+2. `.venv/Scripts/python.exe -B manage.py test properties.test_preferences properties.test_discovery properties.test_matches --verbosity 0`:
+   **33 tests OK**.
+3. `npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test properties.test_preferences properties.test_firestore_preferences properties.test_discovery properties.test_firestore properties.test_firestore_matches --verbosity 1"`:
+   **66 tests OK**, sin omisiones, 62.124 s.
+4. `npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts properties --verbosity 2"`:
+   primer arranque rechazado por puerto 8080 aún ocupado por Java huérfano del
+   emulador demo anterior. Se comprobó su comando/proyecto y se detuvo solo ese PID.
+   Reintento: **211 tests OK, sin omisiones, 44.498 s**, salida 0. Incluye las mejoras
+   finales de comparación exacta y lecturas por lote, US3, US4, US5 y perfil/autenticación.
+5. `.venv/Scripts/python.exe -B manage.py check`: cero incidencias.
+6. `.venv/Scripts/python.exe -B manage.py makemigrations --check --dry-run`: sin cambios.
+7. `.venv/Scripts/python.exe -m pip check`: sin requisitos rotos.
+8. `git diff --check`: sin errores.
+
+El repositorio no configura lint/formatter Python, por lo que no se inventó un
+comando adicional ni se añadieron herramientas. La configuración CI usa Python
+3.12; se ejecutó su misma suite/comando adaptando únicamente el ejecutable local
+al venv Windows. No se atribuye ejecución remota de CI a estos resultados.
+
+## Pendientes y límites
+
+- Implementado el backend US8 y el soporte de servidor de US8.2. No se declara
+  completada toda US8.2: siguen pendientes interfaz, bloqueo de envíos/swipes,
+  descarte de respuestas tardías, indicación de filtros activos, acciones y mensajes.
+- El contrato US8.2 documenta GET preferencias -> PUT/DELETE confirmado -> descartar
+  cursor -> explorar sin cursor; un fallo posterior solo exige reintentar explorar.
+- Estado vacío para UI: «No hay viviendas pendientes que coincidan con tus filtros.
+  Prueba a ampliar tus criterios de búsqueda.» Acciones de frontend: «Modificar
+  filtros» y «Restablecer filtros». La API conserva su sobre US4.
+- Confirmación US5 no produce aviso BUYER en el código actual. Su generación no se
+  declara verificada ni se añade fuera de alcance; se preserva el aviso INTEREST.
+- No hay comprobaciones de producción, despliegue de índices, Azure real ni UI.
+  El emulador no verifica que un índice esté desplegado en producción.
+- Búsquedas restrictivas pueden recorrer todo el conjunto publicado por lotes;
+  catálogo de ciudades lee publicaciones completas. No hay motor de búsqueda nuevo.
+
+
+### Verificación final posterior a la revisión de representación decimal
+
+Se cerró un caso extremo: una entrada decimal larga cuya forma canónica con
+`.00` excediera 100 caracteres ya no puede guardarse y fallar después al leerse.
+Se comprueba ida y vuelta de una configuración de gran magnitud y rechazo del
+límite excedido en `test_empty_null_and_canonical_equivalence`.
+
+- `.venv/Scripts/python.exe -B manage.py test properties.test_preferences --verbosity 0`:
+  **7 tests OK**, 0.046 s.
+- Repetición del mismo comando completo con Auth y Firestore Emulator y
+  `manage.py test accounts properties --verbosity 2`: **211 tests OK, sin omisiones,
+  67.937 s**, salida 0. Este es el resultado del código final.
+- Revisión de UTF-8, sintaxis Python de los cuatro módulos nuevos y existencia de
+  las referencias locales principales US8: correcta.
+- `git diff --check` y `manage.py check` finales: correctos.
+
+El cierre de Firebase CLI en Windows dejó procesos Java residuales escuchando en
+8080; se identificaron por comando exacto del emulador/proyecto demo y se cerraron
+sin tocar procesos ajenos. No se usaron servicios de producción.

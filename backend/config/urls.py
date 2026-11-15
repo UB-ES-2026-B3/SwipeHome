@@ -1,3 +1,4 @@
+from properties.preference_views import preferences, filter_options
 from django.urls import path
 from accounts.views import current_user, register
 from accounts.profile_views import logout, password, update_profile
@@ -16,6 +17,8 @@ def profile_dispatch(request):
 
 
 urlpatterns = [
+    path("api/exploracion/filtros", preferences, name="search-preferences"),
+    path("api/inmuebles/opciones-filtro", filter_options, name="filter-options"),
     path("api/notificaciones", notifications, name="notifications"),
     path("api/health", health, name="health"),
     path("api/auth/register", register, name="register"),

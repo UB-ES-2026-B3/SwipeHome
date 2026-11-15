@@ -1,3 +1,10 @@
+> Actualización 15/11/2026: [US8 backend](us8_backend.md) documenta preferencias
+> propias BUYER en Firestore, filtros persistidos y cursores ligados a configuración.
+> Se conserva Firebase Bearer y US3/US4/US5. LIKE crea candidatura PENDING y aviso
+> INTEREST; confirmar por el vendedor produce CONFIRMED, sin aviso BUYER nuevo en
+> el código actual. Los apartados anteriores tienen valor histórico donde discrepen.
+> El soporte servidor de US8.2 está implementado; sus criterios de UI quedan pendientes.
+
 # Infraestructura vigente de SwipeHome
 
 ## Estado comprobado — 8 noviembre 2026

@@ -683,7 +683,61 @@ prueba visual usa Auth Emulator y respuestas API interceptadas; el navegador
 no consulta Firestore directamente. Se contrastaron viewports 1280×900 y
 390×844 emulados, no dispositivos físicos.
 
-**Límite US5:** este árbol no contiene endpoint ni productor de la confirmación
-US5 que cree un aviso para BUYER. La API puede consultar avisos BUYER si ya
+**Límite de avisos US5:** existe el endpoint de confirmación del vendedor, pero
+no produce un aviso de confirmación para BUYER. La API puede consultar avisos BUYER si ya
 están persistidos, pero no se afirma que la confirmación los genere. Esa parte
 queda sin verificar y fuera de esta implementación de consulta.
+
+
+## US8: preferencias de búsqueda (backend)
+
+Contrato completo, campos/mapeo US3, errores, persistencia, precisión, localidades,
+cursores y flujo de integración: [US8 backend](<../Agents mds/us8_backend.md>).
+Todas estas operaciones requieren Firebase Bearer y rol **BUYER**:
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| GET | `/api/exploracion/filtros` | 200, configuración completa propia, nulls si no existe. |
+| PUT | `/api/exploracion/filtros` | JSON de sustitución completa; 200 con configuración canónica persistida. |
+| DELETE | `/api/exploracion/filtros` | 200 con configuración sin restricciones; idempotente. |
+| GET | `/api/inmuebles/opciones-filtro` | 200 `{"cities":["Barcelona","Madrid"]}`, publicadas completas, únicas y ordenadas. |
+| GET | `/api/inmuebles/explorar` | Contrato US4, ahora aplica preferencias persistidas y exclusiones LIKE/PASS propias. |
+
+PUT de ejemplo: `{"city":" Barcelona ","min_price":"0","max_price":"950.50","is_shared":false}`.
+Devuelve `{"city":"Barcelona","postal_code":null,"min_price":"0.00","max_price":"950.50","min_area":null,"max_area":null,"bedrooms":null,"min_bathrooms":null,"people_offered":null,"is_shared":false}`.
+GET inicial, PUT `{}` y DELETE devuelven las diez claves con null.
+Los omitidos en PUT borran restricciones anteriores; no es PATCH.
+
+400 validación `{"errors":{"max_price":"..."}}` o parámetros/cursores
+`{"error":"..."}`; 401 credenciales inválidas/ausentes/revocadas; 403 rol no
+permitido; 405 método no admitido; 500 fallo interno seguro. No hay cookies ni
+CSRF de sesiones Django; se reutiliza la verificación Bearer existente.
+Las preferencias residen en `search_preferences/{uid}` mediante una escritura
+atómica sin borrado previo; errores no se presentan como éxito. Restablecer
+conserva decisiones, matches y exclusiones. Cursores firmados ligados a UID,
+propósito y configuración canónica; cambios incompatibles reciben 400.
+
+Para US8.2: GET preferencias -> PUT/DELETE y esperar confirmación -> descartar
+cursor -> GET explorar sin cursor. Si falla solo explorar, reintentarlo sin
+revertir ni presentar como fallido el guardado. UI pendiente: bloqueo de envíos y
+swipes antiguos, descarte de respuestas tardías, filtros activos, errores y acciones.
+Estado vacío de UI: «No hay viviendas pendientes que coincidan con tus filtros.
+Prueba a ampliar tus criterios de búsqueda.» La API mantiene lista vacía y cursor null.
+
+Pruebas afectadas desde backend (Auth/Firestore Emulator demo, Azure simulado):
+
+```powershell
+npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test properties.test_preferences properties.test_firestore_preferences properties.test_discovery properties.test_firestore properties.test_firestore_matches --verbosity 1"
+```
+
+La suite completa usa el comando CI ya documentado `manage.py test accounts properties`;
+incluye automáticamente los nuevos módulos. Resultados de esta entrega en
+[resultado.md](../resultado.md). No hay lint/formatter Python configurado ni índices
+nuevos. No se han ejecutado despliegues.
+
+
+Validación de esta entrega (15/11/2026): **211 tests OK, sin omisiones**, con Auth
+Emulator y Firestore Emulator (suite completa accounts/properties); 66 pruebas
+afectadas pasaron antes de la regresión completa. `manage.py check`,
+`makemigrations --check --dry-run`, `pip check` y `git diff --check` también pasan.
+Ejecución local Windows/Python 3.13; no es un resultado remoto de CI ni un despliegue.

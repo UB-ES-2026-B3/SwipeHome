@@ -475,7 +475,7 @@ def _write_decision(transaction, refs, buyer_uid, listing_id, value, buyer_name)
     return {"id": key, **decision}, None if match is None else {"id": key, **match}, True
 
 
-def get_pending_listings(buyer_uid, *, limit, position=None):
+def get_pending_listings(buyer_uid, *, limit, position=None, preferences=None):
     """Recorre lotes con cursor y carga decisiones en batch, sin OFFSET ni N+1.
 
     Se busca un pendiente adicional. El cursor público siempre sale del último
@@ -484,6 +484,7 @@ def get_pending_listings(buyer_uid, *, limit, position=None):
     from google.cloud.firestore_v1.base_query import FieldFilter
 
     from properties.serialization import listing_item, published_listing
+    from properties.preferences import matches_preferences
 
     client = firestore.client(app=get_app())
     collection = client.collection(LISTINGS_COLLECTION)
@@ -503,15 +504,19 @@ def get_pending_listings(buyer_uid, *, limit, position=None):
         snapshots = list(bounded.limit(batch_size).stream())
         if not snapshots:
             break
+        eligible = [
+            (row, data) for row in snapshots
+            if published_listing(data := row.to_dict())
+            and (preferences is None or matches_preferences(data, preferences))
+        ]
         decisions = {
             snapshot.id for snapshot in client.get_all([
                 client.collection(SWIPES_COLLECTION).document(decision_key(buyer_uid, row.id))
-                for row in snapshots
+                for row, _ in eligible
             ]) if snapshot.exists
-        }
-        for snapshot in snapshots:
-            data = snapshot.to_dict()
-            if decision_key(buyer_uid, snapshot.id) not in decisions and published_listing(data):
+        } if eligible else set()
+        for snapshot, data in eligible:
+            if decision_key(buyer_uid, snapshot.id) not in decisions:
                 records.append(listing_item(snapshot.id, data))
                 if len(records) == limit:
                     break
@@ -761,3 +766,29 @@ def get_confirmed_matches(uid, role, *, limit, position=None, listing_id=None):
             "listing_title": data.get("listing_title", ""),
         })
     return records
+
+
+PREFERENCES_COLLECTION = "search_preferences"
+
+
+def get_search_preferences(uid):
+    from properties.preferences import validate_preferences
+    snap = firestore.client(app=get_app()).collection(PREFERENCES_COLLECTION).document(uid).get()
+    values, errors = validate_preferences(snap.to_dict() if snap.exists else {})
+    if errors:
+        raise ValueError("Preferencias persistidas inválidas.")
+    return values
+
+
+def save_search_preferences(uid, values):
+    # Una sola escritura atómica de sustitución. Nunca borrar antes de guardar.
+    firestore.client(app=get_app()).collection(PREFERENCES_COLLECTION).document(uid).set(values)
+    return dict(values)
+
+
+def get_filter_cities():
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    from properties.serialization import published_listing
+    query = _listings().where(filter=FieldFilter("published", "==", True))
+    return sorted({data["city"].strip() for snap in query.stream()
+                   if published_listing(data := snap.to_dict())})
