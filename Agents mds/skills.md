@@ -1,3 +1,10 @@
+> Actualización 15/11/2026: [US8 backend](us8_backend.md) documenta preferencias
+> propias BUYER en Firestore, filtros persistidos y cursores ligados a configuración.
+> Se conserva Firebase Bearer y US3/US4/US5. LIKE crea candidatura PENDING y aviso
+> INTEREST; confirmar por el vendedor produce CONFIRMED, sin aviso BUYER nuevo en
+> el código actual. Los apartados anteriores tienen valor histórico donde discrepen.
+> El soporte servidor de US8.2 está implementado; sus criterios de UI quedan pendientes.
+
 # Pautas vigentes de trabajo en SwipeHome
 
 ## Continuidad US4 — 8 noviembre 2026
@@ -9,7 +16,7 @@ Revisar [US4 backend](us4_backend.md), [US6 backend](us6_backend.md) y
 
 - Conservar Firebase Auth/Firestore y sus cuentas/anuncios/fotografías.
 - Identidad desde `request.user`, construido con token y perfil verificados.
-- LIKE crea directamente decisión, match y aviso. No añadir aceptación.
+- LIKE crea decisión, candidatura PENDING y aviso INTEREST; US5 incorpora la aceptación del vendedor. Ver `us5_backend.md`.
 - Mantener todas las escrituras US4 en `repository.record_decision`; no
   escribir documentos equivalentes con IDs arbitrarios ni omitir la transacción.
 - No atribuir CHECK/FK SQL a Firestore: unicidad de path y controles del

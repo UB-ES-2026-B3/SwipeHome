@@ -115,6 +115,14 @@ class FirestoreMatchesTests(SimpleTestCase):
         self.assertEqual(confirm_res.json()["status"], "CONFIRMED")
         self.assertIn("confirmed_at", confirm_res.json())
 
+        # Confirmar no reescribe INTEREST ni fabrica un aviso MATCH: contrato US5 actual.
+        notices = list(self.collection("notifications").stream())
+        self.assertEqual(len(notices), 1)
+        self.assertEqual(notices[0].to_dict()["type"], "INTEREST")
+        self.assertEqual(notices[0].to_dict()["message"],
+                         "Tienes un nuevo candidato interesado en tu vivienda.")
+        self.assertEqual(notices[0].to_dict()["match_id"], match_id)
+        self.assertEqual(notices[0].to_dict()["recipient_uid"], "seller-1")
         # No longer in candidates
         self.assertEqual(self.candidates().json()["items"], [])
 
