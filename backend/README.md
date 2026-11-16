@@ -741,3 +741,51 @@ Emulator y Firestore Emulator (suite completa accounts/properties); 66 pruebas
 afectadas pasaron antes de la regresión completa. `manage.py check`,
 `makemigrations --check --dry-run`, `pip check` y `git diff --check` también pasan.
 Ejecución local Windows/Python 3.13; no es un resultado remoto de CI ni un despliegue.
+
+
+## US9.4–9.6: selección definitiva
+
+Contrato y garantías: [US9 backend](<../Agents mds/us9_backend.md>).
+La selección se hace por candidatura para una vivienda; no modifica `people` ni
+candidaturas en otras viviendas. Firebase Bearer y roles verificados del perfil.
+
+- `GET/POST /api/propuestas`: historial propio paginado / creación SELLER con
+  `{"listing_id":"...","match_id":"...","request_id":"clave-nueva"}`.
+- `GET /api/propuestas/{id}`: detalle privado, condiciones actuales y vendedor.
+- `POST /api/propuestas/{id}/aceptar`, `/rechazar` (BUYER), `/cancelar` (SELLER): `{}`.
+- `PATCH /api/inmuebles/{id}`: edición de todos los campos canónicos US3 sin fotos.
+- `PUT /api/inmuebles/{id}/disponibilidad`: `{"availability":"ACTIVE"}` o PAUSED.
+
+PENDING pasa a ACCEPTED/REJECTED/CANCELLED; ACCEPTED es definitivo y cierra la
+vivienda con motivo «Alquiler acordado». PENDING bloquea edición/disponibilidad.
+Crear admite ACTIVE y PAUSED sin cambiarlos. Rechazar/cancelar libera el bloqueo.
+201 en creación nueva; 200 en reintento idéntico y resoluciones. Una clave usada
+con contenido distinto o una transición incompatible devuelve 409. Datos inválidos
+400, autenticación 401, rol 403, recurso ajeno/inexistente 404, fallo interno 500.
+
+El repositorio central transacciona propuesta, control privado por vivienda,
+idempotencia, cierre y avisos US7 deduplicados. Para más de 100 destinatarios de
+cierre, guarda eventos duraderos y los procesa en lotes reintentables; la API
+intenta diez lotes y el comando `manage.py process_selection_notifications --limit 100`
+recupera los restantes. Debe programarse periódicamente en producción.
+Todos usan timestamps del servidor.
+Se añaden `selection_proposals`, `selection_requests`, `listing_selections`,
+`selection_notification_events` y dos
+índices versionados. No hace falta backfill: disponibilidad ausente equivale a
+ACTIVE para anuncios publicados. Los matches mantienen su estado y muestran
+`listing.availability`/`closure_reason`. Las referencias al seleccionado no salen
+en anuncios ni avisos de otros candidatos. No se han desplegado índices ni reglas.
+
+
+Verificación US9 (16/11/2026): **228 tests correctos, sin omisiones**, suite
+completa `accounts properties` con Auth Emulator y Firestore Emulator Standard
+en loopback (`demo-swipehome-us4`), Python 3.13 y Java 21. Incluye 17 pruebas US9
+nuevas: permisos y contratos, estados y bloqueos, idempotencia, concurrencia,
+rollback de avisos/eventos, recuperación tras fallo entre lotes, privacidad,
+historial, otras viviendas, autenticación real emulada y denegación REST por Rules.
+Azure se mantiene simulado por las pruebas existentes. `manage.py check`,
+`makemigrations --check --dry-run`, `pip check`, sintaxis Python/JSON y
+`git diff --check` correctos. No se han usado servicios de producción ni se han
+realizado despliegues, commits o push. Los índices compuestos deben publicarse y
+comprobarse en producción: el emulador no certifica su disponibilidad. También
+queda por configurar allí la ejecución periódica del comando de recuperación.
