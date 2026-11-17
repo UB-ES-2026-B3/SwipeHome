@@ -153,7 +153,7 @@ def get_active_listings():
     query = _listings().where("published", "==", True).order_by("created_at")
     for snapshot in query.stream():
         data = snapshot.to_dict()
-        if not data.get("published"):
+        if not data.get("published") or listing_availability(data) != "ACTIVE":
             continue
         records.append({
             "id": snapshot.id,
@@ -171,6 +171,8 @@ def get_active_listings():
             "shared_accommodation": bool(data.get("shared_accommodation", False)),
             "photos": list(data.get("photos", [])),
             "published": True,
+            "availability": listing_availability(data),
+            "closure_reason": data.get("closure_reason"),
         })
     return records
 
@@ -198,6 +200,8 @@ def get_seller_listings(uid):
             "shared_accommodation": bool(data.get("shared_accommodation", False)),
             "photos": list(data.get("photos", [])),
             "published": True,
+            "availability": listing_availability(data),
+            "closure_reason": data.get("closure_reason"),
         })
     return records
 
@@ -320,6 +324,8 @@ def get_notifications(uid, *, limit, position=None):
             if not all(isinstance(data.get(field), str) and data[field] for field in fields):
                 raise ValueError("Relaciones de aviso inconsistentes.")
             related = {field: data[field] for field in fields}
+        if "listing_id" in data and "match_id" not in data:
+            related = {"listing_id": data["listing_id"], "listing_title": data.get("listing_title", "")}
         records.append({
             **related,
             "id": snapshot.id, "type": data["type"],
@@ -446,6 +452,8 @@ def _write_decision(transaction, refs, buyer_uid, listing_id, value, buyer_name)
         return {"id": key, **decision}, None if match is None else {"id": key, "status": match.get("status", "PENDING"), **match}, False
     if snapshots["match"].exists or snapshots["notice"].exists:
         raise InconsistentDecision()
+    if listing_availability(listing) != "ACTIVE":
+        raise DecisionConflict()
     created_at = datetime.now(timezone.utc)
     decision = {
         "buyer_uid": buyer_uid, "listing_id": listing_id,
@@ -507,6 +515,7 @@ def get_pending_listings(buyer_uid, *, limit, position=None, preferences=None):
         eligible = [
             (row, data) for row in snapshots
             if published_listing(data := row.to_dict())
+            and listing_availability(data) == "ACTIVE"
             and (preferences is None or matches_preferences(data, preferences))
         ]
         decisions = {
@@ -607,6 +616,8 @@ def _write_seller_decision(transaction, match_ref, seller_uid, match_id, value):
 
     current_status = match_data.get("status", "PENDING")
     if current_status == "PENDING":
+        if listing_availability(listing_data) == "CLOSED":
+            raise DecisionConflict()
         now = datetime.now(timezone.utc)
         if value == "LIKE":
             new_status = "CONFIRMED"
@@ -759,6 +770,8 @@ def get_confirmed_matches(uid, role, *, limit, position=None, listing_id=None):
             "status": "CONFIRMED",
             "created_at": data.get("created_at"),
             "confirmed_at": data["confirmed_at"],
+            "availability": listing_availability(seller_listings[data["listing_id"]]) if seller_listings is not None else None,
+            "closure_reason": seller_listings[data["listing_id"]].get("closure_reason") if seller_listings is not None else None,
             "buyer_uid": data["buyer_uid"],
             "buyer_name": data.get("buyer_name", ""),
             "seller_uid": data.get("seller_uid", ""),
@@ -791,4 +804,257 @@ def get_filter_cities():
     from properties.serialization import published_listing
     query = _listings().where(filter=FieldFilter("published", "==", True))
     return sorted({data["city"].strip() for snap in query.stream()
-                   if published_listing(data := snap.to_dict())})
+                   if published_listing(data := snap.to_dict()) and listing_availability(data) == "ACTIVE"})
+
+
+# US9: documentos privados de coordinación e idempotencia, nunca serializados.
+PROPOSALS_COLLECTION = "selection_proposals"
+SELECTIONS_COLLECTION = "listing_selections"
+PROPOSAL_REQUESTS_COLLECTION = "selection_requests"
+SELECTION_EVENTS_COLLECTION = "selection_notification_events"
+INLINE_CLOSURE_NOTICE_LIMIT = 100
+CLOSURE_EVENT_BATCH_SIZE = 100
+
+
+class ProposalNotFound(Exception):
+    pass
+
+
+def listing_availability(data):
+    return data.get("availability", "ACTIVE" if data.get("published") else "PAUSED")
+
+
+def _selection_client():
+    return firestore.client(app=get_app())
+
+
+def _selection_ref(client, listing_id):
+    return client.collection(SELECTIONS_COLLECTION).document(listing_id)
+
+
+def _owned_listing(transaction, client, listing_id, seller_uid):
+    ref = client.collection(LISTINGS_COLLECTION).document(listing_id)
+    snap = ref.get(transaction=transaction)
+    if not snap.exists or snap.to_dict().get("seller_uid") != seller_uid:
+        raise ProposalNotFound()
+    return ref, snap.to_dict()
+
+
+def _proposal_access(transaction, client, proposal_id, uid, role):
+    ref = client.collection(PROPOSALS_COLLECTION).document(proposal_id)
+    snap = ref.get(transaction=transaction)
+    if not snap.exists:
+        raise ProposalNotFound()
+    data = snap.to_dict()
+    if data.get("seller_uid" if role == "SELLER" else "buyer_uid") != uid:
+        raise ProposalNotFound()
+    listing_ref, listing = _owned_listing(transaction, client, data["listing_id"], data["seller_uid"])
+    return ref, data, listing_ref, listing
+
+
+def _proposal_notice(transaction, client, event, kind, recipient, listing_id, title):
+    # No buyer, match ni propuesta en avisos de cierre a otros candidatos.
+    key = decision_key(recipient, event + ":" + kind)
+    messages = {
+        "PROPOSAL": "Has recibido una propuesta de selección para una vivienda.",
+        "ACCEPTED": "El comprador ha aceptado tu propuesta de selección.",
+        "REJECTED": "El comprador ha rechazado tu propuesta de selección.",
+        "CANCELLED": "El propietario ha cancelado tu propuesta de selección.",
+        "LISTING_CLOSED": "La vivienda ya no está disponible: Alquiler acordado.",
+    }
+    transaction.create(client.collection(NOTIFICATIONS_COLLECTION).document("selection-" + key), {
+        "recipient_uid": recipient, "type": kind, "message": messages[kind],
+        "listing_id": listing_id, "listing_title": title,
+        "created_at": firestore.SERVER_TIMESTAMP,
+    })
+
+
+def create_proposal(seller_uid, listing_id, match_id, request_id):
+    client = _selection_client()
+    key = decision_key(seller_uid, request_id)
+    proposal_ref = client.collection(PROPOSALS_COLLECTION).document(key)
+    request_ref = client.collection(PROPOSAL_REQUESTS_COLLECTION).document(key)
+
+    def write(tx):
+        _, listing = _owned_listing(tx, client, listing_id, seller_uid)
+        match_snap = client.collection(MATCHES_COLLECTION).document(match_id).get(transaction=tx)
+        if not match_snap.exists:
+            raise ProposalNotFound()
+        match = match_snap.to_dict()
+        if match.get("listing_id") != listing_id or match.get("seller_uid") != seller_uid:
+            raise ProposalNotFound()
+        previous = request_ref.get(transaction=tx)
+        control_ref = _selection_ref(client, listing_id)
+        control = control_ref.get(transaction=tx).to_dict() or {}
+        if previous.exists:
+            if previous.to_dict() != {"seller_uid": seller_uid, "listing_id": listing_id, "match_id": match_id, "request_id": request_id}:
+                raise DecisionConflict()
+            existing = proposal_ref.get(transaction=tx)
+            if not existing.exists:
+                raise InconsistentDecision()
+            return False
+        if match.get("status") != "CONFIRMED":
+            raise DecisionConflict()
+        buyer = client.collection(USERS_COLLECTION).document(match["buyer_uid"]).get(transaction=tx)
+        if not buyer.exists or buyer.to_dict().get("role") != "BUYER":
+            raise ProposalNotFound()
+        if listing_availability(listing) not in {"ACTIVE", "PAUSED"} or control.get("pending_proposal_id") or control.get("accepted_proposal_id"):
+            raise DecisionConflict()
+        tx.create(proposal_ref, {
+            "seller_uid": seller_uid, "buyer_uid": match["buyer_uid"], "listing_id": listing_id,
+            "match_id": match_id, "request_id": request_id, "status": "PENDING",
+            "created_at": firestore.SERVER_TIMESTAMP, "resolved_at": None, "resolved_by": None,
+        })
+        tx.create(request_ref, {"seller_uid": seller_uid, "listing_id": listing_id, "match_id": match_id, "request_id": request_id})
+        tx.set(control_ref, {"pending_proposal_id": key}, merge=True)
+        _proposal_notice(tx, client, key, "PROPOSAL", match["buyer_uid"], listing_id, listing["title"])
+        return True
+
+    created = _run_selection_transaction(client, write)
+    return {"id": key, **proposal_ref.get().to_dict()}, created
+
+
+def _run_selection_transaction(client, callback):
+    import random
+    import time
+    from google.api_core.exceptions import Aborted, AlreadyExists
+    for attempt in range(5):
+        try:
+            return firestore.transactional(callback)(client.transaction(max_attempts=10))
+        except (Aborted, AlreadyExists):
+            if attempt == 4:
+                raise
+        except ValueError as error:
+            if not isinstance(error.__cause__, Aborted) or attempt == 4:
+                raise
+        time.sleep(random.uniform(0.02, 0.15))
+
+
+def resolve_proposal(uid, role, proposal_id, status):
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    if (role, status) not in {("BUYER", "ACCEPTED"), ("BUYER", "REJECTED"), ("SELLER", "CANCELLED")}:
+        raise PermissionError()
+    client = _selection_client()
+
+    def write(tx):
+        ref, data, listing_ref, listing = _proposal_access(tx, client, proposal_id, uid, role)
+        control_ref = _selection_ref(client, data["listing_id"])
+        control = control_ref.get(transaction=tx).to_dict() or {}
+        if data["status"] == status and data["resolved_by"] == uid:
+            return
+        if data["status"] != "PENDING" or control.get("pending_proposal_id") != proposal_id or control.get("accepted_proposal_id"):
+            raise DecisionConflict()
+        match = client.collection(MATCHES_COLLECTION).document(data["match_id"]).get(transaction=tx).to_dict()
+        if not match or match.get("status") != "CONFIRMED" or match.get("listing_id") != data["listing_id"] or match.get("buyer_uid") != data["buyer_uid"] or match.get("seller_uid") != data["seller_uid"]:
+            raise DecisionConflict()
+        if listing_availability(listing) not in {"ACTIVE", "PAUSED"}:
+            raise DecisionConflict()
+        recipients = set()
+        if status == "ACCEPTED":
+            # Lecturas antes de escrituras. Los escritores de matches también leen
+            # listing: el cierre serializa la pertenencia al conjunto de avisos.
+            query = client.collection(MATCHES_COLLECTION).where(filter=FieldFilter("listing_id", "==", data["listing_id"]))
+            recipients = {m["buyer_uid"] for snap in query.stream(transaction=tx)
+                          if (m := snap.to_dict()).get("status", "PENDING") in {"PENDING", "CONFIRMED"}}
+            recipients.discard(data["buyer_uid"])
+        tx.update(ref, {"status": status, "resolved_at": firestore.SERVER_TIMESTAMP, "resolved_by": uid})
+        updates = {"pending_proposal_id": None}
+        if status == "ACCEPTED":
+            updates.update(accepted_proposal_id=proposal_id, selected_buyer_uid=data["buyer_uid"], selected_match_id=data["match_id"])
+            tx.update(listing_ref, {"availability": "CLOSED", "closure_reason": "Alquiler acordado", "closed_at": firestore.SERVER_TIMESTAMP})
+        tx.set(control_ref, updates, merge=True)
+        recipient = data["buyer_uid"] if status == "CANCELLED" else data["seller_uid"]
+        _proposal_notice(tx, client, proposal_id, status, recipient, data["listing_id"], listing["title"])
+        _closure_notices(tx, client, data["listing_id"], listing["title"], recipients)
+
+    _run_selection_transaction(client, write)
+    result = {"id": proposal_id, **client.collection(PROPOSALS_COLLECTION).document(proposal_id).get().to_dict()}
+    if status == "ACCEPTED":
+        try:
+            process_selection_notifications(limit=10, listing_id=result["listing_id"])
+        except Exception as error:
+            # El cierre ya está confirmado y el evento duradero permite recuperar
+            # las entregas restantes sin repetir las completadas.
+            logger.error("Pendientes avisos duraderos de selección (%s).", type(error).__name__)
+    return result
+
+
+def get_proposal(uid, role, proposal_id):
+    client = _selection_client()
+    def read(tx):
+        _, data, _, listing = _proposal_access(tx, client, proposal_id, uid, role)
+        return {"id": proposal_id, **data}, listing
+    return _run_selection_transaction(client, read)
+
+
+def get_proposals(uid, role, *, limit, position=None):
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    client = _selection_client()
+    collection = client.collection(PROPOSALS_COLLECTION)
+    query = collection.where(filter=FieldFilter("seller_uid" if role == "SELLER" else "buyer_uid", "==", uid))
+    query = query.order_by("created_at", direction=firestore.Query.DESCENDING).order_by("__name__", direction=firestore.Query.DESCENDING)
+    if position:
+        query = query.start_after({"created_at": position[0], "__name__": collection.document(position[1])})
+    records = []
+    for snap in query.stream():
+        try:
+            data, _ = get_proposal(uid, role, snap.id)
+        except ProposalNotFound:
+            continue
+        records.append(data)
+        if len(records) == limit:
+            break
+    return records
+
+
+def update_listing(seller_uid, listing_id, changes):
+    client = _selection_client()
+    def write(tx):
+        ref, listing = _owned_listing(tx, client, listing_id, seller_uid)
+        control = _selection_ref(client, listing_id).get(transaction=tx).to_dict() or {}
+        if control.get("pending_proposal_id") or control.get("accepted_proposal_id") or listing_availability(listing) == "CLOSED":
+            raise DecisionConflict()
+        tx.update(ref, changes)
+    _run_selection_transaction(client, write)
+    return get_listing(listing_id)
+
+
+
+def _closure_notices(transaction, client, listing_id, title, recipients):
+    recipients = sorted(recipients)
+    if len(recipients) <= INLINE_CLOSURE_NOTICE_LIMIT:
+        for recipient in recipients:
+            _proposal_notice(transaction, client, listing_id, "LISTING_CLOSED", recipient, listing_id, title)
+        return
+    # Congela los destinatarios elegibles al cierre en documentos acotados.
+    # Ni el evento ni su ID incluyen el comprador elegido.
+    for offset in range(0, len(recipients), CLOSURE_EVENT_BATCH_SIZE):
+        key = decision_key(listing_id, "closure-batch-" + str(offset))
+        transaction.create(client.collection(SELECTION_EVENTS_COLLECTION).document(key), {
+            "listing_id": listing_id, "listing_title": title,
+            "recipients": recipients[offset:offset + CLOSURE_EVENT_BATCH_SIZE],
+            "processed": False, "created_at": firestore.SERVER_TIMESTAMP,
+        })
+
+
+def process_selection_notifications(*, limit=100, listing_id=None):
+    """Reejecutable por la API o el comando de recuperación; cada lote es atómico."""
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    client = _selection_client()
+    query = client.collection(SELECTION_EVENTS_COLLECTION).where(filter=FieldFilter("processed", "==", False))
+    if listing_id is not None:
+        query = query.where(filter=FieldFilter("listing_id", "==", listing_id))
+    processed = 0
+    for snapshot in query.limit(limit).stream():
+        def deliver(tx):
+            current = snapshot.reference.get(transaction=tx)
+            if not current.exists or current.to_dict().get("processed"):
+                return False
+            event = current.to_dict()
+            for recipient in event["recipients"]:
+                _proposal_notice(tx, client, event["listing_id"], "LISTING_CLOSED", recipient,
+                                 event["listing_id"], event["listing_title"])
+            tx.update(snapshot.reference, {"processed": True, "processed_at": firestore.SERVER_TIMESTAMP})
+            return True
+        processed += int(_run_selection_transaction(client, deliver))
+    return processed

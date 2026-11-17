@@ -1,3 +1,8 @@
+> US9 backend: [selección definitiva](us9_backend.md) incorpora propuestas privadas,
+> idempotencia, control transaccional por vivienda, cierre y avisos US7.
+> Las nuevas operaciones de gestión del anuncio deben respetar `listing_selections`
+> y no reabrir una selección aceptada. Los documentos antiguos siguen siendo válidos.
+
 > Actualización 15/11/2026: [US8 backend](us8_backend.md) documenta preferencias
 > propias BUYER en Firestore, filtros persistidos y cursores ligados a configuración.
 > Se conserva Firebase Bearer y US3/US4/US5. LIKE crea candidatura PENDING y aviso
