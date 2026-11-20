@@ -95,6 +95,7 @@ class PreferenceApiTests(SimpleTestCase):
         self.empty = validate_preferences({})[0]
         self.read = self.enterContext(patch("accounts.repository.get_search_preferences", return_value=self.empty))
         self.save = self.enterContext(patch("accounts.repository.save_search_preferences", side_effect=lambda uid, values: values))
+        self.delete = self.enterContext(patch("accounts.repository.delete_search_preferences"))
         self.cities = self.enterContext(patch("accounts.repository.get_filter_cities", return_value=["Barcelona"]))
         self.pending = self.enterContext(patch("accounts.repository.get_pending_listings", return_value=[]))
 
@@ -144,7 +145,9 @@ class PreferenceApiTests(SimpleTestCase):
         self.read.side_effect = None
         self.save.side_effect = RuntimeError("private detail")
         self.assertEqual(self.send("put", {}).status_code, 500)
+        self.delete.side_effect = RuntimeError("private detail")
         self.assertEqual(self.send("delete").status_code, 500)
+        self.delete.side_effect = None
         self.save.side_effect = lambda uid, values: values
         self.assertEqual(self.send("put", {"min_price": "0"}).status_code, 200)
         self.pending.side_effect = RuntimeError("private detail")

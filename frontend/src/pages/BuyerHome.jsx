@@ -3,13 +3,22 @@ import { useNavigate } from 'react-router-dom'
 import { decideProperty, exploreProperties } from '../api/properties'
 import { Logo } from '../components/Logo'
 import { PropertyDetails, PropertyGallery } from '../components/PropertyDetails'
+import { SearchPreferencesForm } from '../components/SearchPreferencesForm'
 import { useAuth } from '../hooks/useAuth'
 
 const SWIPE_THRESHOLD = 72
 const INTERACTIVE = 'button, a, input, select, textarea'
 
+function IconHeart() {
+  return (
+    <svg className="icon-heart" viewBox="0 0 24 22" fill="currentColor" aria-hidden="true">
+      <path d="M12 21C9.8 18.9 2 13.7 2 7.2C2 3.8 4.8 1 8.2 1C10.1 1 11.6 2 12 3.2C12.4 2 13.9 1 15.8 1C19.2 1 22 3.8 22 7.2C22 13.7 14.2 18.9 12 21Z" />
+    </svg>
+  )
+}
+
 export function BuyerHome() {
-  const { user, logout } = useAuth()
+  const { logout } = useAuth()
   const navigate = useNavigate()
   const [properties, setProperties] = useState([])
   const [status, setStatus] = useState('loading')
@@ -20,6 +29,7 @@ export function BuyerHome() {
   const [feedback, setFeedback] = useState('')
   const [offset, setOffset] = useState(0)
   const [dragging, setDragging] = useState(false)
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
   const pointer = useRef(null)
   const decisionLock = useRef(false)
   const loadingLock = useRef(false)
@@ -55,7 +65,8 @@ export function BuyerHome() {
   }, [])
 
   useEffect(() => {
-    loadProperties(true, false)
+    const task = window.setTimeout(() => loadProperties(true, false), 0)
+    return () => window.clearTimeout(task)
   }, [loadProperties])
 
   async function handleDecision(decision = retryDecision) {
@@ -181,7 +192,11 @@ export function BuyerHome() {
         </div>
       </header>
       <div className="home-page__content buyer-explorer">
-        <h1 className="home-page__title">¡Bienvenido, {user?.name || 'Comprador'}!</h1>
+        <div className="buyer-filter-bar">
+          <button type="button" className="buyer-filter-bar__button" onClick={() => setPreferencesOpen(true)}>
+            Filtros
+          </button>
+        </div>
         {status === 'loading' && <p className="property-explorer__message">Cargando viviendas…</p>}
         {status === 'error' && (
           <div className="property-explorer__message property-explorer__message--error" role="alert">
@@ -233,7 +248,7 @@ export function BuyerHome() {
                   <button type="button" className="swipe-btn swipe-btn--pass" onClick={() => handleDecision('PASS')}
                     disabled={decisionBusy} aria-label="No me interesa" title="No me interesa">✕</button>
                   <button type="button" className="swipe-btn swipe-btn--like" onClick={() => handleDecision('LIKE')}
-                    disabled={decisionBusy} aria-label="Me interesa" title="Me interesa">♥</button>
+                    disabled={decisionBusy} aria-label="Me interesa" title="Me interesa"><IconHeart /></button>
                 </div>
                 <PropertyDetails property={property} />
               </div>
@@ -241,6 +256,21 @@ export function BuyerHome() {
           </div>
         )}
       </div>
+      {preferencesOpen && (
+        <div className="preferences-modal" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setPreferencesOpen(false)
+        }}>
+          <SearchPreferencesForm
+            inModal
+            onCancel={() => setPreferencesOpen(false)}
+            onSaved={() => {
+              setPreferencesOpen(false)
+              loadProperties(true)
+            }}
+            onReset={() => loadProperties(true)}
+          />
+        </div>
+      )}
     </main>
   )
 }

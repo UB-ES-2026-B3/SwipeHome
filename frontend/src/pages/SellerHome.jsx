@@ -78,8 +78,11 @@ export function SellerHome() {
   }, [])
 
   useEffect(() => {
-    loadPublishedProperties()
-    loadNotifications()
+    const task = window.setTimeout(() => {
+      loadPublishedProperties()
+      loadNotifications()
+    }, 0)
+    return () => window.clearTimeout(task)
   }, [loadNotifications, loadPublishedProperties])
 
   return (

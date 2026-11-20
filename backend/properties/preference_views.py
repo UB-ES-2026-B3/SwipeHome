@@ -28,9 +28,10 @@ def preferences(request):
             errors = {"body": "JSON inválido."}
         if errors:
             return JsonResponse({"errors": errors}, status=400)
-    elif request.method == "DELETE":
-        values, _ = validate_preferences({})
     try:
+        if request.method == "DELETE":
+            repository.delete_search_preferences(request.user.uid)
+            return JsonResponse(status=204)
         if values is None:
             values = repository.get_search_preferences(request.user.uid)
         else:
