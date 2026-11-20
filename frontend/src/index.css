@@ -877,6 +877,99 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   text-align: center;
 }
 
+.home-page--buyer:has(.buyer-explorer) { overflow-x: clip; }
+.buyer-explorer { width: min(100% - 32px, 540px); }
+.buyer-swipe-deck {
+  position: relative;
+  isolation: isolate;
+  margin: 0 0 var(--sp-3);
+}
+.buyer-swipe-deck::before {
+  position: absolute;
+  z-index: -1;
+  inset: 12px 12px -8px;
+  border: 1px solid var(--c-gray-100);
+  border-radius: var(--r-card);
+  background: var(--c-gray-50);
+  box-shadow: var(--shadow-sm);
+  content: '';
+}
+.buyer-swipe-card {
+  position: relative;
+  transform: translateX(var(--swipe-offset)) rotate(var(--swipe-angle));
+  transform-origin: center 70%;
+  transition: transform 220ms ease-out;
+  cursor: grab;
+}
+.buyer-swipe-card--dragging { cursor: grabbing; transition: none; }
+.buyer-swipe-card .property-card__gallery { user-select: none; }
+.buyer-swipe-card .property-card__gallery img,
+.buyer-swipe-card .property-card__no-photo { height: clamp(185px, 56vw, 305px); }
+.buyer-swipe-card .property-card__body { overflow-wrap: anywhere; }
+.buyer-swipe-card__stamp {
+  position: absolute;
+  z-index: 1;
+  top: 24px;
+  padding: 6px 12px;
+  border: 2px solid currentColor;
+  border-radius: 6px;
+  background: var(--c-white);
+  font-weight: 800;
+  pointer-events: none;
+}
+.buyer-swipe-card__stamp--like { left: 18px; color: #176b38; transform: rotate(-9deg); }
+.buyer-swipe-card__stamp--pass { right: 18px; color: var(--c-error); transform: rotate(9deg); }
+.buyer-swipe-card .property-card__actions { margin-bottom: var(--sp-3); }
+.buyer-swipe-card .swipe-btn { border: 1px solid transparent; font-size: 1.4rem; }
+.buyer-swipe-card .swipe-btn--pass { color: var(--c-gray-700); border-color: var(--c-gray-100); }
+.buyer-swipe-card .swipe-btn--like { color: var(--c-white); }
+@media (max-width: 840px) {
+  .buyer-explorer__header { flex-wrap: wrap; gap: var(--sp-2); }
+  .buyer-explorer__header .buyer-dashboard__account { width: 100%; flex-wrap: wrap; }
+}
+@media (max-width: 600px) {
+  .buyer-explorer__header .buyer-dashboard__account { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .buyer-explorer__header .buyer-dashboard__role { display: none !important; }
+  .buyer-explorer__header .buyer-dashboard__account button {
+    width: 100% !important;
+    min-width: 0 !important;
+    white-space: normal;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .buyer-swipe-card { transition: none; }
+}
+
+.buyer-matches {
+  width: min(100% - 32px, 960px);
+}
+.buyer-matches__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  align-items: start;
+  gap: var(--sp-3);
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+}
+.buyer-matches__card { width: 100%; }
+.buyer-matches__body { overflow-wrap: anywhere; }
+.buyer-matches__card .property-card__gallery img,
+.buyer-matches__card .property-card__no-photo {
+  height: auto;
+  aspect-ratio: 16 / 9;
+}
+.buyer-matches__metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  margin: 0 0 var(--sp-3);
+  font-size: .875rem;
+}
+.buyer-matches__metadata dt { color: var(--c-gray-700); }
+.buyer-matches__metadata dd { margin: 0; font-weight: 700; }
+.buyer-matches__details { margin-top: var(--sp-3); }
+
 /* ═══════════════════════════════════════════════════════════════════
    PANEL DEL VENDEDOR
    ═══════════════════════════════════════════════════════════════════ */

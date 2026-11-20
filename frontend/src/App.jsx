@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { BuyerHome } from './pages/BuyerHome'
+import { BuyerMatchesPage } from './pages/BuyerMatchesPage'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
 import { PropertyPublish } from './pages/PropertyPublish'
@@ -74,6 +75,15 @@ export default function App() {
         element={
           <PrivateRoute requiredRole="BUYER">
             <BuyerHome />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/comprador/matches"
+        element={
+          <PrivateRoute requiredRole="BUYER">
+            <BuyerMatchesPage />
           </PrivateRoute>
         }
       />

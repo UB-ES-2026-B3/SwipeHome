@@ -46,6 +46,12 @@ export function exploreProperties(cursor = null) {
   return authenticatedRequest(`/api/inmuebles/explorar?${query}`)
 }
 
+export function getConfirmedMatches(cursor = null, signal) {
+  const query = new URLSearchParams({ limit: '20' })
+  if (cursor) query.set('cursor', cursor)
+  return authenticatedRequest(`/api/matches?${query}`, { method: 'GET', signal })
+}
+
 export function decideProperty(propertyId, decision) {
   return authenticatedRequest(`/api/inmuebles/${encodeURIComponent(propertyId)}/decision`, {
     method: 'POST',

@@ -21,7 +21,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
       return { ok: response.ok, status: response.status, json: async () => response.data }
     },
   })
-  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty };', context)
+  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getConfirmedMatches };', context)
   return { api: context.api, calls, auth }
 }
 
@@ -101,6 +101,22 @@ test('explores with the cursor-based US4 API contract', async () => {
   assert.equal(calls[0][0], '/api/inmuebles/explorar?limit=20&cursor=opaque+cursor%2Fwith+spaces')
   assert.equal(calls[1][0], '/api/inmuebles/explorar?limit=20')
   assert.match(calls[0][1].headers.Authorization, /^Bearer /)
+})
+
+test('reads confirmed matches with authentication and an opaque pagination cursor', async () => {
+  const { api, calls } = harness()
+  const { signal } = new AbortController()
+
+  await api.getConfirmedMatches(null, signal)
+  await api.getConfirmedMatches('opaque cursor/with spaces')
+
+  assert.deepEqual(calls.map(([path]) => path), [
+    '/api/matches?limit=20',
+    '/api/matches?limit=20&cursor=opaque+cursor%2Fwith+spaces',
+  ])
+  assert.equal(calls[0][1].method, 'GET')
+  assert.equal(calls[0][1].headers.Authorization, 'Bearer firebase-id-token')
+  assert.equal(calls[0][1].signal, signal)
 })
 
 test('sends decisions to the selected listing endpoint with only the decision', async () => {
