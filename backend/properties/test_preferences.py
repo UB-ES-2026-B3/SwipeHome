@@ -121,7 +121,8 @@ class PreferenceApiTests(SimpleTestCase):
             self.revoked.return_value = True
             self.assertEqual(self.send(method, {}, path=path).status_code, 401)
             self.revoked.return_value = False
-            self.assertEqual(self.send(method, {}, path=path).status_code, 200)
+            expected = 204 if method == "delete" else 200
+            self.assertEqual(self.send(method, {}, path=path).status_code, expected)
             self.verify.side_effect = RuntimeError("infrastructure")
             self.assertEqual(self.send(method, {}, path=path).status_code, 500)
             self.verify.side_effect = None
