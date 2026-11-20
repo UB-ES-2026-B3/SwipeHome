@@ -143,6 +143,27 @@ class FirestoreMatchesTests(SimpleTestCase):
         self.assertEqual(seller_matches[0]["status"], "CONFIRMED")
         self.assertEqual(seller_matches[0]["buyer"]["id"], "buyer-1")
 
+    def test_seller_can_filter_and_decide_two_candidates_from_the_same_buyer(self):
+        self.seed("home-2", seller_uid="seller-1")
+        first = self.swipe(identifier="home-1").json()["match"]["id"]
+        second = self.swipe(identifier="home-2").json()["match"]["id"]
+
+        self.assertCountEqual([item["id"] for item in self.candidates().json()["items"]], [first, second])
+        self.assertEqual(self.candidates("seller-2", inmueble="home-1").status_code, 403)
+        filtered = self.candidates(inmueble="home-2")
+        self.assertEqual(filtered.status_code, 200)
+        self.assertEqual([item["id"] for item in filtered.json()["items"]], [second])
+
+        self.assertEqual(self.decide_seller(first).status_code, 200)
+        self.assertEqual(self.decide_seller(second, "PASS").status_code, 200)
+        self.assertEqual(self.candidates().json()["items"], [])
+        self.assertEqual(self.matches("seller-2", inmueble="home-1").status_code, 403)
+        confirmed = self.matches("seller-1", inmueble="home-1")
+        self.assertEqual(confirmed.status_code, 200)
+        self.assertEqual([item["id"] for item in confirmed.json()["items"]], [first])
+        self.assertEqual(self.matches("seller-1", inmueble="home-2").json()["items"], [])
+        self.assertEqual([item["id"] for item in self.matches().json()["items"]], [first])
+
     def test_seller_rejects_candidate(self):
         swipe_res = self.swipe("LIKE")
         match_id = swipe_res.json()["match"]["id"]

@@ -36,8 +36,8 @@ async function authenticatedRequest(path, options = {}) {
   return { ok: response.ok, status: response.status, data }
 }
 
-export function getActiveProperties() {
-  return authenticatedRequest('/api/inmuebles')
+export function getActiveProperties(signal) {
+  return authenticatedRequest('/api/inmuebles', { signal })
 }
 
 export function exploreProperties(cursor = null) {
@@ -46,10 +46,27 @@ export function exploreProperties(cursor = null) {
   return authenticatedRequest(`/api/inmuebles/explorar?${query}`)
 }
 
-export function getConfirmedMatches(cursor = null, signal) {
+function getMatchPage(path, cursor, signal, propertyId) {
   const query = new URLSearchParams({ limit: '20' })
   if (cursor) query.set('cursor', cursor)
-  return authenticatedRequest(`/api/matches?${query}`, { method: 'GET', signal })
+  if (propertyId) query.set('inmueble', propertyId)
+  return authenticatedRequest(`${path}?${query}`, { method: 'GET', signal })
+}
+
+export function getConfirmedMatches(cursor = null, signal, propertyId) {
+  return getMatchPage('/api/matches', cursor, signal, propertyId)
+}
+
+export function getPendingCandidates(cursor = null, signal, propertyId) {
+  return getMatchPage('/api/candidatos', cursor, signal, propertyId)
+}
+
+export function decideCandidate(matchId, decision) {
+  return authenticatedRequest(`/api/matches/${encodeURIComponent(matchId)}/decision-vendedor`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision }),
+  })
 }
 
 export function decideProperty(propertyId, decision) {

@@ -11,6 +11,7 @@ import { ProfilePage } from './pages/ProfilePage'
 import { RegisterPage } from './pages/RegisterPage'
 import { RegisterChoicePage } from './pages/RegisterChoicePage'
 import { SellerHome } from './pages/SellerHome'
+import { SellerMatchesPage } from './pages/SellerMatchesPage'
 
 /**
  * Ruta protegida: redirige a '/' si no autenticado.
@@ -65,6 +66,15 @@ export default function App() {
         element={
           <PrivateRoute requiredRole="SELLER">
             <SellerHome />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/vendedor/matches"
+        element={
+          <PrivateRoute requiredRole="SELLER">
+            <SellerMatchesPage />
           </PrivateRoute>
         }
       />

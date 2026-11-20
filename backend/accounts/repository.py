@@ -674,15 +674,22 @@ def _write_seller_decision(transaction, match_ref, seller_uid, match_id, value):
         raise InconsistentDecision()
 
 
+def _seller_match_listings(client, seller_uid, listing_id):
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    collection = client.collection(LISTINGS_COLLECTION)
+    query = collection.where(filter=FieldFilter("seller_uid", "==", seller_uid))
+    if listing_id:
+        query = query.where(filter=FieldFilter("__name__", "==", collection.document(listing_id)))
+    return {snapshot.id: snapshot.to_dict() for snapshot in query.stream()}
+
+
 def get_candidates(seller_uid, *, limit, position=None, listing_id=None):
     """Consulta paginada de candidatos PENDING de viviendas del Vendedor."""
     from google.cloud.firestore_v1.base_query import FieldFilter
 
     client = firestore.client(app=get_app())
-    seller_listings_query = client.collection(LISTINGS_COLLECTION).where("seller_uid", "==", seller_uid)
-    if listing_id:
-        seller_listings_query = seller_listings_query.where("__name__", "==", listing_id)
-    seller_listings = {doc.id: doc.to_dict() for doc in seller_listings_query.stream()}
+    seller_listings = _seller_match_listings(client, seller_uid, listing_id)
 
     # Backfill legacy matches or sync updated ownership for seller's listings (H1 and H4)
     for lid, ldata in seller_listings.items():
@@ -740,10 +747,7 @@ def get_confirmed_matches(uid, role, *, limit, position=None, listing_id=None):
     client = firestore.client(app=get_app())
     seller_listings = None
     if role == "SELLER":
-        seller_listings_query = client.collection(LISTINGS_COLLECTION).where("seller_uid", "==", uid)
-        if listing_id:
-            seller_listings_query = seller_listings_query.where("__name__", "==", listing_id)
-        seller_listings = {doc.id: doc.to_dict() for doc in seller_listings_query.stream()}
+        seller_listings = _seller_match_listings(client, uid, listing_id)
 
     collection = client.collection(MATCHES_COLLECTION)
     filter_field = "buyer_uid" if role == "BUYER" else "seller_uid"

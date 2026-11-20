@@ -2,7 +2,7 @@ import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getConfirmedMatches } from '../api/properties'
 import { Logo } from '../components/Logo'
-import { PropertyDetails, PropertyGallery, PropertyPrice } from '../components/PropertyDetails'
+import { PropertyDetails, PropertyPrice } from '../components/PropertyDetails'
 
 const confirmationDate = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' })
 
@@ -14,7 +14,11 @@ function MatchCard({ match }) {
 
   return (
     <article className="property-card buyer-matches__card">
-      <PropertyGallery key={String(expanded)} property={property} coverOnly={!expanded} />
+      <div className="buyer-matches__thumbnail">
+        {property.photos?.[0] ? (
+          <img src={property.photos[0]} alt={property.title || 'Vivienda'} loading="lazy" />
+        ) : <span>Sin foto</span>}
+      </div>
       <div className="property-card__body buyer-matches__body">
         <h2>{property.title || 'Vivienda no disponible'}</h2>
         {hasDetails ? (
@@ -29,17 +33,17 @@ function MatchCard({ match }) {
           </dd></div>
         </dl>
         {hasDetails && (
-          <>
-            <button type="button" className="btn btn--ghost uniform-action" aria-expanded={expanded}
-              aria-controls={detailsId} onClick={() => setExpanded(!expanded)}>
-              {expanded ? 'Ocultar detalles' : 'Ver vivienda'}
-            </button>
-            <div className="buyer-matches__details" id={detailsId} hidden={!expanded}>
-              {expanded && <PropertyDetails property={property} monthly />}
-            </div>
-          </>
+          <button type="button" className="btn btn--ghost uniform-action" aria-expanded={expanded}
+            aria-controls={detailsId} onClick={() => setExpanded(!expanded)}>
+            {expanded ? 'Ocultar información' : 'Ver información'}
+          </button>
         )}
       </div>
+      {hasDetails && (
+        <div className="buyer-matches__details" id={detailsId} hidden={!expanded}>
+          {expanded && <PropertyDetails property={property} showPrice={false} />}
+        </div>
+      )}
     </article>
   )
 }

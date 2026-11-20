@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Logo } from '../components/Logo'
 import { useAuth } from '../hooks/useAuth'
 import { getNotifications } from '../api/notifications'
@@ -27,6 +27,7 @@ import { getNotifications } from '../api/notifications'
 export function NotificationsPage() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const homePath = user?.role === 'SELLER' ? '/vendedor/inicio' : '/comprador/inicio'
   
   const [notifications, setNotifications] = useState([])
   const [loading, setLoading] = useState(true)
@@ -130,7 +131,7 @@ export function NotificationsPage() {
   return (
     <main className="notifications-page">
       <header className="home-page__header">
-        <Logo size="sm" to={user?.role === 'SELLER' ? '/vendedor/inicio' : '/comprador/inicio'} />
+        <Logo size="sm" to={homePath} />
         <div className="home-page__account">
           <button type="button" className="home-page__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
             Mi perfil
@@ -142,6 +143,9 @@ export function NotificationsPage() {
       </header>
 
       <div className="notifications-page__content">
+        <Link className="btn btn--ghost notifications-page__back" to={homePath}>
+          <span aria-hidden="true">&larr;</span> Volver al inicio
+        </Link>
         <div className="notifications-page__top">
           <h1 className="notifications-page__title">Notificaciones</h1>
           <button 

@@ -945,19 +945,36 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 .buyer-matches__list {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
-  align-items: start;
   gap: var(--sp-3);
   list-style: none;
   margin: 0 0 var(--sp-3);
   padding: 0;
 }
-.buyer-matches__card { width: 100%; }
-.buyer-matches__body { overflow-wrap: anywhere; }
-.buyer-matches__card .property-card__gallery img,
-.buyer-matches__card .property-card__no-photo {
-  height: auto;
-  aspect-ratio: 16 / 9;
+.buyer-matches__card {
+  display: grid;
+  grid-template-columns: clamp(88px, 23%, 176px) minmax(0, 1fr);
+  align-items: start;
+  width: 100%;
+  gap: var(--sp-2);
+  padding: var(--sp-2);
+}
+.buyer-matches__thumbnail {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  aspect-ratio: 4 / 3;
+  border-radius: var(--r-input);
+  background: var(--c-gray-100);
+  color: var(--c-gray-700);
+  font-size: .75rem;
+}
+.buyer-matches__thumbnail img { width: 100%; height: 100%; object-fit: cover; }
+.buyer-matches__body { min-width: 0; overflow-wrap: anywhere; padding: 0; }
+.buyer-matches__body h2 { font-size: 1.125rem; }
+.buyer-matches__details {
+  grid-column: 1 / -1;
+  padding-top: var(--sp-2);
+  border-top: 1px solid var(--c-gray-100);
 }
 .buyer-matches__metadata {
   display: flex;
@@ -968,7 +985,37 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 .buyer-matches__metadata dt { color: var(--c-gray-700); }
 .buyer-matches__metadata dd { margin: 0; font-weight: 700; }
-.buyer-matches__details { margin-top: var(--sp-3); }
+
+.seller-matches__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.seller-matches__filter { display: grid; gap: var(--sp-1); margin-top: var(--sp-4); }
+.seller-matches__filter label { font-weight: 700; }
+.seller-matches__filter-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
+.seller-matches__filter select {
+  flex: 1 1 280px;
+  min-width: 0;
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  text-overflow: ellipsis;
+  border: 1px solid var(--c-gray-100);
+  border-radius: var(--r-input);
+  background: var(--c-white);
+  color: var(--c-black);
+  font: inherit;
+}
+.seller-matches__filter-status { margin: 0; overflow-wrap: anywhere; color: var(--c-gray-700); }
+.notifications-page__back { display: inline-flex; gap: 8px; margin-bottom: var(--sp-2); }
+.seller-matches__feedback:not(:empty) { margin-top: var(--sp-2); }
+.seller-matches__sections { display: grid; gap: var(--sp-6); margin-top: var(--sp-4); }
+.seller-matches__section { min-width: 0; }
+.seller-matches__section h2 { font-size: 1.5rem; margin-bottom: var(--sp-2); }
+.seller-matches__item { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-3); overflow-wrap: anywhere; }
+.seller-matches__summary { flex: 1 1 280px; min-width: 0; }
+.seller-matches__item h3 { font-size: 1.125rem; margin-bottom: var(--sp-1); }
+.seller-matches__item .seller-matches__date { margin-bottom: 0; color: var(--c-gray-700); font-weight: 400; }
+.seller-matches__item .seller-matches__date time { color: inherit; }
+.seller-matches__item [role='alert'] { flex-basis: 100%; }
+.seller-matches__section > .btn { margin-top: var(--sp-2); }
 
 /* ═══════════════════════════════════════════════════════════════════
    PANEL DEL VENDEDOR

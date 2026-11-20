@@ -32,13 +32,13 @@ export function PropertyGallery({ property, coverOnly = false }) {
   )
 }
 
-export function PropertyDetails({ property, monthly = false }) {
+export function PropertyDetails({ property, monthly = false, showPrice = true }) {
   return (
     <>
       <p className="property-card__location">{property.street}, {property.postal_code} · {property.city}</p>
       <p className="property-card__description">{property.description}</p>
       <dl className="property-card__details">
-        <div><dt>Precio</dt><dd><PropertyPrice value={property.price} monthly={monthly} /></dd></div>
+        {showPrice && <div><dt>Precio</dt><dd><PropertyPrice value={property.price} monthly={monthly} /></dd></div>}
         <div><dt>Superficie</dt><dd>{property.surface} m²</dd></div>
         <div><dt>Dormitorios</dt><dd>{property.bedrooms}</dd></div>
         <div><dt>Baños</dt><dd>{property.bathrooms}</dd></div>

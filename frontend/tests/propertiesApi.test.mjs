@@ -21,7 +21,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
       return { ok: response.ok, status: response.status, json: async () => response.data }
     },
   })
-  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getConfirmedMatches };', context)
+  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getConfirmedMatches, getPendingCandidates, decideCandidate };', context)
   return { api: context.api, calls, auth }
 }
 
@@ -117,6 +117,25 @@ test('reads confirmed matches with authentication and an opaque pagination curso
   assert.equal(calls[0][1].method, 'GET')
   assert.equal(calls[0][1].headers.Authorization, 'Bearer firebase-id-token')
   assert.equal(calls[0][1].signal, signal)
+})
+
+test('filters both seller lists and sends decisions for a specific candidacy', async () => {
+  const { api, calls } = harness()
+  await api.getPendingCandidates('page two', undefined, 'home/one')
+  await api.getConfirmedMatches(null, undefined, 'home/one')
+  await api.decideCandidate('match/one', 'LIKE')
+  await api.decideCandidate('match/two', 'PASS')
+  assert.deepEqual(calls.map(([path]) => path), [
+    '/api/candidatos?limit=20&cursor=page+two&inmueble=home%2Fone',
+    '/api/matches?limit=20&inmueble=home%2Fone',
+    '/api/matches/match%2Fone/decision-vendedor',
+    '/api/matches/match%2Ftwo/decision-vendedor',
+  ])
+  assert.deepEqual(calls.map(([, options]) => options.method), ['GET', 'GET', 'POST', 'POST'])
+  for (const [, options] of calls) assert.equal(options.headers.Authorization, 'Bearer firebase-id-token')
+  assert.equal(calls[2][1].headers['Content-Type'], 'application/json')
+  assert.deepEqual(JSON.parse(calls[2][1].body), { decision: 'LIKE' })
+  assert.deepEqual(JSON.parse(calls[3][1].body), { decision: 'PASS' })
 })
 
 test('sends decisions to the selected listing endpoint with only the decision', async () => {
