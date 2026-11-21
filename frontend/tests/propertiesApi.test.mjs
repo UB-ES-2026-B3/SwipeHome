@@ -138,6 +138,19 @@ test('filters both seller lists and sends decisions for a specific candidacy', a
   assert.deepEqual(JSON.parse(calls[3][1].body), { decision: 'PASS' })
 })
 
+test('preserves decision response statuses and network errors for seller actions', async () => {
+  for (const status of [401, 409, 500]) {
+    const { api } = harness({ response: { ok: false, status, data: { error: 'failed' } } })
+    const result = await api.decideCandidate('candidate', 'LIKE')
+    assert.equal(result.ok, false)
+    assert.equal(result.status, status)
+  }
+  const { api } = harness({ networkFailure: true })
+  await assert.rejects(api.decideCandidate('candidate', 'LIKE'), /offline/)
+  await assert.rejects(api.getPendingCandidates(), /offline/)
+  await assert.rejects(api.getConfirmedMatches(), /offline/)
+})
+
 test('sends decisions to the selected listing endpoint with only the decision', async () => {
   const { api, calls } = harness()
 

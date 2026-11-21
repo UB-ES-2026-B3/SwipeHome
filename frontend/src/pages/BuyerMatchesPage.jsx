@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { getConfirmedMatches } from '../api/properties'
 import { Logo } from '../components/Logo'
 import { PropertyDetails, PropertyPrice } from '../components/PropertyDetails'
+import { useAuth } from '../hooks/useAuth'
 
 const confirmationDate = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' })
 
@@ -49,6 +50,7 @@ function MatchCard({ match }) {
 }
 
 export function BuyerMatchesPage() {
+  const { expireSession } = useAuth()
   const [matches, setMatches] = useState([])
   const [nextCursor, setNextCursor] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -60,8 +62,12 @@ export function BuyerMatchesPage() {
     const controller = new AbortController()
     request.current = controller
     getConfirmedMatches(cursor, controller.signal)
-      .then(({ ok, data }) => {
+      .then(({ ok, status, data }) => {
         if (controller.signal.aborted) return
+        if (status === 401) {
+          expireSession().catch(() => setError('Tu sesión ha caducado. Inicia sesión de nuevo.'))
+          return
+        }
         if (!ok || !Array.isArray(data?.items)) {
           setError('No se pudieron cargar los matches confirmados.')
           return
@@ -79,12 +85,18 @@ export function BuyerMatchesPage() {
           setLoading(false)
         }
       })
-  }, [])
+  }, [expireSession])
 
   function loadMore() {
     setLoading(true)
     setError('')
     loadMatches(nextCursor)
+  }
+
+  function refreshMatches() {
+    setLoading(true)
+    setError('')
+    loadMatches(null)
   }
 
   useEffect(() => {
@@ -99,10 +111,15 @@ export function BuyerMatchesPage() {
     <main className="home-page home-page--buyer">
       <header className="home-page__header">
         <Logo size="sm" to="/comprador/inicio" />
-        <Link className="btn btn--ghost uniform-action" to="/comprador/inicio">Volver al inicio</Link>
       </header>
       <div className="home-page__content buyer-matches">
-        <h1 className="home-page__title">Mis matches</h1>
+        <Link className="btn btn--ghost notifications-page__back" to="/comprador/inicio">
+          <span aria-hidden="true">&larr;</span> Volver al inicio
+        </Link>
+        <div className="buyer-matches__heading">
+          <h1 className="home-page__title">Mis matches</h1>
+          <button type="button" className="btn btn--ghost" disabled={loading} onClick={refreshMatches}>Actualizar</button>
+        </div>
         {matches.length > 0 && (
           <ul className="buyer-matches__list" role="list">
             {matches.map((match) => <li key={match.id}><MatchCard match={match} /></li>)}
