@@ -804,7 +804,10 @@ def save_search_preferences(uid, values):
 
 
 def delete_search_preferences(uid):
-    firestore.client(app=get_app()).collection(PREFERENCES_COLLECTION).document(uid).delete()
+    client = firestore.client(app=get_app())
+    batch = client.batch()
+    batch.delete(client.collection(PREFERENCES_COLLECTION).document(uid))
+    batch.commit()
 
 
 def get_filter_cities():
