@@ -9,7 +9,7 @@ const SWIPE_THRESHOLD = 72
 const INTERACTIVE = 'button, a, input, select, textarea'
 
 export function BuyerHome() {
-  const { user, logout } = useAuth()
+  const { user, logout, expireSession } = useAuth()
   const navigate = useNavigate()
   const [properties, setProperties] = useState([])
   const [status, setStatus] = useState('loading')
@@ -38,6 +38,10 @@ export function BuyerHome() {
     try {
       const result = await exploreProperties(reset ? null : nextCursor.current)
       if (!result.ok) {
+        if (result.status === 401) {
+          await expireSession()
+          return
+        }
         setError(result.data?.error || 'No se pudieron cargar las viviendas.')
         setStatus('error')
         return
@@ -52,7 +56,7 @@ export function BuyerHome() {
     } finally {
       loadingLock.current = false
     }
-  }, [])
+  }, [expireSession])
 
   useEffect(() => {
     loadProperties(true, false)
@@ -94,7 +98,7 @@ export function BuyerHome() {
         await loadProperties(true)
       } else if (result.status === 401) {
         setDecisionError('Tu sesión ha caducado. Inicia sesión de nuevo.')
-        await logout()
+        await expireSession()
       } else {
         setDecisionError(result.data?.error || 'No se pudo guardar la decisión. Inténtalo de nuevo.')
         setRetryDecision(decision)
@@ -152,13 +156,20 @@ export function BuyerHome() {
     }
   }
 
-  function handleKeyDown(event) {
-    if (event.repeat || (event.target !== event.currentTarget && event.target.closest(INTERACTIVE))) return
-    if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
-      event.preventDefault()
-      handleDecision(event.key === 'ArrowRight' ? 'LIKE' : 'PASS')
+  useEffect(() => {
+    function handleKeyDown(event) {
+        if (event.repeat || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey ||
+          event.target.closest?.('input, select, textarea, [contenteditable="true"]') ||
+          (event.target.closest?.('button, a') && !event.target.closest?.('.buyer-swipe-card')) ||
+          status !== 'ready' || !property || decisionLock.current) return
+      if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+        event.preventDefault()
+        handleDecision(event.key === 'ArrowRight' ? 'LIKE' : 'PASS')
+      }
     }
-  }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  })
 
   return (
     <main className="home-page home-page--buyer">
@@ -209,7 +220,6 @@ export function BuyerHome() {
               onPointerCancel={cancelSwipe}
               onLostPointerCapture={cancelSwipe}
               onDragStart={(event) => event.preventDefault()}
-              onKeyDown={handleKeyDown}
             >
               <PropertyGallery key={property.id} property={property} />
               {Math.abs(offset) > 20 && (

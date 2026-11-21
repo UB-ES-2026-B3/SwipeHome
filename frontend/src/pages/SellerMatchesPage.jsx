@@ -2,16 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { decideCandidate, getActiveProperties, getConfirmedMatches, getPendingCandidates } from '../api/properties'
 import { Logo } from '../components/Logo'
+import { PropertyDetails, PropertyGallery } from '../components/PropertyDetails'
+import { useAuth } from '../hooks/useAuth'
 
 const dateFormat = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
-const priceFormat = new Intl.NumberFormat('es-ES', { style: 'currency', currency: 'EUR', maximumFractionDigits: 2 })
 const initialPage = { items: [], cursor: null, loading: true, error: '' }
 
-function propertyLabel({ title, street, city, price }) {
-  return [title, street, city, price > 0 ? `${priceFormat.format(price)}/mes` : ''].filter(Boolean).join(' · ')
-}
-
-function MatchSection({ pending = false, propertyId, saving, onDecision }) {
+function MatchSection({ pending = false, propertyId, saving, onDecision, expireSession }) {
   const [page, setPage] = useState(initialPage)
   const [decisionError, setDecisionError] = useState(null)
   const request = useRef(null)
@@ -25,8 +22,12 @@ function MatchSection({ pending = false, propertyId, saving, onDecision }) {
     const controller = new AbortController()
     request.current = controller
     fetchPage(cursor, controller.signal, propertyId)
-      .then(({ ok, data }) => {
+      .then(({ ok, status, data }) => {
         if (controller.signal.aborted) return
+        if (status === 401) {
+          expireSession().catch(() => setPage((previous) => ({ ...previous, loading: false, error: 'Tu sesión ha caducado. Inicia sesión de nuevo.' })))
+          return
+        }
         if (!ok || !Array.isArray(data?.items)) throw new Error(data?.error || 'No se pudo cargar la lista.')
         const items = data.items.filter((item) => item.status === expectedStatus)
         setPage((previous) => ({
@@ -44,7 +45,7 @@ function MatchSection({ pending = false, propertyId, saving, onDecision }) {
       .finally(() => {
         if (request.current === controller) request.current = null
       })
-  }, [expectedStatus, fetchPage, propertyId])
+  }, [expectedStatus, expireSession, fetchPage, propertyId])
 
   useEffect(() => {
     load()
@@ -62,7 +63,7 @@ function MatchSection({ pending = false, propertyId, saving, onDecision }) {
   async function submit(item, decision) {
     setDecisionError(null)
     try {
-      if (await onDecision(item.id, decision)) {
+      if (await onDecision(item.id, decision) === 'saved') {
         setPage((previous) => ({ ...previous, items: previous.items.filter((entry) => entry.id !== item.id) }))
       }
     } catch (error) {
@@ -121,32 +122,87 @@ function MatchSection({ pending = false, propertyId, saving, onDecision }) {
 }
 
 export function SellerMatchesPage() {
+  const { expireSession } = useAuth()
   const [properties, setProperties] = useState(null)
   const [filterError, setFilterError] = useState('')
   const [filterAttempt, setFilterAttempt] = useState(0)
-  const [propertyId, setPropertyId] = useState('')
+  const [propertyIndex, setPropertyIndex] = useState(0)
   const [decisionState, setDecisionState] = useState({ saving: false, message: '' })
   const [confirmedVersion, setConfirmedVersion] = useState(0)
+  const [pendingVersion, setPendingVersion] = useState(0)
+  const [dragOffset, setDragOffset] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const pointer = useRef(null)
   const decisionLock = useRef(false)
-  const selectedProperty = properties?.find((property) => property.id === propertyId)
+  const currentIndex = Math.min(propertyIndex, Math.max((properties?.length || 1) - 1, 0))
+  const selectedProperty = properties?.[currentIndex]
+  const propertyId = selectedProperty?.id
 
   useEffect(() => {
     const controller = new AbortController()
     getActiveProperties(controller.signal)
-      .then(({ ok, data }) => {
+      .then(({ ok, status, data }) => {
         if (controller.signal.aborted) return
+        if (status === 401) {
+          expireSession().catch(() => setFilterError('Tu sesión ha caducado. Inicia sesión de nuevo.'))
+          return
+        }
         if (!ok || !Array.isArray(data?.properties)) throw new Error()
+        setFilterError('')
         setProperties(data.properties)
       })
       .catch(() => {
         if (!controller.signal.aborted) setFilterError('No se pudieron cargar tus viviendas para filtrar.')
       })
     return () => controller.abort()
-  }, [filterAttempt])
+  }, [expireSession, filterAttempt])
 
-  function changeProperty(id) {
-    setPropertyId(id)
+  function changeProperty(step) {
+    if (decisionLock.current) return
+    setPropertyIndex((index) => Math.max(0, Math.min(index + step, properties.length - 1)))
     setDecisionState({ saving: false, message: '' })
+  }
+
+  function refreshLists() {
+    setPendingVersion((version) => version + 1)
+    setConfirmedVersion((version) => version + 1)
+  }
+
+  function handlePointerDown(event) {
+    if (decisionLock.current || pointer.current || !event.isPrimary || event.button !== 0 ||
+        event.target.closest('button, a, input, select, textarea')) return
+    pointer.current = { id: event.pointerId, x: event.clientX, y: event.clientY }
+    event.currentTarget.setPointerCapture(event.pointerId)
+  }
+
+  function handlePointerMove(event) {
+    const start = pointer.current
+    if (start?.id !== event.pointerId) return
+    const dx = event.clientX - start.x
+    const dy = event.clientY - start.y
+    if (!start.horizontal) {
+      if (Math.abs(dy) > 10 && Math.abs(dy) >= Math.abs(dx)) {
+        pointer.current = null
+        return
+      }
+      if (Math.abs(dx) < 10) return
+      start.horizontal = true
+      setDragging(true)
+    }
+    setDragOffset(Math.max(-120, Math.min(120, dx)))
+  }
+
+  function finishPointer(event, cancelled = false) {
+    const start = pointer.current
+    if (start?.id !== event.pointerId) return
+    pointer.current = null
+    setDragging(false)
+    setDragOffset(0)
+    const dx = event.clientX - start.x
+    const dy = event.clientY - start.y
+    if (!cancelled && start.horizontal && Math.abs(dx) >= 72 && Math.abs(dx) > Math.abs(dy)) {
+      changeProperty(dx < 0 ? 1 : -1)
+    }
   }
 
   async function saveDecision(matchId, decision) {
@@ -156,17 +212,21 @@ export function SellerMatchesPage() {
     try {
       const { ok, status, data } = await decideCandidate(matchId, decision)
       const confirmed = decision === 'LIKE'
+      if (status === 401) {
+        await expireSession()
+        return 'expired'
+      }
       if (status === 409) {
-        setConfirmedVersion((version) => version + 1)
-        setDecisionState({ saving: false, message: 'Esta candidatura ya no está pendiente.' })
-        return true
+        refreshLists()
+        setDecisionState({ saving: false, message: 'Esta candidatura ya tiene una decisión diferente. Hemos actualizado las listas.' })
+        return 'conflict'
       }
       if (!ok || data?.id !== matchId || data?.status !== (confirmed ? 'CONFIRMED' : 'REJECTED')) {
         throw new Error(data?.error || 'El servidor no pudo guardar la decisión.')
       }
       if (confirmed) setConfirmedVersion((version) => version + 1)
       setDecisionState({ saving: false, message: confirmed ? 'Match confirmado.' : 'Candidatura rechazada.' })
-      return true
+      return 'saved'
     } catch {
       setDecisionState({ saving: false, message: '' })
       throw new Error('No se pudo guardar la decisión. Inténtalo de nuevo.')
@@ -179,39 +239,68 @@ export function SellerMatchesPage() {
     <main className="seller-dashboard">
       <header className="home-page__header">
         <Logo size="sm" to="/vendedor/inicio" />
-        <Link className="btn btn--ghost uniform-action" to="/vendedor/inicio">Volver al inicio</Link>
       </header>
       <div className="seller-dashboard__content seller-matches">
+        <Link className="btn btn--ghost notifications-page__back" to="/vendedor/inicio">
+          <span aria-hidden="true">&larr;</span> Volver al inicio
+        </Link>
         <h1 className="home-page__title">Candidatos y matches</h1>
-        <div className="seller-matches__filter">
-          <label htmlFor="seller-match-property">Filtrar por vivienda</label>
-          <div className="seller-matches__filter-controls">
-            <select id="seller-match-property" value={propertyId} disabled={!properties || decisionState.saving}
-              onChange={(event) => changeProperty(event.target.value)}>
-              <option value="">Todas mis viviendas</option>
-              {properties?.map((property) => <option key={property.id} value={property.id}>{propertyLabel(property)}</option>)}
-            </select>
-            {selectedProperty && (
-              <button type="button" className="btn btn--ghost" disabled={decisionState.saving}
-                onClick={() => changeProperty('')}>Quitar filtro</button>
-            )}
+        {filterError && (
+          <div className="seller-dashboard__message seller-dashboard__message--error" role="alert">
+            <p>{filterError}</p>
+            <button type="button" className="btn btn--ghost" onClick={() => {
+              setFilterError('')
+              setFilterAttempt((attempt) => attempt + 1)
+            }}>Reintentar</button>
           </div>
-          {selectedProperty && <p className="seller-matches__filter-status" role="status">Mostrando: {selectedProperty.title}</p>}
-          {filterError && (
-            <div className="seller-matches__actions">
-              <span role="alert">{filterError}</span>
-              <button type="button" className="btn btn--ghost" onClick={() => {
-                setFilterError('')
-                setFilterAttempt((attempt) => attempt + 1)
-              }}>Reintentar filtro</button>
+        )}
+        {!properties && !filterError && <p className="seller-dashboard__message" role="status">Cargando viviendas…</p>}
+        {properties?.length === 0 && <p className="seller-dashboard__message">Todavía no tienes viviendas publicadas.</p>}
+        {selectedProperty && (
+          <div className="seller-matches__layout">
+            <section className="seller-matches__property" aria-label="Vivienda seleccionada">
+              <div className="seller-matches__property-header">
+                <h2>Mis viviendas</h2>
+                <span aria-live="polite">{currentIndex + 1} de {properties.length}</span>
+              </div>
+              <article className={`property-card seller-matches__property-card${dragging ? ' seller-matches__property-card--dragging' : ''}`}
+                style={{ '--swipe-offset': `${dragOffset}px`, '--swipe-angle': `${dragOffset / 18}deg` }}
+                tabIndex={0} aria-label={`Vivienda: ${selectedProperty.title}`}
+                onPointerDown={handlePointerDown} onPointerMove={handlePointerMove}
+                onPointerUp={finishPointer} onPointerCancel={(event) => finishPointer(event, true)}
+                onLostPointerCapture={(event) => finishPointer(event, true)}
+                onDragStart={(event) => event.preventDefault()}
+                onKeyDown={(event) => {
+                  if (event.repeat || event.target.closest('button, a, input, select, textarea')) return
+                  if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
+                    event.preventDefault()
+                    changeProperty(event.key === 'ArrowRight' ? 1 : -1)
+                  }
+                }}>
+                <PropertyGallery key={propertyId} property={selectedProperty} />
+                <div className="property-card__body">
+                  <h3>{selectedProperty.title}</h3>
+                  <PropertyDetails property={selectedProperty} monthly />
+                </div>
+              </article>
+              <div className="seller-matches__property-navigation">
+                <button type="button" className="btn btn--ghost" onClick={() => changeProperty(-1)} disabled={currentIndex === 0 || decisionState.saving} aria-label="Vivienda anterior" title="Vivienda anterior">←</button>
+                <button type="button" className="btn btn--ghost" onClick={() => changeProperty(1)} disabled={currentIndex === properties.length - 1 || decisionState.saving} aria-label="Vivienda siguiente" title="Vivienda siguiente">→</button>
+              </div>
+            </section>
+            <div className="seller-matches__results">
+              <div className="seller-dashboard__section-header">
+                <h2>Candidaturas</h2>
+                <button type="button" className="btn btn--ghost" disabled={decisionState.saving} onClick={refreshLists}>Actualizar</button>
+              </div>
+              <p className="seller-matches__feedback" role="status">{decisionState.message}</p>
+              <div className="seller-matches__sections">
+                <MatchSection key={`pending:${propertyId}:${pendingVersion}`} pending propertyId={propertyId} saving={decisionState.saving} onDecision={saveDecision} expireSession={expireSession} />
+                <MatchSection key={`confirmed:${propertyId}:${confirmedVersion}`} propertyId={propertyId} expireSession={expireSession} />
+              </div>
             </div>
-          )}
-        </div>
-        <p className="seller-matches__feedback" role="status">{decisionState.message}</p>
-        <div className="seller-matches__sections">
-          <MatchSection key={`pending:${propertyId}`} pending propertyId={propertyId} saving={decisionState.saving} onDecision={saveDecision} />
-          <MatchSection key={`confirmed:${propertyId}:${confirmedVersion}`} propertyId={propertyId} />
-        </div>
+          </div>
+        )}
       </div>
     </main>
   )

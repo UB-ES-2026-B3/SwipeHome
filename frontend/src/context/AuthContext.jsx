@@ -113,6 +113,9 @@ export function AuthProvider({ children }) {
 
   const clearUser = useCallback(() => setUser(null), [])
   const dismissAuthError = useCallback(() => setAuthError(null), [])
+  const expireSession = useCallback(async () => {
+    await signOut(auth)
+  }, [])
   const logout = useCallback(async () => {
     if (logoutInProgress.current) return false
     logoutInProgress.current = true
@@ -131,7 +134,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, authError, setUser, clearUser, logout, loggingOut, retry, dismissAuthError }}
+      value={{ user, loading, authError, setUser, clearUser, logout, expireSession, loggingOut, retry, dismissAuthError }}
     >
       {/* Solución temporal: el aviso vive aquí para no tocar los componentes existentes. */}
       <AuthErrorBanner />

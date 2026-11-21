@@ -942,7 +942,10 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 
 .buyer-matches {
   width: min(100% - 32px, 960px);
+  text-align: left;
 }
+.buyer-matches .property-explorer__message { margin-inline: auto; }
+.buyer-matches__heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); }
 .buyer-matches__list {
   display: grid;
   gap: var(--sp-3);
@@ -987,24 +990,23 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .buyer-matches__metadata dd { margin: 0; font-weight: 700; }
 
 .seller-matches__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
-.seller-matches__filter { display: grid; gap: var(--sp-1); margin-top: var(--sp-4); }
-.seller-matches__filter label { font-weight: 700; }
-.seller-matches__filter-controls { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
-.seller-matches__filter select {
-  flex: 1 1 280px;
-  min-width: 0;
-  width: 100%;
-  min-height: 48px;
-  padding: 10px 12px;
-  text-overflow: ellipsis;
-  border: 1px solid var(--c-gray-100);
-  border-radius: var(--r-input);
-  background: var(--c-white);
-  color: var(--c-black);
-  font: inherit;
-}
-.seller-matches__filter-status { margin: 0; overflow-wrap: anywhere; color: var(--c-gray-700); }
 .notifications-page__back { display: inline-flex; gap: 8px; margin-bottom: var(--sp-2); }
+.seller-matches { max-width: 1200px; }
+.seller-matches__layout { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: start; gap: var(--sp-6); margin-top: var(--sp-4); }
+.seller-matches__property, .seller-matches__results { min-width: 0; }
+.seller-matches__property-header { display: flex; justify-content: space-between; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.seller-matches__property-header h2, .seller-matches__results > .seller-dashboard__section-header h2 { font-size: 1.25rem; }
+.seller-matches__property-header span { color: var(--c-gray-700); font-size: .875rem; white-space: nowrap; }
+.seller-matches__property-card { transform: translateX(var(--swipe-offset)) rotate(var(--swipe-angle)); transition: transform 200ms ease-out; cursor: grab; }
+.seller-matches__property-card--dragging { cursor: grabbing; transition: none; }
+.seller-matches__property-card .property-card__gallery { user-select: none; }
+.seller-matches__property-card .property-card__gallery img, .seller-matches__property-card .property-card__no-photo { height: 220px; }
+.seller-matches__property-card .property-card__body { overflow-wrap: anywhere; }
+.seller-matches__property-card h3 { font-size: 1.25rem; line-height: 1.2; margin-bottom: var(--sp-1); }
+.seller-matches__property-card .property-card__details { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.seller-matches__property-navigation { display: flex; justify-content: center; gap: var(--sp-3); margin-top: var(--sp-2); }
+.seller-matches__property-navigation button { width: 48px; height: 44px; padding: 0; font-size: 1.25rem; }
+.seller-matches__property-navigation button:disabled { opacity: .4; cursor: not-allowed; }
 .seller-matches__feedback:not(:empty) { margin-top: var(--sp-2); }
 .seller-matches__sections { display: grid; gap: var(--sp-6); margin-top: var(--sp-4); }
 .seller-matches__section { min-width: 0; }
@@ -1016,6 +1018,13 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .seller-matches__item .seller-matches__date time { color: inherit; }
 .seller-matches__item [role='alert'] { flex-basis: 100%; }
 .seller-matches__section > .btn { margin-top: var(--sp-2); }
+@media (max-width: 760px) {
+  .seller-matches__layout { grid-template-columns: minmax(0, 1fr); gap: var(--sp-4); }
+  .seller-matches__property { width: min(100%, 540px); margin-inline: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .seller-matches__property-card { transition: none; }
+}
 
 /* ═══════════════════════════════════════════════════════════════════
    PANEL DEL VENDEDOR
