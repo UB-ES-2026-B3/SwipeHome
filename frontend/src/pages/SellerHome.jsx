@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { getNotifications } from '../api/notifications'
 import { getActiveProperties } from '../api/properties'
 import { Logo } from '../components/Logo'
@@ -101,7 +101,7 @@ export function SellerHome() {
       </header>
 
       <div className="seller-dashboard__content">
-        <nav aria-label="Menú del vendedor">
+        <nav className="seller-matches__actions" aria-label="Menú del vendedor">
           <button
             type="button"
             className="seller-dashboard__publish"
@@ -109,6 +109,7 @@ export function SellerHome() {
           >
             Publicar
           </button>
+          <Link className="btn btn--ghost" to="/vendedor/matches">Candidatos y matches</Link>
         </nav>
 
         <section className="seller-dashboard__list" aria-labelledby="published-properties-title">
