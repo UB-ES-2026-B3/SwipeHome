@@ -118,6 +118,7 @@ export function BuyerMatchesPage() {
         </Link>
         <div className="buyer-matches__heading">
           <h1 className="home-page__title">Mis matches</h1>
+          <Link className="btn btn--ghost" to="/comprador/propuestas">Propuestas recibidas</Link>
           <button type="button" className="btn btn--ghost" disabled={loading} onClick={refreshMatches}>Actualizar</button>
         </div>
         {matches.length > 0 && (
