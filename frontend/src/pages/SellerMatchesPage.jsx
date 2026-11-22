@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createProposal, decideCandidate, getActiveProperties, getConfirmedMatches, getPendingCandidates, getProposals, resolveProposal } from '../api/properties'
+import { clearProposalRequestId, createProposalRequestId, getProposalRequestId, proposalRequestKey } from '../api/proposalRequests'
 import { Logo } from '../components/Logo'
 import { PropertyDetails, PropertyGallery } from '../components/PropertyDetails'
 import { useAuth } from '../hooks/useAuth'
@@ -144,7 +145,7 @@ function MatchSection({ pending = false, propertyId, saving, onDecision, expireS
 }
 
 export function SellerMatchesPage() {
-  const { expireSession } = useAuth()
+  const { user, expireSession } = useAuth()
   const [properties, setProperties] = useState(null)
   const [filterError, setFilterError] = useState('')
   const [filterAttempt, setFilterAttempt] = useState(0)
@@ -189,7 +190,18 @@ export function SellerMatchesPage() {
       loadAllPages(getProposals, controller.signal),
       loadAllPages(getConfirmedMatches, controller.signal, propertyId),
     ]).then(([proposals, candidates]) => {
-      if (!controller.signal.aborted) setSelection({ propertyId, loading: false, error: '', items: proposals.filter((item) => item.listing_id === propertyId), candidates })
+      if (controller.signal.aborted) return
+      for (const proposal of proposals) {
+        const key = proposalRequestKey(user.uid, proposal.listing_id, proposal.match_id)
+        try {
+          if (window.sessionStorage.getItem(key) === proposal.request_id) {
+            clearProposalRequestId(requestIds.current, window.sessionStorage, key)
+          }
+        } catch {
+          if (requestIds.current.get(key) === proposal.request_id) requestIds.current.delete(key)
+        }
+      }
+      setSelection({ propertyId, loading: false, error: '', items: proposals.filter((item) => item.listing_id === propertyId), candidates })
     }).catch((error) => {
       if (controller.signal.aborted) return
       if (error.status === 401) {
@@ -199,7 +211,7 @@ export function SellerMatchesPage() {
       }
     })
     return () => controller.abort()
-  }, [expireSession, propertyId, selectionVersion])
+  }, [expireSession, propertyId, selectionVersion, user.uid])
 
   const currentSelection = selection.loading || selection.propertyId !== propertyId
     ? { ...selection, loading: true, error: '', items: [], candidates: [] }
@@ -219,25 +231,26 @@ export function SellerMatchesPage() {
     if (!window.confirm(`¿Proponer a ${buyer} para ${selectedProperty.title}?`)) return
     decisionLock.current = true
     setDecisionState({ saving: true, message: 'Enviando propuesta…' })
-    const key = `${propertyId}:${item.id}`
-    if (!requestIds.current.has(key)) requestIds.current.set(key, crypto.randomUUID())
+    const key = proposalRequestKey(user.uid, propertyId, item.id)
+    let storage
+    try { storage = window.sessionStorage } catch { storage = null }
     try {
-      const { ok, status, data } = await createProposal(propertyId, item.id, requestIds.current.get(key))
+      const requestId = getProposalRequestId(requestIds.current, storage, key, createProposalRequestId)
+      const { ok, status, data } = await createProposal(propertyId, item.id, requestId)
       if (status === 401) {
         await expireSession()
         return
       }
       if (status === 409) {
         setDecisionState({ saving: false, message: 'La situación de la vivienda ha cambiado. Actualizando los datos.' })
-        refreshSelection()
         refreshLists()
-        setFilterAttempt((attempt) => attempt + 1)
         return
       }
-      if (!ok || data?.listing_id !== propertyId || data?.match_id !== item.id || !data?.id) throw new Error()
-      requestIds.current.delete(key)
-      setDecisionState({ saving: false, message: 'Propuesta enviada.' })
+      if (!ok || data?.listing_id !== propertyId || data?.match_id !== item.id || data?.request_id !== requestId || !data?.id || !proposalLabels[data?.status]) throw new Error()
+      clearProposalRequestId(requestIds.current, storage, key)
+      setDecisionState({ saving: false, message: data.status === 'PENDING' ? 'Propuesta enviada.' : 'La propuesta ya se ha resuelto. Actualizando los datos.' })
       refreshSelection()
+      if (data.status !== 'PENDING') refreshLists()
     } catch {
       setDecisionState({ saving: false, message: 'No se pudo confirmar el envío. Vuelve a intentarlo para comprobar el resultado.' })
     } finally {
@@ -259,14 +272,11 @@ export function SellerMatchesPage() {
       }
       if (status === 409) {
         setDecisionState({ saving: false, message: 'La propuesta ya ha cambiado. Actualizando los datos.' })
-        refreshSelection()
         refreshLists()
-        setFilterAttempt((attempt) => attempt + 1)
         return
       }
       if (!ok || data?.id !== proposal.id || data?.status !== 'CANCELLED') throw new Error()
       setDecisionState({ saving: false, message: 'Propuesta cancelada.' })
-      refreshSelection()
       refreshLists()
     } catch {
       setDecisionState({ saving: false, message: 'No se pudo confirmar la cancelación. Vuelve a intentarlo.' })
@@ -403,6 +413,8 @@ export function SellerMatchesPage() {
                 <PropertyGallery key={propertyId} property={selectedProperty} />
                 <div className="property-card__body">
                   <h3>{selectedProperty.title}</h3>
+                  {selectedProperty.availability === 'CLOSED' && <p className="property-availability">Anuncio cerrado{selectedProperty.closure_reason ? ` · ${selectedProperty.closure_reason}` : ''}</p>}
+                  {selectedProperty.availability === 'PAUSED' && <p className="property-availability">Anuncio pausado</p>}
                   <PropertyDetails property={selectedProperty} monthly />
                 </div>
               </article>

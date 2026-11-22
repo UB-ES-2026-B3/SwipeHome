@@ -8,7 +8,7 @@ import { useAuth } from '../hooks/useAuth'
 const dateFormat = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium' })
 const statusLabels = { PENDING: 'Pendiente', ACCEPTED: 'Aceptada', REJECTED: 'Rechazada', CANCELLED: 'Cancelada' }
 
-function ProposalCard({ proposal, expireSession }) {
+function ProposalCard({ proposal, expireSession, refreshEpoch }) {
   const [detail, setDetail] = useState(null)
   const [detailError, setDetailError] = useState('')
   const [message, setMessage] = useState('')
@@ -16,6 +16,7 @@ function ProposalCard({ proposal, expireSession }) {
   const [expanded, setExpanded] = useState(false)
   const [busy, setBusy] = useState(false)
   const [version, setVersion] = useState(0)
+  const [loadedEpoch, setLoadedEpoch] = useState(null)
   const lock = useRef(false)
   const detailsId = useId()
 
@@ -29,6 +30,7 @@ function ProposalCard({ proposal, expireSession }) {
       }
       if (!ok || !data?.listing || data.id !== proposal.id) throw new Error()
       setDetail(data)
+      setLoadedEpoch(refreshEpoch)
       setDetailError('')
       setLoading(false)
     }).catch(() => {
@@ -38,7 +40,7 @@ function ProposalCard({ proposal, expireSession }) {
       }
     })
     return () => controller.abort()
-  }, [expireSession, proposal.id, version])
+  }, [expireSession, proposal.id, refreshEpoch, version])
 
   function refreshDetail() {
     setLoading(true)
@@ -93,6 +95,7 @@ function ProposalCard({ proposal, expireSession }) {
           <div className="property-card__body buyer-matches__body">
             <h2>{detail.listing.title}</h2>
             <p className="property-card__location">{detail.listing.city} · <strong><PropertyPrice value={detail.listing.price} monthly /></strong></p>
+            {(detail.status === 'ACCEPTED' || detail.listing.availability === 'CLOSED') && <p className="property-availability">Anuncio cerrado</p>}
             <dl className="buyer-matches__metadata">
               <div><dt>Vendedor</dt><dd>{detail.seller?.name || 'No disponible'}</dd></div>
               <div><dt>Recibida</dt><dd><time dateTime={detail.created_at}>{dateFormat.format(new Date(detail.created_at))}</time></dd></div>
@@ -103,8 +106,8 @@ function ProposalCard({ proposal, expireSession }) {
                 onClick={() => setExpanded(!expanded)}>{expanded ? 'Ocultar vivienda' : 'Ver vivienda'}</button>
               {detail.status === 'PENDING' && (
                 <>
-                  <button type="button" className="btn btn--dark" disabled={busy || loading || Boolean(detailError)} onClick={() => respond('aceptar')}>Aceptar</button>
-                  <button type="button" className="btn btn--ghost" disabled={busy || loading || Boolean(detailError)} onClick={() => respond('rechazar')}>Rechazar</button>
+                  <button type="button" className="btn btn--dark" disabled={busy || loading || loadedEpoch !== refreshEpoch || Boolean(detailError)} onClick={() => respond('aceptar')}>Aceptar</button>
+                  <button type="button" className="btn btn--ghost" disabled={busy || loading || loadedEpoch !== refreshEpoch || Boolean(detailError)} onClick={() => respond('rechazar')}>Rechazar</button>
                 </>
               )}
             </div>
@@ -125,6 +128,7 @@ export function BuyerProposalsPage() {
   const [cursor, setCursor] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [refreshEpoch, setRefreshEpoch] = useState(0)
   const request = useRef(null)
 
   const load = useCallback((nextCursor = null) => {
@@ -139,6 +143,7 @@ export function BuyerProposalsPage() {
       }
       if (!ok || !Array.isArray(data?.items)) throw new Error()
       setItems((previous) => nextCursor ? [...previous, ...data.items] : data.items)
+      if (!nextCursor) setRefreshEpoch((previous) => previous + 1)
       setCursor(data.next_cursor || null)
     }).catch(() => {
       if (!controller.signal.aborted) setError('No se pudieron cargar las propuestas. Inténtalo de nuevo.')
@@ -173,7 +178,7 @@ export function BuyerProposalsPage() {
           <h1 className="home-page__title">Propuestas recibidas</h1>
           <button type="button" className="btn btn--ghost" disabled={loading} onClick={() => reload()}>Actualizar</button>
         </div>
-        {items.length > 0 && <ul className="buyer-matches__list" role="list">{items.map((item) => <li key={item.id}><ProposalCard proposal={item} expireSession={expireSession} /></li>)}</ul>}
+        {items.length > 0 && <ul className="buyer-matches__list" role="list">{items.map((item) => <li key={item.id}><ProposalCard proposal={item} expireSession={expireSession} refreshEpoch={refreshEpoch} /></li>)}</ul>}
         {loading && <p className="property-explorer__message" role="status">Cargando propuestas…</p>}
         {error && <div className="property-explorer__message property-explorer__message--error" role="alert"><p>{error}</p><button type="button" className="btn btn--ghost" onClick={() => reload(cursor)}>Reintentar</button></div>}
         {!loading && !error && !items.length && !cursor && <p className="property-explorer__message">Todavía no tienes propuestas recibidas.</p>}

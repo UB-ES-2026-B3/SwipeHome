@@ -991,6 +991,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .buyer-proposals__card .buyer-matches__details .property-card__gallery { width: min(100%, 460px); margin-bottom: var(--sp-2); overflow: hidden; }
 .buyer-proposals__message { margin-top: var(--sp-2); }
 .buyer-proposals__error { grid-column: 1 / -1; color: var(--c-error); }
+.property-availability { color: var(--c-gray-700); font-size: .875rem; font-weight: 700; margin-bottom: var(--sp-2); }
 
 .seller-matches__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
 .notifications-page__back { display: inline-flex; gap: 8px; margin-bottom: var(--sp-2); }
