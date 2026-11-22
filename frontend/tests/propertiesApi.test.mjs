@@ -21,7 +21,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
       return { ok: response.ok, status: response.status, json: async () => response.data }
     },
   })
-  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getConfirmedMatches, getPendingCandidates, decideCandidate };', context)
+  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getConfirmedMatches, getPendingCandidates, decideCandidate, getProposals, getProposal, createProposal, resolveProposal };', context)
   return { api: context.api, calls, auth }
 }
 
@@ -149,6 +149,24 @@ test('preserves decision response statuses and network errors for seller actions
   await assert.rejects(api.decideCandidate('candidate', 'LIKE'), /offline/)
   await assert.rejects(api.getPendingCandidates(), /offline/)
   await assert.rejects(api.getConfirmedMatches(), /offline/)
+})
+
+test('queries and creates proposals using the authenticated US9 API', async () => {
+  const { api, calls } = harness()
+  await api.getProposals('opaque cursor')
+  await api.getProposal('proposal/one')
+  await api.createProposal('home-1', 'match-1', 'request-1')
+  await api.resolveProposal('proposal/one', 'cancelar')
+  assert.deepEqual(calls.map(([path]) => path), [
+    '/api/propuestas?limit=20&cursor=opaque+cursor',
+    '/api/propuestas/proposal%2Fone',
+    '/api/propuestas',
+    '/api/propuestas/proposal%2Fone/cancelar',
+  ])
+  assert.deepEqual(calls.map(([, options]) => options.method), ['GET', 'GET', 'POST', 'POST'])
+  for (const [, options] of calls) assert.equal(options.headers.Authorization, 'Bearer firebase-id-token')
+  assert.deepEqual(JSON.parse(calls[2][1].body), { listing_id: 'home-1', match_id: 'match-1', request_id: 'request-1' })
+  assert.deepEqual(JSON.parse(calls[3][1].body), {})
 })
 
 test('sends decisions to the selected listing endpoint with only the decision', async () => {

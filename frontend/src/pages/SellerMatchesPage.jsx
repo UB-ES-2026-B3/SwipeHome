@@ -1,14 +1,31 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { decideCandidate, getActiveProperties, getConfirmedMatches, getPendingCandidates } from '../api/properties'
+import { createProposal, decideCandidate, getActiveProperties, getConfirmedMatches, getPendingCandidates, getProposals, resolveProposal } from '../api/properties'
 import { Logo } from '../components/Logo'
 import { PropertyDetails, PropertyGallery } from '../components/PropertyDetails'
 import { useAuth } from '../hooks/useAuth'
 
 const dateFormat = new Intl.DateTimeFormat('es-ES', { dateStyle: 'medium', timeStyle: 'short' })
 const initialPage = { items: [], cursor: null, loading: true, error: '' }
+const proposalLabels = { PENDING: 'Pendiente', ACCEPTED: 'Aceptada', REJECTED: 'Rechazada', CANCELLED: 'Cancelada' }
 
-function MatchSection({ pending = false, propertyId, saving, onDecision, expireSession }) {
+async function loadAllPages(fetchPage, signal, propertyId) {
+  const items = []
+  const seen = new Set()
+  let cursor = null
+  do {
+    const result = await fetchPage(cursor, signal, propertyId)
+    if (result.status === 401) throw Object.assign(new Error('Sesión caducada.'), { status: 401 })
+    if (!result.ok || !Array.isArray(result.data?.items)) throw new Error('No se pudieron cargar las propuestas.')
+    items.push(...result.data.items)
+    cursor = result.data.next_cursor || null
+    if (cursor && seen.has(cursor)) throw new Error('No se pudieron cargar las propuestas.')
+    if (cursor) seen.add(cursor)
+  } while (cursor)
+  return items
+}
+
+function MatchSection({ pending = false, propertyId, saving, onDecision, expireSession, selection, onPropose }) {
   const [page, setPage] = useState(initialPage)
   const [decisionError, setDecisionError] = useState(null)
   const request = useRef(null)
@@ -98,6 +115,11 @@ function MatchSection({ pending = false, propertyId, saving, onDecision, expireS
                       aria-label={`No me interesa: ${buyer}, ${listing}`} onClick={() => submit(item, 'PASS')}>No me interesa</button>
                   </div>
                 )}
+                {!pending && selection && !selection.loading && !selection.error && selection.canPropose && (
+                  <button className="btn btn--ghost" type="button" disabled={saving}
+                    aria-label={`Proponer selección: ${buyer}, ${listing}`}
+                    onClick={() => onPropose(item)}>Proponer selección</button>
+                )}
                 {decisionError?.id === item.id && <p className="seller-dashboard__message--error" role="alert">{decisionError.message}</p>}
               </li>
             )
@@ -130,10 +152,13 @@ export function SellerMatchesPage() {
   const [decisionState, setDecisionState] = useState({ saving: false, message: '' })
   const [confirmedVersion, setConfirmedVersion] = useState(0)
   const [pendingVersion, setPendingVersion] = useState(0)
+  const [selectionVersion, setSelectionVersion] = useState(0)
+  const [selection, setSelection] = useState({ loading: true, error: '', items: [], candidates: [] })
   const [dragOffset, setDragOffset] = useState(0)
   const [dragging, setDragging] = useState(false)
   const pointer = useRef(null)
   const decisionLock = useRef(false)
+  const requestIds = useRef(new Map())
   const currentIndex = Math.min(propertyIndex, Math.max((properties?.length || 1) - 1, 0))
   const selectedProperty = properties?.[currentIndex]
   const propertyId = selectedProperty?.id
@@ -157,6 +182,99 @@ export function SellerMatchesPage() {
     return () => controller.abort()
   }, [expireSession, filterAttempt])
 
+  useEffect(() => {
+    if (!propertyId) return
+    const controller = new AbortController()
+    Promise.all([
+      loadAllPages(getProposals, controller.signal),
+      loadAllPages(getConfirmedMatches, controller.signal, propertyId),
+    ]).then(([proposals, candidates]) => {
+      if (!controller.signal.aborted) setSelection({ propertyId, loading: false, error: '', items: proposals.filter((item) => item.listing_id === propertyId), candidates })
+    }).catch((error) => {
+      if (controller.signal.aborted) return
+      if (error.status === 401) {
+        expireSession().catch(() => setSelection({ propertyId, loading: false, error: 'Tu sesión ha caducado. Inicia sesión de nuevo.', items: [], candidates: [] }))
+      } else {
+        setSelection({ propertyId, loading: false, error: 'No se pudieron cargar las propuestas. Inténtalo de nuevo.', items: [], candidates: [] })
+      }
+    })
+    return () => controller.abort()
+  }, [expireSession, propertyId, selectionVersion])
+
+  const currentSelection = selection.loading || selection.propertyId !== propertyId
+    ? { ...selection, loading: true, error: '', items: [], candidates: [] }
+    : selection
+  const pendingProposal = currentSelection.items.find((item) => item.status === 'PENDING')
+  const acceptedProposal = currentSelection.items.find((item) => item.status === 'ACCEPTED')
+  const canPropose = selectedProperty?.availability !== 'CLOSED' && !pendingProposal && !acceptedProposal
+
+  function refreshSelection() {
+    setSelection((previous) => ({ ...previous, loading: true }))
+    setSelectionVersion((version) => version + 1)
+  }
+
+  async function submitProposal(item) {
+    if (decisionLock.current || currentSelection.loading || currentSelection.error || !canPropose) return
+    const buyer = item.buyer?.name || 'este comprador'
+    if (!window.confirm(`¿Proponer a ${buyer} para ${selectedProperty.title}?`)) return
+    decisionLock.current = true
+    setDecisionState({ saving: true, message: 'Enviando propuesta…' })
+    const key = `${propertyId}:${item.id}`
+    if (!requestIds.current.has(key)) requestIds.current.set(key, crypto.randomUUID())
+    try {
+      const { ok, status, data } = await createProposal(propertyId, item.id, requestIds.current.get(key))
+      if (status === 401) {
+        await expireSession()
+        return
+      }
+      if (status === 409) {
+        setDecisionState({ saving: false, message: 'La situación de la vivienda ha cambiado. Actualizando los datos.' })
+        refreshSelection()
+        refreshLists()
+        setFilterAttempt((attempt) => attempt + 1)
+        return
+      }
+      if (!ok || data?.listing_id !== propertyId || data?.match_id !== item.id || !data?.id) throw new Error()
+      requestIds.current.delete(key)
+      setDecisionState({ saving: false, message: 'Propuesta enviada.' })
+      refreshSelection()
+    } catch {
+      setDecisionState({ saving: false, message: 'No se pudo confirmar el envío. Vuelve a intentarlo para comprobar el resultado.' })
+    } finally {
+      decisionLock.current = false
+    }
+  }
+
+  async function cancelProposal(proposal) {
+    if (decisionLock.current || proposal.status !== 'PENDING') return
+    const buyer = currentSelection.candidates.find((item) => item.id === proposal.match_id)?.buyer?.name || 'el comprador'
+    if (!window.confirm(`¿Cancelar la propuesta a ${buyer} para ${selectedProperty.title}?`)) return
+    decisionLock.current = true
+    setDecisionState({ saving: true, message: 'Cancelando propuesta…' })
+    try {
+      const { ok, status, data } = await resolveProposal(proposal.id, 'cancelar')
+      if (status === 401) {
+        await expireSession()
+        return
+      }
+      if (status === 409) {
+        setDecisionState({ saving: false, message: 'La propuesta ya ha cambiado. Actualizando los datos.' })
+        refreshSelection()
+        refreshLists()
+        setFilterAttempt((attempt) => attempt + 1)
+        return
+      }
+      if (!ok || data?.id !== proposal.id || data?.status !== 'CANCELLED') throw new Error()
+      setDecisionState({ saving: false, message: 'Propuesta cancelada.' })
+      refreshSelection()
+      refreshLists()
+    } catch {
+      setDecisionState({ saving: false, message: 'No se pudo confirmar la cancelación. Vuelve a intentarlo.' })
+    } finally {
+      decisionLock.current = false
+    }
+  }
+
   function changeProperty(step) {
     if (decisionLock.current) return
     setPropertyIndex((index) => Math.max(0, Math.min(index + step, properties.length - 1)))
@@ -166,6 +284,8 @@ export function SellerMatchesPage() {
   function refreshLists() {
     setPendingVersion((version) => version + 1)
     setConfirmedVersion((version) => version + 1)
+    refreshSelection()
+    setFilterAttempt((attempt) => attempt + 1)
   }
 
   function handlePointerDown(event) {
@@ -224,7 +344,10 @@ export function SellerMatchesPage() {
       if (!ok || data?.id !== matchId || data?.status !== (confirmed ? 'CONFIRMED' : 'REJECTED')) {
         throw new Error(data?.error || 'El servidor no pudo guardar la decisión.')
       }
-      if (confirmed) setConfirmedVersion((version) => version + 1)
+      if (confirmed) {
+        setConfirmedVersion((version) => version + 1)
+        refreshSelection()
+      }
       setDecisionState({ saving: false, message: confirmed ? 'Match confirmado.' : 'Candidatura rechazada.' })
       return 'saved'
     } catch {
@@ -296,7 +419,46 @@ export function SellerMatchesPage() {
               <p className="seller-matches__feedback" role="status">{decisionState.message}</p>
               <div className="seller-matches__sections">
                 <MatchSection key={`pending:${propertyId}:${pendingVersion}`} pending propertyId={propertyId} saving={decisionState.saving} onDecision={saveDecision} expireSession={expireSession} />
-                <MatchSection key={`confirmed:${propertyId}:${confirmedVersion}`} propertyId={propertyId} expireSession={expireSession} />
+                <MatchSection key={`confirmed:${propertyId}:${confirmedVersion}`} propertyId={propertyId} expireSession={expireSession}
+                  saving={decisionState.saving} selection={{ ...currentSelection, canPropose }} onPropose={submitProposal} />
+                <section className="seller-matches__section" aria-labelledby="selection-title">
+                  <h2 id="selection-title">Selección de inquilino</h2>
+                  {currentSelection.loading && <p className="seller-dashboard__message" role="status">Cargando propuestas…</p>}
+                  {currentSelection.error && (
+                    <div className="seller-dashboard__message seller-dashboard__message--error" role="alert">
+                      <p>{currentSelection.error}</p>
+                      <button type="button" className="btn btn--ghost" onClick={refreshSelection}>Reintentar</button>
+                    </div>
+                  )}
+                  {!currentSelection.loading && !currentSelection.error && (
+                    <>
+                      {(selectedProperty.availability === 'CLOSED' || acceptedProposal) && <p className="seller-dashboard__message">Anuncio cerrado.</p>}
+                      {!currentSelection.items.length && <p className="seller-dashboard__message">No hay propuestas para esta vivienda.</p>}
+                      {currentSelection.candidates.length === 0 && selectedProperty.availability !== 'CLOSED' && !acceptedProposal && (
+                        <p className="seller-dashboard__message">No hay candidatos confirmados para seleccionar.</p>
+                      )}
+                      {currentSelection.items.length > 0 && (
+                        <ul className="seller-dashboard__notifications-list" role="list">
+                          {currentSelection.items.map((proposal) => {
+                            const buyer = currentSelection.candidates.find((item) => item.id === proposal.match_id)?.buyer?.name || 'Comprador no disponible'
+                            const date = proposal.created_at && new Date(proposal.created_at)
+                            return (
+                              <li className="seller-dashboard__notification seller-matches__item" key={proposal.id}>
+                                <div className="seller-matches__summary">
+                                  <h3>{buyer}</h3>
+                                  <p>{proposalLabels[proposal.status] || proposal.status}</p>
+                                  {date && !Number.isNaN(date.getTime()) && <p className="seller-matches__date">Propuesta: <time dateTime={proposal.created_at}>{dateFormat.format(date)}</time></p>}
+                                </div>
+                                {proposal.status === 'PENDING' && <button type="button" className="btn btn--ghost" disabled={decisionState.saving}
+                                  aria-label={`Cancelar propuesta: ${buyer}, ${selectedProperty.title}`} onClick={() => cancelProposal(proposal)}>Cancelar propuesta</button>}
+                              </li>
+                            )
+                          })}
+                        </ul>
+                      )}
+                    </>
+                  )}
+                </section>
               </div>
             </div>
           </div>
