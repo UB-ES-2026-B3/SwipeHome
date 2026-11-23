@@ -803,12 +803,26 @@ def save_search_preferences(uid, values):
     return dict(values)
 
 
+def delete_search_preferences(uid):
+    client = firestore.client(app=get_app())
+    batch = client.batch()
+    batch.delete(client.collection(PREFERENCES_COLLECTION).document(uid))
+    batch.commit()
+
+
 def get_filter_cities():
     from google.cloud.firestore_v1.base_query import FieldFilter
     from properties.serialization import published_listing
     query = _listings().where(filter=FieldFilter("published", "==", True))
-    return sorted({data["city"].strip() for snap in query.stream()
-                   if published_listing(data := snap.to_dict()) and listing_availability(data) == "ACTIVE"})
+    cities = {}
+    for snap in query.stream():
+        data = snap.to_dict()
+        if published_listing(data) and listing_availability(data) == "ACTIVE":
+            city = data["city"].strip()
+            normalized = " ".join(city.split()).casefold()
+            if normalized:
+                cities.setdefault(normalized, city)
+    return sorted(cities.values(), key=str.casefold)
 
 
 # US9: documentos privados de coordinación e idempotencia, nunca serializados.

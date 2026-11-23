@@ -8,6 +8,14 @@ FIELDS = ("city", "postal_code", "min_price", "max_price", "min_area", "max_area
           "bedrooms", "min_bathrooms", "people_offered", "is_shared")
 
 
+def normalize_text(value):
+    return " ".join(str(value).strip().upper().split()) if value is not None else ""
+
+
+def normalize_city(value):
+    return " ".join(str(value).strip().split()).casefold() if value is not None else ""
+
+
 def validate_preferences(body):
     values = dict.fromkeys(FIELDS)
     if not isinstance(body, dict):
@@ -69,7 +77,16 @@ def matches_preferences(data, values):
                        ("is_shared", "shared_accommodation")):
         expected = values.get(key)
         actual = data[field].strip() if key in ("city", "postal_code") else data[field]
-        if expected is not None and actual != expected:
+        if expected is not None:
+            if key == "city":
+                matches = normalize_city(actual) == normalize_city(expected)
+            elif key == "postal_code":
+                matches = normalize_text(actual) == normalize_text(expected)
+            else:
+                matches = actual == expected
+        else:
+            matches = True
+        if not matches:
             return False
     if values.get("min_bathrooms") is not None and data["bathrooms"] < values["min_bathrooms"]:
         return False

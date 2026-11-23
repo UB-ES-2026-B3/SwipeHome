@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { Logo } from '../components/Logo'
 import { useAuth } from '../hooks/useAuth'
@@ -51,7 +51,7 @@ export function NotificationsPage() {
     })
   }
 
-  const loadNotifications = async (nextCursor = null) => {
+  const loadNotifications = useCallback(async (nextCursor = null) => {
     const loadingMoreRequest = Boolean(nextCursor)
     if (isRefreshingRef.current || isLoadingMoreRef.current) return
 
@@ -110,11 +110,12 @@ export function NotificationsPage() {
         setLoading(false)
       }
     }
-  }
+  }, [logout, navigate])
 
   useEffect(() => {
-    loadNotifications()
-  }, [])
+    const task = window.setTimeout(() => loadNotifications(), 0)
+    return () => window.clearTimeout(task)
+  }, [loadNotifications])
 
   const handleLoadMore = () => {
     if (cursor && hasMore && !isLoadingMoreRef.current && !isRefreshingRef.current) {
