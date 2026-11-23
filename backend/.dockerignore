@@ -1,0 +1,22 @@
+# Lista blanca: el contexto de `az acr build` se sube desde el equipo de quien
+# lo lanza, y backend/ puede contener el JSON de la cuenta de servicio de
+# Firebase, ficheros .env, .venv o db.sqlite3. Se excluye todo y solo se
+# vuelve a incluir lo que la aplicación necesita en ejecución.
+*
+!requirements.txt
+!manage.py
+!config/
+!accounts/
+!properties/
+
+# Dentro de los paquetes incluidos, se vuelve a excluir lo que no se ejecuta.
+**/__pycache__
+**/*.pyc
+# Tests: solo los importan otros tests, nunca el código de la aplicación.
+**/test_*.py
+properties/tests.py
+
+# Defensa extra por si alguien deja una credencial dentro de un paquete:
+# la aplicación no lee ningún .json ni .env de disco.
+**/*.json
+**/.env*
