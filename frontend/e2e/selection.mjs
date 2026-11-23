@@ -1,20 +1,11 @@
 import assert from 'node:assert/strict'
 import { text as readStream } from 'node:stream/consumers'
 import { setTimeout as delay } from 'node:timers/promises'
-import { createServer } from 'vite'
-import { startChromium, waitFor } from './chromium.mjs'
+import { assertNoOverflow, startApp } from './browser-app.mjs'
+import { waitFor } from './chromium.mjs'
 
-const { scenario, backend, authHost, chrome, emails, password } = JSON.parse(await readStream(process.stdin))
-assert.match(backend, /^http:\/\/127\.0\.0\.1:\d+$/)
-assert.equal(authHost, '127.0.0.1:9099')
-Object.assign(process.env, {
-  VITE_API_TARGET: backend,
-  VITE_FIREBASE_PROJECT_ID: 'demo-swipehome-us4',
-  VITE_FIREBASE_API_KEY: 'demo-key',
-  VITE_FIREBASE_AUTH_DOMAIN: '127.0.0.1',
-  VITE_FIREBASE_APP_ID: '1:123456789:web:1234567890',
-  VITE_FIREBASE_AUTH_EMULATOR_HOST: authHost,
-})
+const input = JSON.parse(await readStream(process.stdin))
+const { scenario, backend } = input
 
 const homeTitle = 'Piso luminoso'
 const sendPath = '/api/inmuebles/home/propuestas'
@@ -29,12 +20,7 @@ function holdNext(path, failureStatus = null) {
   return { started: started.promise, finished: finished.promise, release: release.resolve }
 }
 
-const server = await createServer({
-  mode: 'us98',
-  envFile: false,
-  logLevel: 'error',
-  server: { host: '127.0.0.1', port: 0, hmr: false },
-  plugins: [{
+const app = await startApp(input, [{
     name: 'swipehome-e2e-proposal-transport',
     configureServer(vite) {
       vite.middlewares.use(async (request, response, next) => {
@@ -71,27 +57,10 @@ const server = await createServer({
         }
       })
     },
-  }],
-})
-
-let chromium
-let origin
-const open = (tab, path) => tab.navigate(origin + path)
-const pathOf = (tab) => tab.evaluate(() => location.pathname)
+}])
+const { chromium, open, pathOf, login, account } = app
 const buttonExists = (tab, label) => tab.evaluate((name) =>
   [...document.querySelectorAll('main button')].some((button) => button.innerText.trim() === name), label)
-
-async function login(tab, account) {
-  await open(tab, '/login')
-  await tab.fill('input[name=email]', emails[account])
-  await tab.fill('input[name=password]', password)
-  await tab.click('Iniciar sesión', 'form')
-  const roleHome = account === 'seller' ? '/vendedor/inicio' : '/comprador/inicio'
-  await waitFor(async () => await pathOf(tab) === roleHome, `iniciar sesión como ${account}`)
-  return tab
-}
-
-const account = async (name, viewport) => login(await chromium.tab(viewport), name)
 
 async function buyerCard(seller, buyer) {
   const position = await waitFor(() => seller.evaluate((name) => {
@@ -117,12 +86,6 @@ async function buyerDetail(buyer, expectedPath) {
   assert.equal(await pathOf(buyer), expectedPath)
 }
 
-async function noOverflow(tab, width) {
-  const sizes = await tab.evaluate(() => [window.innerWidth, document.documentElement.scrollWidth])
-  assert.equal(sizes[0], width)
-  assert.ok(sizes[1] <= sizes[0] + 1, `Ancho real ${sizes[1]} para viewport ${sizes[0]}`)
-}
-
 async function acceptance() {
   const seller = await account('seller')
   const staleSeller = await account('seller')
@@ -136,7 +99,7 @@ async function acceptance() {
   assert.equal(await buttonExists(staleSeller, 'Enviar propuesta'), true)
 
   const path = await propose(seller)
-  await noOverflow(seller, 1280)
+  await assertNoOverflow(seller, 1280)
   await seller.click('Mis matches')
   await seller.text('Hay una propuesta pendiente para esta vivienda.')
   assert.equal(await buttonExists(seller, 'Enviar propuesta'), false)
@@ -154,7 +117,7 @@ async function acceptance() {
     await buyer.text(value)
   }
   assert.equal(await buttonExists(buyer, 'Cancelar propuesta'), false)
-  await noOverflow(buyer, 390)
+  await assertNoOverflow(buyer, 390)
   await buyer.keyboardClick('Aceptar propuesta')
   await buyer.text('Estado: Aceptada')
   await buyer.text('Vivienda no disponible')
@@ -311,16 +274,13 @@ async function errors() {
 }
 
 try {
-  await server.listen()
-  origin = `http://127.0.0.1:${server.httpServer.address().port}`
-  chromium = await startChromium(chrome)
   console.log(`${scenario} en ${chromium.version}`)
   await { acceptance, rejection, cancellation, errors }[scenario]()
+  if (process.env.SWIPEHOME_QA_DEBUG === '1') await chromium.capture(`selection-${scenario}`)
   console.log(`${scenario}: recorrido de navegador correcto`)
+} catch (error) {
+  await chromium.capture(`selection-${scenario}-failed`)
+  throw error
 } finally {
-  try {
-    await chromium?.close()
-  } finally {
-    await server.close()
-  }
+  await app.close()
 }

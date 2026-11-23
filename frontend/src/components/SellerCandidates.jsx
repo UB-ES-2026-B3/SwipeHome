@@ -30,21 +30,23 @@ export function SellerCandidates() {
           setError('La sesión ha caducado y no se pudo cerrar. Reintenta desde el aviso de sesión.')
           setStatus('error')
         }
-        return
+        return false
       }
       if (!result.ok) {
         setError(result.data?.error || 'No se pudieron cargar las candidaturas.')
         setStatus('error')
-        return
+        return false
       }
       const items = result.data.items || []
       setCandidates((current) => reset ? items : [...current, ...items])
       cursorRef.current = result.data.next_cursor || null
       setNextCursor(cursorRef.current)
       setStatus('ready')
+      return true
     } catch {
       setError('No hay conexión con el servidor. Inténtalo de nuevo.')
       setStatus('error')
+      return false
     } finally {
       loadingRef.current = false
     }
@@ -87,8 +89,9 @@ export function SellerCandidates() {
         )
       } else if (result.status === 409) {
         setStatus('loading')
-        await loadCandidates()
-        setFeedback('La candidatura ya se había resuelto. Se actualizó la lista.')
+        if (await loadCandidates()) {
+          setFeedback('La candidatura ya se había resuelto. Se actualizó la lista.')
+        }
       } else {
         setError(
           result.data?.error ||
@@ -115,7 +118,7 @@ export function SellerCandidates() {
             setError('')
             loadCandidates()
           }}
-          disabled={status === 'loading'}
+          disabled={status === 'loading' || busyId !== null}
         >
           Actualizar
         </button>
@@ -138,6 +141,9 @@ export function SellerCandidates() {
             Reintentar
           </button>
         </div>
+      )}
+      {status === 'ready' && error && (
+        <p role="alert" className="seller-dashboard__message seller-dashboard__message--error">{error}</p>
       )}
       {feedback && <p className="seller-dashboard__feedback" role="status">{feedback}</p>}
       {status === 'ready' && candidates.length === 0 && (
@@ -186,7 +192,7 @@ export function SellerCandidates() {
                 setStatus('loading')
                 loadCandidates(false)
               }}
-              disabled={status === 'loading'}
+              disabled={busyId !== null}
             >
               Cargar más candidaturas
             </button>

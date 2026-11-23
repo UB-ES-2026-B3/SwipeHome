@@ -39,6 +39,7 @@ logger = logging.getLogger(__name__)
 USERS_COLLECTION = "users"
 LISTINGS_COLLECTION = "listings"
 DECISIONS_COLLECTION = "decisions"
+REVOCATIONS_COLLECTION = "revoked_sessions"
 
 
 def _users():
@@ -310,7 +311,7 @@ def update_user_profile(uid, values):
 def _revocation_document(uid, auth_time):
     # ID opaco, determinista y seguro aunque el uid contenga separadores.
     key = hashlib.sha256(json.dumps([uid, auth_time]).encode("utf-8")).hexdigest()
-    return firestore.client(app=get_app()).collection("revoked_sessions").document(key)
+    return firestore.client(app=get_app()).collection(REVOCATIONS_COLLECTION).document(key)
 
 
 def is_session_revoked(uid, auth_time):

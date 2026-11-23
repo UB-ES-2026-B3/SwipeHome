@@ -9,7 +9,7 @@ from unittest import skipUnless
 from unittest.mock import patch
 from uuid import uuid4
 
-from django.test import Client, SimpleTestCase
+from django.test import Client, SimpleTestCase, tag
 from firebase_admin import auth, delete_app, initialize_app
 from google.api_core.exceptions import AlreadyExists
 from google.auth.credentials import AnonymousCredentials
@@ -19,6 +19,7 @@ from google.cloud.firestore_v1.transaction import Transaction
 from accounts import repository
 from properties.preferences import DEFAULT_FILTERS, validate_filters
 from properties.test_discovery import STAMP, listing
+from qa.fixtures import scoped_collections
 
 PROJECT = "demo-swipehome-us4"
 REAL_GET_BUYER_PREFERENCES = repository.get_buyer_preferences
@@ -26,6 +27,7 @@ EMPTY_STORED_FILTERS = validate_filters(DEFAULT_FILTERS)
 
 
 @skipUnless(os.environ.get("FIRESTORE_EMULATOR_HOST"), "Requiere Firestore Emulator local.")
+@tag("integration")
 class FirestoreDecisionTests(SimpleTestCase):
     def setUp(self):
         host = os.environ["FIRESTORE_EMULATOR_HOST"]
@@ -36,11 +38,8 @@ class FirestoreDecisionTests(SimpleTestCase):
         self.prefix = uuid4().hex
         self.auth_time = int(self.prefix[:12], 16)
         # Colecciones únicas por test: jamás se borran colecciones ni datos ajenos.
-        self.collections = {name: self.prefix + "_" + name.lower() for name in (
-            "LISTINGS_COLLECTION", "SWIPES_COLLECTION", "MATCHES_COLLECTION", "NOTIFICATIONS_COLLECTION",
-        )}
-        for name, collection in self.collections.items():
-            self.enterContext(patch.object(repository, name, collection))
+        collections = scoped_collections(self, self.db, ("listings", "swipes", "matches", "notifications", "revocations"))
+        self.collections = {f"{name.upper()}_COLLECTION": ref.id for name, ref in collections.items()}
         self.enterContext(patch("accounts.repository.get_app"))
         self.enterContext(patch("accounts.authentication.get_app"))
         self.enterContext(patch("accounts.repository.firestore.client", return_value=self.db))
@@ -626,6 +625,7 @@ class FirestoreDecisionTests(SimpleTestCase):
 
 @skipUnless(os.environ.get("FIRESTORE_EMULATOR_HOST") and os.environ.get("FIREBASE_AUTH_EMULATOR_HOST"),
             "Requiere Firestore y Auth Emulator locales.")
+@tag("integration")
 class FirebaseFlowTests(SimpleTestCase):
     def test_real_registration_login_publication_like_logout_and_relogin(self):
         import requests
@@ -637,6 +637,7 @@ class FirebaseFlowTests(SimpleTestCase):
         self.addCleanup(delete_app, app)
         db = firestore.Client(project=PROJECT, credentials=AnonymousCredentials())
         self.addCleanup(db.close)
+        scoped_collections(self, db, ("users", "listings", "swipes", "matches", "notifications", "revocations"))
         for target in ("accounts.views.get_app", "accounts.authentication.get_app", "accounts.repository.get_app"):
             self.enterContext(patch(target, return_value=app))
         self.enterContext(patch("accounts.repository.firestore.client", return_value=db))
@@ -717,9 +718,7 @@ class FirebaseFlowTests(SimpleTestCase):
         self.addCleanup(delete_app, app)
         db = firestore.Client(project=PROJECT, credentials=AnonymousCredentials())
         self.addCleanup(db.close)
-        prefix = "us410_" + uuid4().hex
-        for collection in ("LISTINGS_COLLECTION", "SWIPES_COLLECTION", "MATCHES_COLLECTION", "NOTIFICATIONS_COLLECTION"):
-            self.enterContext(patch.object(repository, collection, prefix + "_" + collection.lower()))
+        scoped_collections(self, db, ("users", "listings", "swipes", "matches", "notifications", "revocations"))
         for target in ("accounts.views.get_app", "accounts.authentication.get_app", "accounts.repository.get_app"):
             self.enterContext(patch(target, return_value=app))
         self.enterContext(patch("accounts.repository.firestore.client", return_value=db))

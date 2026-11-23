@@ -116,6 +116,12 @@ contraseña de 15–128 caracteres sin recortar y rol `SELLER` o `BUYER`.
 
 ## Tests
 
+La [guía de testing del equipo](../docs/TESTING.md) contiene el ejecutor de
+PowerShell, la comprobación de aislamiento y los recorridos con Azurite,
+Firebase Emulator y Chrome. Desde la raíz, `.\scripts\test.cmd --suite integration`
+ejecuta la integración y `.\scripts\test.cmd --suite e2e` abre los recorridos
+en navegador headless.
+
 ```powershell
 .\.venv\Scripts\python.exe manage.py check
 .\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2

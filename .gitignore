@@ -13,3 +13,4 @@
 # Certificados TLS generados solo para desarrollo local
 /backend/.local-tls/
 /backend/media/
+/.qa/

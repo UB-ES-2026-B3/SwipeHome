@@ -1,5 +1,9 @@
 # Contexto frontend de SwipeHome
 
+La [guía de testing](../docs/TESTING.md) explica los componentes montados en
+Chrome con dependencias controladas y los E2E con React, Django y emuladores.
+El ejecutor comparte DevTools y separa los contextos de cada cuenta.
+
 ## Selección definitiva (US9.8)
 
 «Mis matches» permite al Vendedor proponer una vivienda a un Comprador con

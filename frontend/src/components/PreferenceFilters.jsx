@@ -181,7 +181,6 @@ export function PreferenceFilters({ onApplied, onBusyChange, disabled = false })
 
   function resetFilters() {
     const defaults = toDraft(EMPTY_FILTERS)
-    setFilters(defaults)
     persistFilters(defaults, 'Filtros restablecidos; conservamos tus intereses y descartes.')
   }
 

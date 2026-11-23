@@ -1,59 +1,26 @@
 """Recorridos Chromium, Vite, Django y emuladores. Invocación explícita."""
 import json
-import os
-import subprocess
 from collections import Counter
-from pathlib import Path
 from unittest.mock import patch
 
 from firebase_admin import auth
 
 from accounts import repository
-from properties.test_selection import AUTH_HOST, FIRESTORE_HOST, PASSWORD, PROJECT, SelectionEmulatorFixture
-
-FRONTEND = Path(__file__).resolve().parents[2] / "frontend"
-LOCAL_PHOTO = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"
+from qa.fixtures import BrowserFixture
 
 
-class SelectionBrowserTests(SelectionEmulatorFixture):
-    @classmethod
-    def setUpClass(cls):
-        if (AUTH_HOST, FIRESTORE_HOST, os.environ.get("GCLOUD_PROJECT")) != (
-            "127.0.0.1:9099", "127.0.0.1:8080", PROJECT,
-        ):
-            raise RuntimeError("La prueba exige el proyecto demo y los emuladores en loopback.")
-        chrome = os.environ.get("SWIPEHOME_E2E_CHROME")
-        if not chrome or not Path(chrome).resolve().is_file():
-            raise RuntimeError("Define SWIPEHOME_E2E_CHROME con la ruta del ejecutable Chromium o Chrome.")
-        cls.chrome = str(Path(chrome).resolve())
-        super().setUpClass()
+class SelectionBrowserTests(BrowserFixture):
 
     def setUp(self):
         super().setUp()
         self.home = self.collections["listings"].document("home")
-        self.home.update({"photos": [LOCAL_PHOTO]})
         self.candidate("buyer")
         self.candidate("other")
         self.swipes_before = self.rows("swipes")
         self.matches_before = self.rows("matches")
 
     def run_browser(self, scenario):
-        env = {
-            key: value for key, value in os.environ.items()
-            if key not in {"FIREBASE_TOKEN", "FIREBASE_SERVICE_ACCOUNT_JSON", "GOOGLE_APPLICATION_CREDENTIALS"}
-            and not key.startswith("VITE_")
-        }
-        result = subprocess.run(
-            ["node", "e2e/selection.mjs"],
-            input=json.dumps({
-                "scenario": scenario, "backend": self.live_server_url, "authHost": AUTH_HOST,
-                "chrome": self.chrome, "emails": self.emails, "password": PASSWORD,
-            }),
-            cwd=FRONTEND, env=env, capture_output=True, encoding="utf-8", timeout=150,
-            check=False,
-        )
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        print(result.stdout, end="", flush=True)
+        self.browser("selection", scenario)
         self.assertEqual(self.rows("swipes"), self.swipes_before)
         self.assertEqual(self.rows("matches"), self.matches_before)
 

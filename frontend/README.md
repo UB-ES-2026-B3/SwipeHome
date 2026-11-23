@@ -51,6 +51,11 @@ Para ver que la sesión es de Firebase y no de cookies hacen falta las DevTools
 
 ## Comprobaciones
 
+La [guía de testing del equipo](../docs/TESTING.md) explica unitarios,
+componentes React en Chrome y E2E con Django. Desde la raíz usa
+`.\scripts\test.cmd --suite components` para montar los componentes y
+`.\scripts\test.cmd --suite e2e` para validar la aplicación completa.
+
 ```powershell
 npm run lint
 npm run build

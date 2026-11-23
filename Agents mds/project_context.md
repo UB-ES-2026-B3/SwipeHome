@@ -1,5 +1,9 @@
 # Contexto del proyecto SwipeHome
 
+Las pruebas de US5.8, US5.9, US8.6, US9.7 y US9.8 se reproducen desde
+la [guía de testing](../docs/TESTING.md) y tienen trazabilidad en la
+[matriz de cobertura](../docs/TEST-COVERAGE.md).
+
 ## Estado vigente — US4, US5.8–US5.9, US6, US7.4, US8.6 y US9
 
 El stack vigente es Django con Firebase Auth y Firestore. La implementación

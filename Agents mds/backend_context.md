@@ -1,5 +1,9 @@
 # Contexto backend de SwipeHome
 
+La [guía de testing](../docs/TESTING.md) documenta la verificación de
+aislamiento, los fixtures de Auth/Firestore/Azurite y los comandos de
+integración. Los criterios están en la [matriz de cobertura](../docs/TEST-COVERAGE.md).
+
 ## Estado vigente — US4, US5.8–US5.9, US6, US7.4, US8.6 y US9.7–US9.8
 
 El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por

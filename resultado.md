@@ -552,3 +552,39 @@ el hardware móvil, los índices remotos y los servicios de producción.
 
 **Fuera de alcance.** Se conservaron las advertencias de lint existentes.
 La ruta heredada de decisiones sigue documentada en US9.7.
+
+## Ampliación de QA para US5.8, US5.9, US8.6, US9.7 y US9.8
+
+La [guía de testing](docs/TESTING.md) concentra instalación, comandos y
+depuración. La [matriz de cobertura](docs/TEST-COVERAGE.md) indica el caso,
+archivo, nivel, servicio y limitación de cada criterio.
+
+| Nivel | Ejecutados | Pasaron | Fallaron al cierre |
+|---|---:|---:|---:|
+| Unitarios y contratos aislados de Node | 30 | 30 | 0 |
+| Unitarios y contratos aislados de Django | 155 | 155 | 0 |
+| Componentes React en Chrome con Auth/API simulados | 7 | 7 | 0 |
+| Integración de Django | 50 | 50 | 0 |
+| E2E en Chrome con Django y emuladores | 7 | 7 | 0 |
+| Total de casos distintos | 249 | 249 | 0 |
+
+La ejecución final de los niveles afectados confirma los siete E2E y los
+siete componentes. Un escenario E2E también pasó en modo visual y generó
+tres capturas. La selección aislada de un método Django y la integración
+filtrada por US8.6 pasaron. Lint terminó con nueve advertencias preexistentes
+y el build terminó correctamente.
+
+La sonda de conectividad creó, leyó y eliminó su cuenta de Auth, documento
+Firestore y blob en `listings`. Los clientes comprobaron los endpoints
+locales y el proyecto demo. Se verificó Django con sus clientes de prueba y
+React/Vite con Auth Emulator y el proxy local. El flujo de matches descargó
+una foto real de Azurite en Chrome. El caso de compensación comprobó el
+borrado de blobs reales con el fallo de persistencia inyectado.
+
+Se corrigieron el error oculto al responder una candidatura y la
+confirmación de refresco cuando fallaba la consulta. Un restablecimiento
+fallido mantiene el borrador visible. Se corrigieron también la espera al
+cambiar de ruta y el uso compartido de caché de Vite entre ejecuciones.
+Se reutilizaron los tres servicios previamente activos. El autoarranque
+desde puertos vacíos, el hardware móvil y los servicios de producción
+quedan como **NO VERIFICADO**.

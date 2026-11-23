@@ -1,135 +1,18 @@
 """US9.7: HTTP real en loopback, tokens Auth y persistencia Firestore demo."""
-import os
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
-from unittest import skipUnless
 from unittest.mock import patch
 from uuid import uuid4
 
-import requests
-from django.test import LiveServerTestCase
-from firebase_admin import auth, delete_app, initialize_app
 from google.api_core.exceptions import ServiceUnavailable
-from google.auth.credentials import AnonymousCredentials
-from google.cloud import firestore
 from google.cloud.firestore_v1.transaction import Transaction
 
 from accounts import repository
 from properties.test_discovery import listing
-
-PROJECT = "demo-swipehome-us4"
-AUTH_HOST = os.environ.get("FIREBASE_AUTH_EMULATOR_HOST")
-FIRESTORE_HOST = os.environ.get("FIRESTORE_EMULATOR_HOST")
-ROLES = {
-    "seller": "SELLER", "other_seller": "SELLER", "buyer": "BUYER",
-    "other": "BUYER", "pending": "BUYER", "declined": "BUYER", "outsider": "BUYER",
-}
-PASSWORD = "Test password value 123!"
+from qa.fixtures import EmulatorFixture
 
 
-@skipUnless(AUTH_HOST and FIRESTORE_HOST, "Requiere Auth y Firestore Emulator.")
-class SelectionEmulatorFixture(LiveServerTestCase):
-    host = "127.0.0.1"
-    databases = set()
-
-    @classmethod
-    def setUpClass(cls):
-        if any(not host.startswith("127.0.0.1:") for host in (AUTH_HOST, FIRESTORE_HOST)):
-            raise RuntimeError("Esta suite solo permite emuladores en 127.0.0.1.")
-        super().setUpClass()
-        suffix = uuid4().hex
-        app = initialize_app(options={"projectId": PROJECT}, name="us97-" + suffix)
-        cls.addClassCleanup(delete_app, app)
-        cls.db = firestore.Client(project=PROJECT, credentials=AnonymousCredentials())
-        cls.addClassCleanup(cls.db.close)
-        cls.enterClassContext(patch("accounts.authentication.get_app", return_value=app))
-        cls.enterClassContext(patch.object(repository, "get_app", return_value=app))
-        cls.enterClassContext(patch.object(repository.firestore, "client", return_value=cls.db))
-        cls.enterClassContext(patch.object(repository, "USERS_COLLECTION", f"us97_{suffix}_users"))
-        cls.uids, cls.emails, cls.tokens = {}, {}, {}
-        for user, role in ROLES.items():
-            email = f"{user}-{suffix}@example.com"
-            name = f"Cuenta {user}"
-            account = auth.create_user(email=email, password=PASSWORD, display_name=name, app=app)
-            cls.addClassCleanup(auth.delete_user, account.uid, app=app)
-            cls.uids[user] = account.uid
-            cls.emails[user] = email
-            repository.create_user_profile(account.uid, name=name, email=email, role=role)
-            cls.tokens[user] = cls.login(user)
-
-    @classmethod
-    def login(cls, user):
-        with requests.Session() as session:
-            session.trust_env = False
-            response = session.post(
-                f"http://{AUTH_HOST}/identitytoolkit.googleapis.com/v1/accounts:signInWithPassword",
-                params={"key": "demo-key"},
-                json={"email": cls.emails[user], "password": PASSWORD, "returnSecureToken": True},
-                timeout=15,
-            )
-        response.raise_for_status()
-        return response.json()["idToken"]
-
-    def setUp(self):
-        suffix = uuid4().hex
-        self.collections = {}
-        for name in ("listings", "swipes", "matches", "selections", "notifications"):
-            collection = f"us97_{suffix}_{name}"
-            self.enterContext(patch.object(repository, f"{name.upper()}_COLLECTION", collection))
-            self.collections[name] = self.db.collection(collection)
-        self.seed("home", "seller")
-
-    def seed(self, identifier, seller):
-        self.collections["listings"].document(identifier).create(listing(seller_uid=self.uids[seller]))
-
-    def request(self, method, url, user=None, *, body=None, params=None, token=None):
-        if user is not None:
-            token = self.tokens[user]
-        headers = {"Authorization": f"Bearer {token}"} if token else {}
-        with requests.Session() as session:
-            session.trust_env = False
-            return session.request(
-                method, self.live_server_url + url,
-                headers=headers, json=body, params=params, timeout=75,
-            )
-
-    def assert_status(self, response, expected):
-        self.assertEqual(response.status_code, expected, response.text)
-        return response.json()
-
-    def candidate(self, buyer, state="ACCEPT", *, identifier="home", seller="seller"):
-        value = "PASS" if state == "PASS" else "LIKE"
-        response = self.request("POST", f"/api/inmuebles/{identifier}/decision", buyer, body={"decision": value})
-        decision_id = self.assert_status(response, 201)["decision"]["id"]
-        if state in {"ACCEPT", "REJECT"}:
-            response = self.request(
-                "POST", f"/api/matches/candidaturas/{decision_id}/decision", seller,
-                body={"decision": state},
-            )
-            self.assert_status(response, 201)
-        return decision_id
-
-    def propose(self, buyer="buyer", *, seller="seller", identifier="home", key=None):
-        return self.request(
-            "POST", f"/api/inmuebles/{identifier}/propuestas", seller,
-            body={"buyer_uid": self.uids[buyer], "idempotency_key": key or uuid4().hex},
-        )
-
-    def decide(self, proposal_id, decision, user="buyer"):
-        return self.request("POST", f"/api/propuestas/{proposal_id}/decision", user, body={"decision": decision})
-
-    def notices(self, user):
-        return [
-            row for row in self.assert_status(self.request("GET", "/api/notificaciones", user), 200)["items"]
-            if row["type"].startswith("SELECTION_")
-        ]
-
-    def rows(self, collection):
-        return {doc.id: doc.to_dict() for doc in self.collections[collection].stream()}
-
-    def snapshot(self):
-        return {name: self.rows(name) for name in self.collections}
-
+class SelectionIntegrationTests(EmulatorFixture):
     def race(self, repository_method, *requests_to_start):
         original = getattr(repository, repository_method)
         barrier = Barrier(len(requests_to_start), timeout=15)
@@ -144,7 +27,6 @@ class SelectionEmulatorFixture(LiveServerTestCase):
                 return [response.result(timeout=80) for response in responses]
 
 
-class SelectionIntegrationTests(SelectionEmulatorFixture):
     def test_proposal_requires_a_confirmed_match_for_that_home(self):
         self.seed("other-home", "other_seller")
         self.candidate("buyer", "PENDING")
