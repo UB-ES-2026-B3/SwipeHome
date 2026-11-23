@@ -81,3 +81,48 @@ jobs:
 
       - name: Build
         run: npm run build
+
+  docker:
+    name: Docker (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Construir la imagen
+        run: docker build -t swipehome-backend backend
+
+      - name: Arrancar el contenedor
+        run: >-
+          docker run -d --name swipehome-backend -p 8000:8000
+          -e DJANGO_SECRET_KEY=ci-only -e ALLOWED_HOSTS=localhost
+          swipehome-backend
+
+      - name: Comprobar /api/health
+        run: |
+          for i in $(seq 1 30); do
+            body=$(curl -fsS http://localhost:8000/api/health 2>/dev/null || true)
+            if [ "$body" = '{"status": "ok"}' ]; then
+              echo "OK tras ${i} s: $body"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "::error::/api/health no devolvió {\"status\": \"ok\"} en 30 s (última respuesta: ${body:-ninguna})"
+          exit 1
+
+      # Se mide el sistema de ficheros descomprimido dentro del contenedor:
+      # `docker image inspect` da el tamaño comprimido con el almacén de
+      # containerd y el descomprimido con el clásico.
+      - name: Comprobar el tamaño de la imagen
+        run: |
+          docker image ls swipehome-backend
+          size_mb=$(docker run --rm --user 0 --entrypoint sh swipehome-backend -c 'du -sxm / | cut -f1')
+          echo "Tamaño de la imagen descomprimida: ${size_mb} MB (límite: 600 MB)"
+          if [ "$size_mb" -gt 600 ]; then
+            echo "::error::La imagen ocupa ${size_mb} MB, más de 600 MB"
+            exit 1
+          fi
+
+      - name: Logs del contenedor
+        if: failure()
+        run: docker logs swipehome-backend

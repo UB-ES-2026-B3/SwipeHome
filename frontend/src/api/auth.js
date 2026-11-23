@@ -18,6 +18,7 @@ import {
   signOut,
 } from 'firebase/auth'
 import { auth } from '../firebase'
+import { apiUrl } from './baseUrl'
 
 const NETWORK_ERROR = 'auth/network-request-failed'
 
@@ -68,7 +69,7 @@ function signInFailure(error) {
  * @returns {Promise<{ ok: boolean, status: number, data: object }>}
  */
 export async function registerUser(payload) {
-  const response = await fetch('/api/auth/register', {
+  const response = await fetch(apiUrl('/api/auth/register'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(payload),
@@ -145,7 +146,7 @@ export async function fetchCurrentUser(firebaseUser = auth.currentUser) {
     throw error
   }
 
-  const response = await fetch('/api/auth/me', {
+  const response = await fetch(apiUrl('/api/auth/me'), {
     headers: { Authorization: `Bearer ${token}` },
     cache: 'no-store',
   })
@@ -164,7 +165,7 @@ export async function logout() {
     if (SESSION_GONE.has(error?.code)) return signOut(auth)
     throw error
   }
-  const response = await fetch('/api/auth/logout', {
+  const response = await fetch(apiUrl('/api/auth/logout'), {
     method: 'POST', headers: { Authorization: `Bearer ${token}` }, cache: 'no-store',
   })
   if (!response.ok) throw new Error('No se pudo cerrar la sesión. Inténtalo de nuevo.')
@@ -188,7 +189,7 @@ async function accountMutation(path, method, values) {
   const user = auth.currentUser
   if (!user) return { ok: false, status: 401, data: null }
   const token = await user.getIdToken()
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     method,
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify(values),
