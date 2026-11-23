@@ -69,6 +69,7 @@ desde la consola de Firebase al terminar.
 | Método | Ruta | Resumen |
 |---|---|---|
 | `GET` | `/api/notificaciones` | Avisos privados BUYER/SELLER paginados: 200 / 400 / 401 / 403 / 500 |
+| `GET` | `/api/inmuebles` | Inmuebles publicados del SELLER autenticado: 200 / 401 / 500 |
 | `GET` | `/api/inmuebles/explorar` | Viviendas pendientes BUYER paginadas. |
 | `POST` | `/api/inmuebles/{id}/decision` | Decisión BUYER; LIKE crea candidatura pendiente: 201 / 200 / 400 / 401 / 403 / 404 / 409 / 500 |
 | `GET` | `/api/matches` | Matches confirmados propios de BUYER o SELLER, paginados. |
@@ -83,6 +84,8 @@ desde la consola de Firebase al terminar.
 
 El login lo hace el frontend directamente contra Firebase; no hay `/api/auth/login`.
 La publicación se realiza mediante `POST /api/inmuebles`.
+La lectura mediante `GET /api/inmuebles` devuelve únicamente los inmuebles
+publicados por el vendedor autenticado.
 La publicación requiere un ID token Firebase válido y un perfil con rol `SELLER`.
 El cuerpo es `multipart/form-data`, admite nombres de campos en inglés o
 castellano y recibe entre 1 y 10 fotografías en `photos`, `fotografias` o

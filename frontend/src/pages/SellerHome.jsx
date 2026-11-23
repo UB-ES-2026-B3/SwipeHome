@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { getNotifications } from '../api/notifications'
+import { getActiveProperties } from '../api/properties'
 import { Logo } from '../components/Logo'
 import { useAuth } from '../hooks/useAuth'
 
@@ -28,12 +29,32 @@ function notificationMessage(notification) {
 export function SellerHome() {
   const { logout } = useAuth()
   const navigate = useNavigate()
-  const publishedProperties = []
+  const [publishedProperties, setPublishedProperties] = useState([])
+  const [propertiesStatus, setPropertiesStatus] = useState('loading')
+  const [propertiesError, setPropertiesError] = useState('')
   const [notifications, setNotifications] = useState([])
   const [nextCursor, setNextCursor] = useState(null)
   const nextCursorRef = useRef(null)
   const [notificationsStatus, setNotificationsStatus] = useState('loading')
   const [notificationsError, setNotificationsError] = useState('')
+
+  const loadPublishedProperties = useCallback(async () => {
+    setPropertiesStatus('loading')
+    setPropertiesError('')
+    try {
+      const result = await getActiveProperties()
+      if (!result.ok) {
+        setPropertiesError(result.data?.error || 'No se pudieron cargar tus inmuebles.')
+        setPropertiesStatus('error')
+        return
+      }
+      setPublishedProperties(result.data.properties || [])
+      setPropertiesStatus('ready')
+    } catch {
+      setPropertiesError('No hay conexión con el servidor. Inténtalo de nuevo.')
+      setPropertiesStatus('error')
+    }
+  }, [])
 
   const loadNotifications = useCallback(async (reset = true) => {
     setNotificationsStatus('loading')
@@ -57,8 +78,9 @@ export function SellerHome() {
   }, [])
 
   useEffect(() => {
+    loadPublishedProperties()
     loadNotifications()
-  }, [loadNotifications])
+  }, [loadNotifications, loadPublishedProperties])
 
   return (
     <main className="seller-dashboard">
@@ -90,24 +112,45 @@ export function SellerHome() {
         </nav>
 
         <section className="seller-dashboard__list" aria-labelledby="published-properties-title">
-          <h1 id="published-properties-title">Mis inmuebles publicados</h1>
-          {publishedProperties.length > 0 ? (
+          <div className="seller-dashboard__section-header">
+            <h1 id="published-properties-title">Mis inmuebles publicados</h1>
+            <button
+              type="button"
+              className="btn btn--ghost"
+              onClick={loadPublishedProperties}
+              disabled={propertiesStatus === 'loading'}
+            >
+              Actualizar
+            </button>
+          </div>
+          {propertiesStatus === 'loading' && (
+            <p className="seller-dashboard__message">Cargando inmuebles…</p>
+          )}
+          {propertiesStatus === 'error' && (
+            <div className="seller-dashboard__message seller-dashboard__message--error" role="alert">
+              <p>{propertiesError}</p>
+              <button type="button" className="btn btn--ghost" onClick={loadPublishedProperties}>
+                Reintentar
+              </button>
+            </div>
+          )}
+          {propertiesStatus === 'ready' && publishedProperties.length > 0 ? (
             <ul>
               {publishedProperties.map((property) => (
                 <li className="seller-dashboard__property" key={property.id}>
-                  <span>{property.name}</span>
+                  <span>{property.title}</span>
                   <span>
-                    {property.requests} {property.requests === 1 ? 'solicitud' : 'solicitudes'}
+                    {property.requests || 0} {property.requests === 1 ? 'solicitud' : 'solicitudes'}
                   </span>
                 </li>
               ))}
             </ul>
-          ) : (
+          ) : propertiesStatus === 'ready' ? (
             <div className="seller-dashboard__empty">
               <strong>Sin inmuebles publicados</strong>
               <span>0 solicitudes</span>
             </div>
-          )}
+          ) : null}
         </section>
 
         <section className="seller-dashboard__notifications" aria-labelledby="notifications-title">
