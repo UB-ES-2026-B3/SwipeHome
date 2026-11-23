@@ -29,7 +29,7 @@ class DevelopmentSettingsTests(SimpleTestCase):
     def test_no_database_sessions_or_csrf(self):
         config = load_settings()
         self.assertEqual(config.DATABASES, {})
-        self.assertEqual(config.INSTALLED_APPS, ["accounts"])
+        self.assertEqual(config.INSTALLED_APPS, ["corsheaders", "accounts"])
         for removed in ("SessionMiddleware", "CsrfViewMiddleware", "AuthenticationMiddleware"):
             self.assertFalse(any(removed in middleware for middleware in config.MIDDLEWARE))
         for setting in ("AUTH_USER_MODEL", "PASSWORD_HASHERS", "CSRF_TRUSTED_ORIGINS", "SESSION_ENGINE"):
