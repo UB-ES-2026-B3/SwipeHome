@@ -97,7 +97,11 @@ def create_listing(uid, *, values, photos) -> dict:
         "seller_uid": uid,
         "photos": [],
         "published": True,
+        "availability": "ACTIVE",
+        "closure_reason": None,
+        "version": 1,
         "created_at": firestore.SERVER_TIMESTAMP,
+        "updated_at": firestore.SERVER_TIMESTAMP,
     }
     for photo in photos:
         # El contenedor ya separa las fotos de anuncios: sin prefijo adicional.
@@ -173,6 +177,7 @@ def get_active_listings():
             "published": True,
             "availability": listing_availability(data),
             "closure_reason": data.get("closure_reason"),
+            "version": int(data.get("version", 1)),
         })
     return records
 
@@ -202,6 +207,7 @@ def get_seller_listings(uid):
             "published": True,
             "availability": listing_availability(data),
             "closure_reason": data.get("closure_reason"),
+            "version": int(data.get("version", 1)),
         })
     return records
 
@@ -249,6 +255,50 @@ def _cleanup_uploaded(uploaded):
                 "No se pudo limpiar una fotografía de la publicación (%s).",
                 type(cleanup_error).__name__,
             )
+            _queue_photo_cleanup(getattr(blob, "url", None))
+
+
+def _cleanup_removed_blob(photo_url):
+    try:
+        container = get_container_client()
+        container_prefix = f"/{container.container_name}/"
+        if container_prefix in photo_url:
+            blob_name = photo_url.split(container_prefix, 1)[1].split("?")[0]
+        else:
+            parts = photo_url.split("?")[0].rstrip("/").split("/")
+            if len(parts) >= 2:
+                blob_name = f"{parts[-2]}/{parts[-1]}"
+            else:
+                blob_name = parts[-1]
+        blob = container.get_blob_client(blob_name)
+        blob.delete_blob()
+    except Exception as cleanup_error:
+        logger.warning(
+            "No se pudo limpiar una fotografía retirada de la publicación %s (%s).",
+            photo_url,
+            type(cleanup_error).__name__,
+        )
+        _queue_photo_cleanup(photo_url)
+
+
+def _queue_photo_cleanup(photo_url):
+    if not photo_url:
+        return
+    try:
+        client = _selection_client()
+        key = decision_key(photo_url, "photo-cleanup")
+        client.collection(PHOTO_CLEANUP_COLLECTION).document(key).set({
+            "photo_url": photo_url,
+            "processed": False,
+            "attempts": 0,
+            "created_at": firestore.SERVER_TIMESTAMP,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }, merge=True)
+    except Exception as queue_error:
+        logger.error(
+            "No se pudo registrar la fotografía huérfana para recuperación (%s).",
+            type(queue_error).__name__,
+        )
 
 
 def update_user_profile(uid, values):
@@ -347,6 +397,14 @@ class MatchNotFound(Exception):
 
 
 class DecisionConflict(Exception):
+    pass
+
+
+class VersionConflict(DecisionConflict):
+    pass
+
+
+class InvalidPhotos(ValueError):
     pass
 
 
@@ -775,7 +833,7 @@ def get_confirmed_matches(uid, role, *, limit, position=None, listing_id=None):
             "created_at": data.get("created_at"),
             "confirmed_at": data["confirmed_at"],
             "availability": listing_availability(seller_listings[data["listing_id"]]) if seller_listings is not None else None,
-            "closure_reason": seller_listings[data["listing_id"]].get("closure_reason") if seller_listings is not None else None,
+            "closure_reason": listing_closure_reason(seller_listings[data["listing_id"]]) if seller_listings is not None else None,
             "buyer_uid": data["buyer_uid"],
             "buyer_name": data.get("buyer_name", ""),
             "seller_uid": data.get("seller_uid", ""),
@@ -832,6 +890,7 @@ PROPOSAL_REQUESTS_COLLECTION = "selection_requests"
 SELECTION_EVENTS_COLLECTION = "selection_notification_events"
 INLINE_CLOSURE_NOTICE_LIMIT = 100
 CLOSURE_EVENT_BATCH_SIZE = 100
+PHOTO_CLEANUP_COLLECTION = "photo_cleanup"
 
 
 class ProposalNotFound(Exception):
@@ -840,6 +899,15 @@ class ProposalNotFound(Exception):
 
 def listing_availability(data):
     return data.get("availability", "ACTIVE" if data.get("published") else "PAUSED")
+
+
+def listing_closure_reason(data):
+    if listing_availability(data) != "CLOSED":
+        return None
+    raw = data.get("closure_reason")
+    if raw in ("RENTED", "Alquiler acordado"):
+        return "RENTED"
+    return raw or "WITHDRAWN"
 
 
 def _selection_client():
@@ -870,7 +938,7 @@ def _proposal_access(transaction, client, proposal_id, uid, role):
     return ref, data, listing_ref, listing
 
 
-def _proposal_notice(transaction, client, event, kind, recipient, listing_id, title):
+def _proposal_notice(transaction, client, event, kind, recipient, listing_id, title, message=None):
     # No buyer, match ni propuesta en avisos de cierre a otros candidatos.
     key = decision_key(recipient, event + ":" + kind)
     messages = {
@@ -878,10 +946,10 @@ def _proposal_notice(transaction, client, event, kind, recipient, listing_id, ti
         "ACCEPTED": "El comprador ha aceptado tu propuesta de selección.",
         "REJECTED": "El comprador ha rechazado tu propuesta de selección.",
         "CANCELLED": "El propietario ha cancelado tu propuesta de selección.",
-        "LISTING_CLOSED": "La vivienda ya no está disponible: Alquiler acordado.",
+        "LISTING_CLOSED": message or "La vivienda ya no está disponible: Alquiler acordado.",
     }
     transaction.create(client.collection(NOTIFICATIONS_COLLECTION).document("selection-" + key), {
-        "recipient_uid": recipient, "type": kind, "message": messages[kind],
+        "recipient_uid": recipient, "type": kind, "message": message or messages.get(kind, ""),
         "listing_id": listing_id, "listing_title": title,
         "created_at": firestore.SERVER_TIMESTAMP,
     })
@@ -979,7 +1047,13 @@ def resolve_proposal(uid, role, proposal_id, status):
         updates = {"pending_proposal_id": None}
         if status == "ACCEPTED":
             updates.update(accepted_proposal_id=proposal_id, selected_buyer_uid=data["buyer_uid"], selected_match_id=data["match_id"])
-            tx.update(listing_ref, {"availability": "CLOSED", "closure_reason": "Alquiler acordado", "closed_at": firestore.SERVER_TIMESTAMP})
+            tx.update(listing_ref, {
+                "availability": "CLOSED",
+                "closure_reason": "RENTED",
+                "closed_at": firestore.SERVER_TIMESTAMP,
+                "version": int(listing.get("version", 1)) + 1,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
         tx.set(control_ref, updates, merge=True)
         recipient = data["buyer_uid"] if status == "CANCELLED" else data["seller_uid"]
         _proposal_notice(tx, client, proposal_id, status, recipient, data["listing_id"], listing["title"])
@@ -1032,26 +1106,35 @@ def update_listing(seller_uid, listing_id, changes):
         control = _selection_ref(client, listing_id).get(transaction=tx).to_dict() or {}
         if control.get("pending_proposal_id") or control.get("accepted_proposal_id") or listing_availability(listing) == "CLOSED":
             raise DecisionConflict()
-        tx.update(ref, changes)
+        current_version = int(listing.get("version", 1))
+        update_data = {
+            **changes,
+            "version": current_version + 1,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+        tx.update(ref, update_data)
     _run_selection_transaction(client, write)
     return get_listing(listing_id)
 
 
 
-def _closure_notices(transaction, client, listing_id, title, recipients):
+def _closure_notices(transaction, client, listing_id, title, recipients, closure_reason=None):
     recipients = sorted(recipients)
+    event_suffix = ":withdrawn" if closure_reason == "WITHDRAWN" else ""
+    msg = "La vivienda ya no está disponible: Retirada por el propietario." if closure_reason == "WITHDRAWN" else "La vivienda ya no está disponible: Alquiler acordado."
     if len(recipients) <= INLINE_CLOSURE_NOTICE_LIMIT:
         for recipient in recipients:
-            _proposal_notice(transaction, client, listing_id, "LISTING_CLOSED", recipient, listing_id, title)
+            _proposal_notice(transaction, client, listing_id + event_suffix, "LISTING_CLOSED", recipient, listing_id, title, msg)
         return
     # Congela los destinatarios elegibles al cierre en documentos acotados.
     # Ni el evento ni su ID incluyen el comprador elegido.
     for offset in range(0, len(recipients), CLOSURE_EVENT_BATCH_SIZE):
-        key = decision_key(listing_id, "closure-batch-" + str(offset))
+        key = decision_key(listing_id, "closure-batch-" + ("withdrawn-" if closure_reason == "WITHDRAWN" else "") + str(offset))
         transaction.create(client.collection(SELECTION_EVENTS_COLLECTION).document(key), {
             "listing_id": listing_id, "listing_title": title,
             "recipients": recipients[offset:offset + CLOSURE_EVENT_BATCH_SIZE],
             "processed": False, "created_at": firestore.SERVER_TIMESTAMP,
+            "closure_reason": closure_reason,
         })
 
 
@@ -1069,10 +1152,261 @@ def process_selection_notifications(*, limit=100, listing_id=None):
             if not current.exists or current.to_dict().get("processed"):
                 return False
             event = current.to_dict()
+            closure_reason = event.get("closure_reason")
+            event_suffix = ":withdrawn" if closure_reason == "WITHDRAWN" else ""
+            msg = "La vivienda ya no está disponible: Retirada por el propietario." if closure_reason == "WITHDRAWN" else "La vivienda ya no está disponible: Alquiler acordado."
             for recipient in event["recipients"]:
-                _proposal_notice(tx, client, event["listing_id"], "LISTING_CLOSED", recipient,
-                                 event["listing_id"], event["listing_title"])
+                _proposal_notice(tx, client, event["listing_id"] + event_suffix, "LISTING_CLOSED", recipient,
+                                 event["listing_id"], event["listing_title"], message=msg)
             tx.update(snapshot.reference, {"processed": True, "processed_at": firestore.SERVER_TIMESTAMP})
             return True
         processed += int(_run_selection_transaction(client, deliver))
     return processed
+
+
+def serialize_management_listing(listing_id, data, has_pending_proposal=False):
+    from decimal import Decimal
+    from properties.serialization import TEXT_FIELDS
+    from .pagination import timestamp
+    availability = listing_availability(data)
+    closure_reason = listing_closure_reason(data)
+
+    can_edit = availability in ("ACTIVE", "PAUSED") and not has_pending_proposal
+    can_pause = availability == "ACTIVE" and not has_pending_proposal
+    can_reactivate = availability == "PAUSED" and not has_pending_proposal
+    can_withdraw = availability in ("ACTIVE", "PAUSED") and not has_pending_proposal
+
+    actions = []
+    if can_edit:
+        actions.append("edit")
+    if can_pause:
+        actions.append("pause")
+    if can_reactivate:
+        actions.append("reactivate")
+    if can_withdraw:
+        actions.append("withdraw")
+
+    price_str = str((Decimal(data["price_cents"]) / 100).quantize(Decimal("0.00"))) if "price_cents" in data else "0.00"
+    surface_str = str((Decimal(data["surface_hundredths"]) / 100).quantize(Decimal("0.00"))) if "surface_hundredths" in data else "0.00"
+
+    return {
+        "id": listing_id,
+        **{f: data.get(f, "") for f in TEXT_FIELDS},
+        "price": price_str,
+        "surface": surface_str,
+        "price_val": data.get("price_cents", 0) / 100,
+        "surface_val": data.get("surface_hundredths", 0) / 100,
+        "bedrooms": data.get("bedrooms", 0),
+        "bathrooms": data.get("bathrooms", 0),
+        "people": data.get("people", 0),
+        "shared_accommodation": bool(data.get("shared_accommodation", False)),
+        "photos": list(data.get("photos", [])),
+        "published": bool(data.get("published", True)),
+        "availability": availability,
+        "estado": availability,
+        "closure_reason": closure_reason,
+        "motivo_cierre": closure_reason,
+        "version": int(data.get("version", 1)),
+        "has_pending_proposal": has_pending_proposal,
+        "can_edit": can_edit,
+        "can_pause": can_pause,
+        "can_reactivate": can_reactivate,
+        "can_withdraw": can_withdraw,
+        "actions": actions,
+        "available_actions": actions,
+        "created_at": timestamp(data["created_at"]) if data.get("created_at") else None,
+        "updated_at": timestamp(data["updated_at"]) if data.get("updated_at") else (timestamp(data["created_at"]) if data.get("created_at") else None),
+    }
+
+
+def get_seller_management_listings(uid):
+    client = firestore.client(app=get_app())
+    snapshots = list(_listings().stream())
+    owned = []
+    for snap in snapshots:
+        d = snap.to_dict()
+        if d.get("published") is True and d.get("seller_uid") == uid:
+            owned.append((snap.id, d))
+    if not owned:
+        return []
+    control_refs = [_selection_ref(client, lid) for lid, _ in owned]
+    controls = {snap.id: snap.to_dict() for snap in client.get_all(control_refs) if snap.exists}
+    results = []
+    for lid, data in owned:
+        ctrl = controls.get(lid, {})
+        has_pending = bool(ctrl.get("pending_proposal_id"))
+        results.append(serialize_management_listing(lid, data, has_pending_proposal=has_pending))
+    return results
+
+
+def get_listing_for_management(seller_uid, listing_id):
+    client = firestore.client(app=get_app())
+    snap = client.collection(LISTINGS_COLLECTION).document(listing_id).get()
+    if not snap.exists or snap.to_dict().get("seller_uid") != seller_uid:
+        raise ProposalNotFound()
+    data = snap.to_dict()
+    ctrl = _selection_ref(client, listing_id).get().to_dict() or {}
+    has_pending = bool(ctrl.get("pending_proposal_id"))
+    return serialize_management_listing(listing_id, data, has_pending_proposal=has_pending)
+
+
+def pause_listing(seller_uid, listing_id, expected_version=None):
+    client = _selection_client()
+    def write(tx):
+        ref, listing = _owned_listing(tx, client, listing_id, seller_uid)
+        control = _selection_ref(client, listing_id).get(transaction=tx).to_dict() or {}
+        current_availability = listing_availability(listing)
+        current_version = int(listing.get("version", 1))
+        if current_availability == "PAUSED":
+            return {"id": listing_id, "availability": "PAUSED", "version": current_version}
+        if current_availability == "CLOSED":
+            raise DecisionConflict()
+        if control.get("pending_proposal_id"):
+            raise DecisionConflict()
+        if expected_version is not None and expected_version != current_version:
+            raise VersionConflict()
+        new_version = current_version + 1
+        tx.update(ref, {
+            "availability": "PAUSED",
+            "version": new_version,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
+        return {"id": listing_id, "availability": "PAUSED", "version": new_version}
+    return _run_selection_transaction(client, write)
+
+
+def reactivate_listing(seller_uid, listing_id, expected_version=None):
+    client = _selection_client()
+    def write(tx):
+        ref, listing = _owned_listing(tx, client, listing_id, seller_uid)
+        control = _selection_ref(client, listing_id).get(transaction=tx).to_dict() or {}
+        current_availability = listing_availability(listing)
+        current_version = int(listing.get("version", 1))
+        if current_availability == "ACTIVE":
+            return {"id": listing_id, "availability": "ACTIVE", "version": current_version}
+        if current_availability == "CLOSED":
+            raise DecisionConflict()
+        if control.get("pending_proposal_id"):
+            raise DecisionConflict()
+        if expected_version is not None and expected_version != current_version:
+            raise VersionConflict()
+        new_version = current_version + 1
+        tx.update(ref, {
+            "availability": "ACTIVE",
+            "version": new_version,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
+        return {"id": listing_id, "availability": "ACTIVE", "version": new_version}
+    return _run_selection_transaction(client, write)
+
+
+def withdraw_listing(seller_uid, listing_id, expected_version=None):
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    client = _selection_client()
+    def write(tx):
+        ref, listing = _owned_listing(tx, client, listing_id, seller_uid)
+        control = _selection_ref(client, listing_id).get(transaction=tx).to_dict() or {}
+        current_availability = listing_availability(listing)
+        current_version = int(listing.get("version", 1))
+        current_closure = listing.get("closure_reason")
+        if current_availability == "CLOSED":
+            if current_closure == "WITHDRAWN":
+                return {"id": listing_id, "availability": "CLOSED", "closure_reason": "WITHDRAWN", "version": current_version}
+            raise DecisionConflict()
+        if control.get("pending_proposal_id"):
+            raise DecisionConflict()
+        if expected_version is not None and expected_version != current_version:
+            raise VersionConflict()
+        query = client.collection(MATCHES_COLLECTION).where(filter=FieldFilter("listing_id", "==", listing_id))
+        recipients = {m["buyer_uid"] for snap in query.stream(transaction=tx)
+                      if (m := snap.to_dict()).get("status", "PENDING") in {"PENDING", "CONFIRMED"}}
+        new_version = current_version + 1
+        tx.update(ref, {
+            "availability": "CLOSED",
+            "closure_reason": "WITHDRAWN",
+            "closed_at": firestore.SERVER_TIMESTAMP,
+            "version": new_version,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
+        _closure_notices(tx, client, listing_id, listing.get("title", ""), recipients, closure_reason="WITHDRAWN")
+        return {"id": listing_id, "availability": "CLOSED", "closure_reason": "WITHDRAWN", "version": new_version}
+
+    result = _run_selection_transaction(client, write)
+    try:
+        process_selection_notifications(limit=10, listing_id=listing_id)
+    except Exception as error:
+        logger.error("Pendientes avisos duraderos de retirada (%s).", type(error).__name__)
+    return result
+
+
+def update_listing_full(seller_uid, listing_id, values, new_photos=None, retained_photos=None, expected_version=None):
+    uploaded_blobs = []
+    new_photo_urls = []
+    if new_photos:
+        container = get_container_client()
+        for photo in new_photos:
+            name = f"{seller_uid}/{uuid4().hex}"
+            blob = container.get_blob_client(name)
+            uploaded_blobs.append(blob)
+            try:
+                photo.seek(0)
+                blob.upload_blob(
+                    photo,
+                    length=photo.size,
+                    overwrite=True,
+                    content_settings=ContentSettings(content_type=photo.content_type),
+                )
+                new_photo_urls.append(blob.url)
+            except Exception:
+                _cleanup_uploaded(uploaded_blobs)
+                raise
+
+    client = _selection_client()
+    removed_photos = []
+
+    def write(tx):
+        nonlocal removed_photos
+        ref, listing = _owned_listing(tx, client, listing_id, seller_uid)
+        control = _selection_ref(client, listing_id).get(transaction=tx).to_dict() or {}
+        if control.get("pending_proposal_id") or control.get("accepted_proposal_id") or listing_availability(listing) == "CLOSED":
+            raise DecisionConflict()
+        current_version = int(listing.get("version", 1))
+        if expected_version is not None and expected_version != current_version:
+            raise VersionConflict()
+
+        current_photos = list(listing.get("photos", []))
+        if retained_photos is not None:
+            for p in retained_photos:
+                if p not in current_photos:
+                    raise InvalidPhotos("La fotografía conservada no pertenece al anuncio.")
+            final_photos = list(retained_photos) + new_photo_urls
+        elif new_photo_urls:
+            final_photos = current_photos + new_photo_urls
+        else:
+            final_photos = current_photos
+
+        if not final_photos:
+            raise InvalidPhotos("El anuncio debe conservar al menos una fotografía válida.")
+        if len(final_photos) > 10:
+            raise InvalidPhotos("Se permiten como máximo 10 fotografías.")
+
+        removed_photos = [p for p in current_photos if p not in final_photos]
+        new_version = current_version + 1
+        update_data = {
+            **values,
+            "photos": final_photos,
+            "version": new_version,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        }
+        tx.update(ref, update_data)
+
+    try:
+        _run_selection_transaction(client, write)
+    except Exception:
+        _cleanup_uploaded(uploaded_blobs)
+        raise
+
+    for p in removed_photos:
+        _cleanup_removed_blob(p)
+
+    return get_listing(listing_id)

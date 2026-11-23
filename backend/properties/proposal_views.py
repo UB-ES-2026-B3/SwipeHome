@@ -87,7 +87,7 @@ def proposal_detail(request, proposal_id):
     result = payload(data)
     result["listing"] = {**listing_item(data["listing_id"], listing),
                          "availability": repository.listing_availability(listing),
-                         "closure_reason": listing.get("closure_reason")}
+                         "closure_reason": repository.listing_closure_reason(listing)}
     result["seller"] = {"id": data["seller_uid"], "name": seller["name"] if seller else ""}
     return JsonResponse(result)
 
@@ -109,21 +109,7 @@ def proposal_resolution(request, proposal_id, action):
     return JsonResponse(payload(repository.resolve_proposal(request.user.uid, role, proposal_id, status)))
 
 
-@never_cache
-@require_http_methods(["PATCH"])
-@firebase_role("SELLER")
-@guarded
-def edit_listing(request, listing_id):
-    if not valid_document_id(listing_id):
-        raise repository.ProposalNotFound()
-    data = body(request, FIELD_ALIASES)
-    values, errors = validate_property(data)
-    if errors:
-        return JsonResponse({"errors": errors}, status=400)
-    values["price_cents"] = int(values.pop("price") * 100)
-    values["surface_hundredths"] = int(values.pop("surface") * 100)
-    listing = repository.update_listing(request.user.uid, listing_id, values)
-    return JsonResponse(listing_item(listing_id, listing))
+from .management_views import edit_listing
 
 
 @never_cache

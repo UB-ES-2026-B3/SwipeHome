@@ -98,7 +98,7 @@ def list_matches(user, params):
                 "title": r.get("listing_title", ""),
             }
             listing_obj["availability"] = repository.listing_availability(listing_data) if listing_data else "CLOSED"
-            listing_obj["closure_reason"] = listing_data.get("closure_reason") if listing_data else None
+            listing_obj["closure_reason"] = repository.listing_closure_reason(listing_data) if listing_data else None
             if seller_name:
                 listing_obj["seller_name"] = seller_name
             item = {

@@ -70,6 +70,12 @@ desde la consola de Firebase al terminar.
 |---|---|---|
 | `GET` | `/api/notificaciones` | Avisos privados BUYER/SELLER paginados: 200 / 400 / 401 / 403 / 500 |
 | `GET` | `/api/inmuebles` | Inmuebles publicados del SELLER autenticado: 200 / 401 / 500 |
+| `GET` | `/api/inmuebles/mios` | Publicaciones propias del SELLER con estado y acciones: 200 / 401 / 403 / 500 |
+| `GET` | `/api/inmuebles/{id}/gestion` | Detalle de un anuncio propio para gestionarlo: 200 / 401 / 403 / 404 / 500 |
+| `PATCH` | `/api/inmuebles/{id}` | Modificar datos y fotografías (JSON o multipart): 200 / 400 / 401 / 403 / 404 / 409 / 500 |
+| `POST` | `/api/inmuebles/{id}/pausar` | Pausar un anuncio activo: 200 / 401 / 403 / 404 / 409 / 500 |
+| `POST` | `/api/inmuebles/{id}/reactivar` | Reactivar un anuncio pausado: 200 / 401 / 403 / 404 / 409 / 500 |
+| `POST` | `/api/inmuebles/{id}/retirar` | Cerrar manualmente el anuncio: 200 / 401 / 403 / 404 / 409 / 500 |
 | `GET` | `/api/inmuebles/explorar` | Viviendas pendientes BUYER paginadas. |
 | `POST` | `/api/inmuebles/{id}/decision` | Decisión BUYER; LIKE crea match y aviso: 201 / 200 / 400 / 401 / 403 / 404 / 409 / 500 |
 | `GET` | `/api/health` | Comprobación de vida. No toca Firebase. |

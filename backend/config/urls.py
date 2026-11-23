@@ -1,4 +1,12 @@
-from properties.proposal_views import proposals, proposal_detail, proposal_resolution, edit_listing, availability
+from properties.proposal_views import proposals, proposal_detail, proposal_resolution, availability
+from properties.management_views import (
+    my_listings,
+    listing_management_detail,
+    edit_listing,
+    pause_listing,
+    reactivate_listing,
+    withdraw_listing,
+)
 from properties.preference_views import preferences, filter_options
 from django.urls import path
 from accounts.views import current_user, register
@@ -37,5 +45,10 @@ urlpatterns = [
     path("api/matches", matches_view, name="matches"),
     path("api/candidatos", candidates_view, name="candidates"),
     path("api/matches/<str:match_id>/decision-vendedor", seller_match_decision, name="seller-match-decision"),
+    path("api/inmuebles/mios", my_listings, name="my-listings"),
+    path("api/inmuebles/<str:listing_id>/gestion", listing_management_detail, name="listing-management-detail"),
+    path("api/inmuebles/<str:listing_id>/pausar", pause_listing, name="pause-listing"),
+    path("api/inmuebles/<str:listing_id>/reactivar", reactivate_listing, name="reactivate-listing"),
+    path("api/inmuebles/<str:listing_id>/retirar", withdraw_listing, name="withdraw-listing"),
     path("api/inmuebles/<str:listing_id>", edit_listing, name="edit-listing"),
 ]

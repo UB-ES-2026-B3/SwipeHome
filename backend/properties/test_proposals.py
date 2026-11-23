@@ -102,7 +102,7 @@ class ProposalFirestoreTests(SimpleTestCase):
         self.assertTrue(created)
         self.assertEqual(repo.listing_availability(repo.get_listing("home")), "ACTIVE")
         self.resolve(proposal)
-        self.assertEqual(repo.get_listing("home")["closure_reason"], "Alquiler acordado")
+        self.assertEqual(repo.listing_closure_reason(repo.get_listing("home")), "RENTED")
         self.assertEqual(repo.get_listing("home")["people"], 3)
         self.assertEqual(repo.get_filter_cities(), ["Barcelona"])
         self.assertEqual(self.col("MATCHES").document(other_home).get().to_dict()["status"], "CONFIRMED")
