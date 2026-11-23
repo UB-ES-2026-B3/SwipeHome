@@ -45,13 +45,6 @@
       ]
     },
     {
-      "collectionGroup": "decisions",
-      "queryScope": "COLLECTION",
-      "fields": [
-        {"fieldPath": "buyer_uid", "order": "ASCENDING"}
-      ]
-    },
-    {
       "collectionGroup": "matches",
       "queryScope": "COLLECTION",
       "fields": [

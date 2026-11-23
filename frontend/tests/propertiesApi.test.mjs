@@ -21,7 +21,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
       return { ok: response.ok, status: response.status, json: async () => response.data }
     },
   })
-  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getConfirmedMatches, getPendingCandidates, decideCandidate, getProposals, getProposal, createProposal, resolveProposal };', context)
+  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getConfirmedMatches, getPendingCandidates, decideCandidate, getProposals, getProposal, createProposal, resolveProposal, getSearchPreferences, saveSearchPreferences, resetSearchPreferences, getFilterOptions };', context)
   return { api: context.api, calls, auth }
 }
 
@@ -178,4 +178,22 @@ test('sends decisions to the selected listing endpoint with only the decision', 
   assert.equal(calls[0][1].method, 'POST')
   assert.equal(calls[0][1].headers['Content-Type'], 'application/json')
   assert.deepEqual(JSON.parse(calls[0][1].body), { decision: 'LIKE' })
+})
+
+test('uses the buyer search preference and filter-option endpoints', async () => {
+  const { api, calls } = harness()
+
+  await api.getSearchPreferences()
+  await api.getFilterOptions()
+  await api.saveSearchPreferences({ bedrooms: 0, is_shared: false })
+  await api.resetSearchPreferences()
+
+  assert.deepEqual(calls.map(([path]) => path), [
+    '/api/exploracion/filtros',
+    '/api/inmuebles/opciones-filtro',
+    '/api/exploracion/filtros',
+    '/api/exploracion/filtros',
+  ])
+  assert.deepEqual(calls.map(([, options]) => options.method), ['GET', 'GET', 'PUT', 'DELETE'])
+  assert.deepEqual(JSON.parse(calls[2][1].body), { bedrooms: 0, is_shared: false })
 })

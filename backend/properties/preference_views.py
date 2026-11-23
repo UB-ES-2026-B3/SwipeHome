@@ -1,7 +1,7 @@
 """API privada de preferencias US8, Firebase Bearer."""
 import json
 import logging
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_http_methods
 from accounts import repository
@@ -28,9 +28,10 @@ def preferences(request):
             errors = {"body": "JSON inválido."}
         if errors:
             return JsonResponse({"errors": errors}, status=400)
-    elif request.method == "DELETE":
-        values, _ = validate_preferences({})
     try:
+        if request.method == "DELETE":
+            repository.delete_search_preferences(request.user.uid)
+            return HttpResponse(status=204)
         if values is None:
             values = repository.get_search_preferences(request.user.uid)
         else:

@@ -65,8 +65,7 @@ class FirestorePreferenceTests(SimpleTestCase):
         self.assertEqual(self.put({}), empty)
         for _ in range(2):
             response = self.prefs(method="delete")
-            self.assertEqual(response.status_code, 200)
-            self.assertEqual(response.json(), empty)
+            self.assertEqual(response.status_code, 204)
 
     def test_filters_individually_and_together_with_exact_boundaries(self):
         cases = [({"city": "Barcelona"}, {"city": "Madrid"}),
@@ -134,7 +133,7 @@ class FirestorePreferenceTests(SimpleTestCase):
         other_preferences = self.put({"city": "Madrid"}, "buyer2")
         self.assertEqual(self.ids(), ["other"])
         self.assertEqual(self.ids(uid="buyer2"), ["available"])
-        self.assertEqual(self.prefs(method="delete").status_code, 200)
+        self.assertEqual(self.prefs(method="delete").status_code, 204)
         self.assertEqual(set(self.ids()), {"other", "available"})
         self.assertEqual(self.prefs(uid="buyer2").json(), other_preferences)
         self.assertEqual(self.counts(), counts)

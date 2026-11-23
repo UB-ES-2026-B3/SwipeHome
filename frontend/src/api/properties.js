@@ -103,6 +103,26 @@ export function decideProperty(propertyId, decision) {
   })
 }
 
+export function getSearchPreferences() {
+  return authenticatedRequest('/api/exploracion/filtros', { method: 'GET' })
+}
+
+export function saveSearchPreferences(preferences) {
+  return authenticatedRequest('/api/exploracion/filtros', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(preferences),
+  })
+}
+
+export function resetSearchPreferences() {
+  return authenticatedRequest('/api/exploracion/filtros', { method: 'DELETE' })
+}
+
+export function getFilterOptions() {
+  return authenticatedRequest('/api/inmuebles/opciones-filtro', { method: 'GET' })
+}
+
 export function publishProperty(fields, photos) {
   const values = {
     title: fields.title,

@@ -1,8 +1,9 @@
 import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { createContext, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchCurrentUser, logout as firebaseLogout } from '../api/auth'
 import { AuthErrorBanner } from '../components/AuthErrorBanner'
 import { auth } from '../firebase'
+import { AuthContext } from './authContext'
 
 /**
  * Contexto global de autenticación, sincronizado con Firebase Auth.
@@ -26,7 +27,6 @@ import { auth } from '../firebase'
  *  - 404 → signOut y aviso de cuenta incompleta.
  *  - 5xx, fallo de red o respuesta lenta → aviso con "Reintentar" y la sesión SE CONSERVA.
  */
-export const AuthContext = createContext(null)
 
 // El backend está en el plan gratuito de Render: tras 15 min sin tráfico se
 // duerme y tarda ~1 min en despertar. Si /me no responde en este tiempo se
