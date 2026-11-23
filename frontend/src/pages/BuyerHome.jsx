@@ -67,7 +67,10 @@ export function BuyerHome() {
         confirmedDecision?.listing_id === property.id &&
         confirmedDecision?.value === decision &&
         (decision === 'LIKE'
-          ? result.data?.match?.listing_id === property.id && Boolean(result.data.match.id)
+          ? confirmedDecision?.seller_decision === 'PENDING' && result.data?.match === null ||
+            confirmedDecision?.seller_decision === 'ACCEPT' &&
+              result.data?.match?.listing_id === property.id && Boolean(result.data.match.id) ||
+            confirmedDecision?.seller_decision === 'REJECT' && result.data?.match === null
           : result.data?.match === null)
       if (result.ok && validConfirmation) {
         const remaining = properties.slice(1)
@@ -75,7 +78,11 @@ export function BuyerHome() {
         setRetryDecision(null)
         setFeedback(
           decision === 'LIKE'
-            ? '¡Match creado! El vendedor ha recibido tu interés.'
+            ? confirmedDecision.seller_decision === 'ACCEPT'
+              ? '¡Match confirmado! El vendedor ha aceptado tu interés.'
+              : confirmedDecision.seller_decision === 'REJECT'
+                ? 'El vendedor ha rechazado tu interés.'
+                : 'Interés enviado al vendedor. Te avisaremos si lo confirma.'
             : 'Vivienda descartada. Tu decisión se ha guardado.',
         )
         if (remaining.length === 0 && nextCursor.current) await loadProperties()

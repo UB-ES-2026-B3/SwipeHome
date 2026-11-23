@@ -1,15 +1,15 @@
 # Contexto del proyecto SwipeHome
 
-## Estado vigente — US4, US6 y US7.4 (10 noviembre 2026)
+## Estado vigente — US4, US5.8, US6 y US7.4
 
 El stack vigente es Django con Firebase Auth y Firestore. La implementación
 de US 4.4–4.7 sobre ese stack fue autorizada explícitamente por el usuario.
 Las descripciones anteriores de sesiones Django/SQLite son historial.
 
-**Regla vigente:** el Comprador da LIKE y crea directamente match y aviso
-al propietario. No hay aceptación del Vendedor ni segundo swipe. PASS no
-crea match ni aviso. Un match no reserva el anuncio y varios Compradores
-pueden tener match con la misma vivienda.
+**Regla vigente:** LIKE crea una candidatura pendiente. El Vendedor propietario
+la acepta o rechaza; solo aceptar crea el match y un aviso privado al Comprador.
+PASS no crea candidatura ni aviso. Un match no reserva el anuncio y varios
+Compradores pueden tener matches independientes con la misma vivienda.
 
 | Historia | Estado de backend |
 |---|---|
@@ -19,6 +19,7 @@ pueden tener match con la misma vivienda.
 | US 4.7 | Avisos privados SELLER, relaciones de match/Comprador/vivienda y paginación. |
 | US 4.9 | Verificación de permisos, datos, paginación, privacidad, concurrencia y rollback con persistencia local aislada. |
 | US 4.10 | Verificación integrada del recorrido de exploración, decisiones y avisos; UI contrastada con API mockeada y persistencia backend en emuladores. |
+| US 5.8 | APIs de matches/candidaturas, aceptación/rechazo transaccional, privacidad, concurrencia, idempotencia y rollback con Firestore Emulator. |
 | US 7.4 | Lectura privada de avisos para BUYER y SELLER, pantalla, paginación, errores, estados vacíos y persistencia del aviso de interés. |
 | US 6.8 | Verificación de perfil, cambio de contraseña y logout para BUYER/SELLER; concurrencia, integridad y continuidad probadas con emuladores. |
 | US 6.9 | Recorrido de perfil y logout para ambos roles verificado en navegador con Auth Emulator y API interceptada; cobertura de persistencia backend reutilizada de US6.8. |
@@ -44,10 +45,11 @@ El fallo de logout ahora ofrece un botón explícito de reintento.
 La referencia de modelos, atomicidad, concurrencia, compatibilidad histórica y
 resultados reales es [US4 backend](us4_backend.md). Los contratos HTTP completos,
 ejemplos y comandos están en el [README backend](../backend/README.md).
-US7.4 pasó 172 pruebas backend con Auth/Firestore Emulator y Azure Blob mock,
-25 pruebas frontend, lint/build y verificación visual con API interceptada en
-viewports emulados. La consulta BUYER está disponible, pero no existe en este
-árbol el productor de aviso de confirmación US5: esa generación no se verificó.
+US7.4 verificó la consulta paginada de avisos; US5.8 añade el productor del
+aviso al aceptar y verifica que el Comprador consulta el match confirmado.
+La suite de backend de US5.8 pasó 182 tests con Auth/Firestore Emulator; Azure
+Blob se mockea, los índices no se desplegaron y no se añadió UI de listas de
+matches. Evidencia por CA en el [README backend](../backend/README.md).
 El backlog original de Sprint 0 se conserva a continuación como historial:
 sus afirmaciones sobre funcionalidades futuras no describen el estado actual.
 

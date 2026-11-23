@@ -50,6 +50,35 @@
       "fields": [
         {"fieldPath": "buyer_uid", "order": "ASCENDING"}
       ]
+    },
+    {
+      "collectionGroup": "swipes",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "seller_uid", "order": "ASCENDING"},
+        {"fieldPath": "value", "order": "ASCENDING"},
+        {"fieldPath": "seller_decision", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"},
+        {"fieldPath": "__name__", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "buyer_uid", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"},
+        {"fieldPath": "__name__", "order": "DESCENDING"}
+      ]
+    },
+    {
+      "collectionGroup": "matches",
+      "queryScope": "COLLECTION",
+      "fields": [
+        {"fieldPath": "seller_uid", "order": "ASCENDING"},
+        {"fieldPath": "created_at", "order": "DESCENDING"},
+        {"fieldPath": "__name__", "order": "DESCENDING"}
+      ]
     }
   ],
   "fieldOverrides": []

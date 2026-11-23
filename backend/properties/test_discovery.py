@@ -42,8 +42,9 @@ class DiscoveryApiTests(SimpleTestCase):
         ))
         self.pending = self.enterContext(patch("accounts.repository.get_pending_listings", return_value=[]))
         self.record = self.enterContext(patch("accounts.repository.record_decision", return_value=(
-            {"id": "key", "buyer_uid": "buyer", "listing_id": "home", "value": "LIKE", "created_at": STAMP},
-            {"id": "key", "decision_id": "key", "listing_id": "home", "created_at": STAMP}, True,
+            {"id": "key", "buyer_uid": "buyer", "listing_id": "home", "value": "LIKE",
+             "seller_decision": "PENDING", "created_at": STAMP},
+            None, True,
         )))
         self.client = Client(enforce_csrf_checks=True)
 
@@ -86,7 +87,8 @@ class DiscoveryApiTests(SimpleTestCase):
         response = self.post()
         self.assertEqual(response.status_code, 201)
         self.record.assert_called_once_with("buyer", "home", "LIKE", buyer_name="Ana")
-        self.assertEqual(response.json()["match"]["decision_id"], "key")
+        self.assertEqual(response.json()["decision"]["seller_decision"], "PENDING")
+        self.assertIsNone(response.json()["match"])
         self.assertIn("no-store", response["Cache-Control"])
         self.assertTrue(self.verify.call_args.kwargs["check_revoked"])
 
@@ -113,7 +115,7 @@ class DiscoveryApiTests(SimpleTestCase):
         self.record.return_value = (*self.record.return_value[:2], False)
         response = self.post()
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["match"]["id"], "key")
+        self.assertIsNone(response.json()["match"])
         decision = dict(self.record.return_value[0], value="PASS")
         self.record.return_value = (decision, None, True)
         response = self.post({"decision": "PASS"})
@@ -176,6 +178,93 @@ class DiscoveryApiTests(SimpleTestCase):
     def test_methods_outside_contract_are_405(self):
         self.assertEqual(self.client.post("/api/inmuebles/explorar").status_code, 405)
         self.assertEqual(self.client.get("/api/inmuebles/home/decision").status_code, 405)
+
+
+class MatchApiTests(SimpleTestCase):
+    def setUp(self):
+        self.enterContext(patch("accounts.authentication.get_app"))
+        self.verify = self.enterContext(patch(
+            "accounts.authentication.auth.verify_id_token",
+            side_effect=lambda token, **kwargs: {"uid": token, "auth_time": 100},
+        ))
+        self.enterContext(patch("accounts.repository.is_session_revoked", return_value=False))
+        self.role = self.enterContext(patch(
+            "accounts.repository.get_user_profile",
+            side_effect=lambda uid: {"role": "SELLER" if uid == "seller" else "BUYER", "name": "Name"},
+        ))
+        self.matches = self.enterContext(patch(
+            "accounts.repository.get_confirmed_matches", return_value=[],
+        ))
+        self.candidates = self.enterContext(patch(
+            "accounts.repository.get_pending_candidates", return_value=[],
+        ))
+        self.transition = self.enterContext(patch(
+            "accounts.repository.transition_seller_decision",
+            return_value=(
+                {"id": "candidate", "listing_id": "home", "buyer_uid": "buyer",
+                 "value": "LIKE", "seller_decision": "ACCEPT", "created_at": STAMP,
+                 "seller_decided_at": STAMP},
+                {"id": "candidate", "decision_id": "candidate", "listing_id": "home",
+                 "created_at": STAMP}, True,
+            ),
+        ))
+        self.client = Client(enforce_csrf_checks=True)
+
+    def get(self, path, query=None, token="seller"):
+        headers = {} if token is None else {"HTTP_AUTHORIZATION": "Bearer " + token}
+        return self.client.get(path, query or {}, **headers)
+
+    def post(self, body, path="/api/matches/candidaturas/candidate/decision", token="seller"):
+        headers = {} if token is None else {"HTTP_AUTHORIZATION": "Bearer " + token}
+        return self.client.post(path, json.dumps(body), content_type="application/json", **headers)
+
+    def test_buyer_and_seller_can_read_only_their_confirmed_matches(self):
+        for uid, role in (("buyer", "BUYER"), ("seller", "SELLER")):
+            response = self.get("/api/matches", token=uid)
+            self.assertEqual(response.status_code, 200)
+            self.assertEqual(response.json(), {"items": [], "next_cursor": None})
+            self.matches.assert_called_with(uid, role, limit=21, position=None)
+        self.assertEqual(self.get("/api/matches?uid=other", token="buyer").status_code, 400)
+        self.assertEqual(self.matches.call_count, 2)
+
+    def test_candidates_and_decision_require_seller_role_and_authentication(self):
+        self.assertEqual(self.get("/api/matches/candidatos", token=None).status_code, 401)
+        self.assertEqual(self.get("/api/matches/candidatos", token="buyer").status_code, 403)
+        self.assertEqual(self.post({"decision": "ACCEPT"}, token=None).status_code, 401)
+        self.assertEqual(self.post({"decision": "ACCEPT"}, token="buyer").status_code, 403)
+        self.assertEqual(self.candidates.call_count, 0)
+        self.transition.assert_not_called()
+        self.assertEqual(self.get("/api/matches", token=None).status_code, 401)
+
+    def test_candidate_list_and_transition_payload_contract(self):
+        self.assertEqual(self.get("/api/matches/candidatos").status_code, 200)
+        self.candidates.assert_called_once_with("seller", limit=21, position=None)
+        response = self.post({"decision": "ACCEPT"})
+        self.assertEqual(response.status_code, 201)
+        self.assertEqual(response.json()["decision"]["seller_decision"], "ACCEPT")
+        self.assertEqual(response.json()["match"]["decision_id"], "candidate")
+        self.transition.assert_called_once_with("seller", "candidate", "ACCEPT")
+        self.assertEqual(self.post({"decision": "REJECT"}).status_code, 201)
+
+    def test_invalid_payloads_identifiers_and_query_are_rejected(self):
+        for body in ({}, [], {"decision": "ACCEPT", "buyer_uid": "other"},
+                     {"decision": "accept"}, {"decision": "PENDING"}, {"decision": None}):
+            self.assertEqual(self.post(body).status_code, 400, repr(body))
+        self.assertEqual(self.post({"decision": "ACCEPT"}, path="/api/matches/candidaturas/../decision").status_code, 404)
+        self.assertEqual(self.get("/api/matches/candidatos?cursor=bad").status_code, 400)
+        self.transition.assert_not_called()
+        self.candidates.assert_not_called()
+
+    def test_conflict_not_found_and_internal_errors_are_explicit_and_safe(self):
+        self.transition.side_effect = repository.DecisionConflict()
+        self.assertEqual(self.post({"decision": "REJECT"}).status_code, 409)
+        self.transition.side_effect = repository.ListingNotFound()
+        self.assertEqual(self.post({"decision": "REJECT"}).status_code, 404)
+        self.transition.side_effect = RuntimeError("private token SQL traceback")
+        response = self.post({"decision": "ACCEPT"})
+        self.assertEqual(response.status_code, 500)
+        for secret in ("private", "token", "SQL", "traceback"):
+            self.assertNotIn(secret, response.content.decode())
 
 
 class ListingContractTests(SimpleTestCase):

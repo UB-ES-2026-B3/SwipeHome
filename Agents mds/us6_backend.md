@@ -1,9 +1,8 @@
 # US6 backend: perfil y cierre de sesión con Firebase
 
-> Continuidad US4 (8 noviembre 2026): Auth/perfil/logout conservados.
-> [US4 backend](us4_backend.md) documenta los nuevos endpoints y avisos SELLER.
-> LIKE crea directamente match y aviso. La suite completa de 171 tests pasa
-> con ambos emuladores; los resultados de US6.8 se registran más abajo.
+> Continuidad US5.8: Auth/perfil/logout se mantienen. El contrato de exploración,
+> candidaturas y matches está en [US4 backend](us4_backend.md) y el
+> [README backend](../backend/README.md); LIKE queda pendiente hasta ACCEPT.
 
 
 Implementado en la rama `US6-backend`. Adaptación a Firebase autorizada por el

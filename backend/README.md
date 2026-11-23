@@ -70,7 +70,10 @@ desde la consola de Firebase al terminar.
 |---|---|---|
 | `GET` | `/api/notificaciones` | Avisos privados BUYER/SELLER paginados: 200 / 400 / 401 / 403 / 500 |
 | `GET` | `/api/inmuebles/explorar` | Viviendas pendientes BUYER paginadas. |
-| `POST` | `/api/inmuebles/{id}/decision` | Decisión BUYER; LIKE crea match y aviso: 201 / 200 / 400 / 401 / 403 / 404 / 409 / 500 |
+| `POST` | `/api/inmuebles/{id}/decision` | Decisión BUYER; LIKE crea candidatura pendiente: 201 / 200 / 400 / 401 / 403 / 404 / 409 / 500 |
+| `GET` | `/api/matches` | Matches confirmados propios de BUYER o SELLER, paginados. |
+| `GET` | `/api/matches/candidatos` | Candidaturas LIKE pendientes de viviendas propias, solo SELLER. |
+| `POST` | `/api/matches/candidaturas/{decision_id}/decision` | Aceptar/rechazar candidatura propia, solo SELLER. |
 | `GET` | `/api/health` | Comprobación de vida. No toca Firebase. |
 | `POST` | `/api/auth/register` | `{name, email, password, role}` → 201 / 400 / 409 / 500 |
 | `GET` | `/api/auth/me` | `Authorization: Bearer <ID token>` → 200 / 401 / 404 / 500 |
@@ -284,19 +287,29 @@ de los tests backend US6.8 con Auth/Firestore Emulator.
 
 ## US 4.4–4.7: exploración, decisiones y avisos privados
 
+Histórico de la implementación original, actualizado en el siguiente apartado
+por US5.8. El contrato vigente separa candidatura LIKE pendiente y match
+confirmado: no usar las descripciones históricas de match inmediato como estado
+actual.
+
 La adaptación a **Firebase Auth/Firestore** fue autorizada expresamente.
 Se conserva el contrato Bearer existente. No hay sesiones por cookies, CSRF
 Django ni migraciones ORM; no se añade `csrf_exempt`. Cookies por sí solas no
 autentican estos endpoints. La identidad procede de `request.user`, construido
 por el servidor con el token verificado, su revocación y el perfil actual.
 
-**LIKE crea directamente el match y un aviso al propietario.** No hay
-aceptación del Vendedor, segundo swipe ni reserva o retirada automática del anuncio.
+**LIKE crea una candidatura pendiente; no crea un match confirmado.** El
+Vendedor propietario puede aceptarla o rechazarla. Solo la aceptación crea el
+match y un aviso privado al Comprador. PASS no crea candidatura, match ni aviso.
+El match no reserva ni retira automáticamente el anuncio.
 
 | Método | Ruta exacta | Rol |
 |---|---|---|
 | GET | `/api/inmuebles/explorar` | BUYER |
 | POST | `/api/inmuebles/{id}/decision` | BUYER |
+| GET | `/api/matches` | BUYER / SELLER (solo matches de la identidad verificada) |
+| GET | `/api/matches/candidatos` | SELLER (solo viviendas propias) |
+| POST | `/api/matches/candidaturas/{decision_id}/decision` | SELLER (solo candidatura y vivienda propias) |
 | GET | `/api/notificaciones` | BUYER / SELLER (solo avisos de la identidad verificada) |
 
 Todos requieren `Authorization: Bearer <ID token Firebase>`.
@@ -381,7 +394,7 @@ Solo se aceptan cadenas exactas `LIKE` y `PASS`. Otros valores, campos extra
 incorrectas devuelven 400. Un inmueble inexistente, no publicado o incompleto
 devuelve 404.
 
-Respuesta LIKE 201, o 200 en un reintento idéntico:
+Respuesta LIKE 201, o 200 en un reintento idéntico mientras siga pendiente:
 
 ```json
 {
@@ -389,43 +402,61 @@ Respuesta LIKE 201, o 200 en un reintento idéntico:
     "id": "clave-canonica",
     "listing_id": "listing-123",
     "value": "LIKE",
+    "seller_decision": "PENDING",
     "created_at": "2026-11-08T10:01:00Z"
   },
-  "match": {
-    "id": "clave-canonica",
-    "decision_id": "clave-canonica",
-    "listing_id": "listing-123",
-    "created_at": "2026-11-08T10:01:00Z"
-  }
+  "match": null
 }
 ```
 
 PASS usa la misma estructura con `value: "PASS"` y `match: null`.
+Si el Comprador reintenta después de una aceptación, recibe `seller_decision:
+ACCEPT` y el match existente; no se cambia su ID ni fecha.
 
 | HTTP | Resultado |
 |---|---|
-| 201 | Decisión nueva confirmada; LIKE incluye match y aviso en el mismo commit. |
-| 200 | Misma decisión previa; mismos identificadores y fechas, sin aviso duplicado. |
+| 201 | Decisión nueva guardada; LIKE queda pendiente y no incluye match. |
+| 200 | Reintento de la misma decisión; no duplica datos. Si ya fue aceptada, devuelve el match existente. |
 | 400 | Cuerpo o decisión inválidos. |
 | 401 / 403 | Autenticación o rol incorrectos. |
 | 404 | Anuncio no disponible para decidir. |
 | 409 | La decisión contraria ya quedó confirmada; no se modifica. |
 | 500 | Fallo interno, inconsistencia o contención no resuelta; mensaje seguro. |
 
+### GET /api/matches y GET /api/matches/candidatos
+
+`GET /api/matches` admite BUYER y SELLER y devuelve únicamente matches
+confirmados relacionados con la identidad verificada.
+`GET /api/matches/candidatos` solo admite SELLER y devuelve LIKE pendientes
+para viviendas propias, con el comprador y la ficha de vivienda. Ambos aceptan
+la paginación anterior. No se aceptan UID de cliente para seleccionar al usuario.
+
+### POST /api/matches/candidaturas/{decision_id}/decision
+
+Solo SELLER y JSON exacto `{"decision":"ACCEPT"}` o
+`{"decision":"REJECT"}`. La propiedad se comprueba contra el `seller_uid` de la
+vivienda dentro de la transacción. Candidatura inexistente o ajena devuelve 404;
+una transición contradictoria devuelve 409; reintentar la transición ya
+confirmada devuelve 200 sin alterar fechas.
+
+ACCEPT actualiza la candidatura y crea el match y el aviso al Comprador en un
+único commit. REJECT guarda el estado y elimina la candidatura de pendientes,
+sin crear match ni aviso. Un LIKE pendiente no aparece en ninguna lista de
+matches confirmados.
+
 ### GET /api/notificaciones
 
-Solo devuelve avisos cuyo `recipient_uid` es el SELLER autenticado. No admite
-elegir otro destinatario; BUYER obtiene 403.
-
-Respuesta 200 para avisos nuevos de match:
+Solo devuelve avisos cuyo `recipient_uid` corresponde a la identidad verificada;
+BUYER y SELLER pueden consultar los propios, sin seleccionar destinatario.
+La aceptación produce un aviso privado al Comprador:
 
 ```json
 {
   "items": [
     {
-      "id": "match-clave-canonica",
+      "id": "buyer-match-clave-canonica",
       "type": "MATCH",
-      "message": "Tienes un nuevo match.",
+      "message": "El propietario ha confirmado tu interés.",
       "match_id": "clave-canonica",
       "created_at": "2026-11-08T10:01:00Z",
       "buyer": {"id": "buyer-uid", "name": "Ana"},
@@ -436,11 +467,10 @@ Respuesta 200 para avisos nuevos de match:
 }
 ```
 
-Nombre y título son instantáneas fijadas al crear el aviso. Se conservan
-`type` y `message` del contrato anterior. **Compatibilidad histórica:** los avisos
-previos sin match siguen devolviendo solo `id/type/message/created_at`; no se
-les inventan identidades ni matches. Los avisos US4 tienen siempre las relaciones
-completas. No se marca lectura ni se cambia ningún registro al consultar.
+Nombre y título son instantáneas fijadas al confirmar. **Compatibilidad histórica:**
+los avisos previos sin match siguen devolviendo solo `id/type/message/created_at`;
+no se les inventan relaciones. No se marca lectura ni se cambia ningún registro
+al consultar.
 
 ### Modelos Firestore, unicidad y transacciones
 
@@ -448,23 +478,27 @@ Se reutilizan `users`, `listings` y `notifications`. La clave canónica es
 SHA-256 del JSON ASCII de `[buyer_uid, listing_id]`. Se añaden:
 
 - `swipes/{key}`: `buyer_uid, listing_id, value, created_at`.
-- `matches/{key}`: `buyer_uid, listing_id, decision_id, created_at`.
-- `notifications/match-{key}`: destinatario propietario, match, Comprador,
-  nombre, vivienda, título, tipo, mensaje y fecha.
+- LIKE añade `seller_uid, buyer_name, seller_decision=PENDING`; al decidir el
+  Vendedor se fijan `seller_decision=ACCEPT|REJECT` y `seller_decided_at`.
+- `matches/{key}`: `buyer_uid, seller_uid, listing_id, decision_id, created_at`;
+  solo se escribe al aceptar.
+- `notifications/buyer-match-{key}`: destinatario Comprador, match, comprador,
+  nombre, vivienda, título, tipo, mensaje y fecha; solo se escribe al aceptar.
 
-El propietario se resuelve desde `listings.seller_uid`. Un match no almacena
-otro propietario, reserva ni retira la vivienda. Un LIKE completo tiene un
-match y un aviso; PASS no los crea.
+El propietario se verifica desde `listings.seller_uid`. Un match no reserva ni
+retira la vivienda. Una candidatura LIKE no equivale a un match; PASS no crea
+candidatura ni aviso.
 
 Firestore garantiza unicidad de documento y precondición de `create()`.
-El servicio central `repository.record_decision` garantiza valores permitidos,
-vínculo positivo y coherencia entre documentos; **no son CHECK/FK SQL**.
-Las escrituras van en una sola transacción, incluido el aviso. Si falla un
-guardado o se rechaza el commit, se revierte el conjunto nuevo.
-No se añaden trabajos asíncronos ni callbacks posteriores al commit.
+`repository.record_decision` y `repository.transition_seller_decision` garantizan
+valores permitidos, vínculo positivo y coherencia entre documentos; **no son
+CHECK/FK SQL**. La decisión inicial, y después la transición/match/aviso, son
+commits transaccionales separados. Un fallo al aceptar revierte todo lo escrito
+en esa transición y conserva la candidatura pendiente.
 
-Las peticiones simultáneas comparten la misma clave y convergen; la decisión
-contraria recibe 409. Se contemplan abortos durante lecturas y commits,
+Solicitudes iniciales simultáneas comparten una clave y convergen; transiciones
+SELLER simultáneas contradictorias tienen un único ganador y la otra devuelve
+409. Se contemplan abortos durante lecturas y commits,
 colisiones de creación y reintentos con transacciones nuevas y espera acotada.
 El wrapper transaccional del SDK se instancia por operación, sin compartir
 estado de reintento entre hilos.
@@ -472,8 +506,8 @@ Los datos inconsistentes producen 500, sin reparación silenciosa.
 La persistencia reside en Firestore y sobrevive al logout o reinicio de Django.
 
 Si se pierde la respuesta después de un commit remoto, puede existir el
-conjunto **completo** pese al error HTTP; repetir la misma decisión recupera
-su resultado sin duplicarlo. No se promete deshacer un commit remoto aceptado.
+conjunto **completo** pese al error HTTP; repetir la misma decisión o transición
+recupera su resultado sin duplicarlo. No se promete deshacer un commit remoto aceptado.
 
 ### Evolución del esquema e índices
 
@@ -486,7 +520,7 @@ producción. Si existen datos externos en esas colecciones, comprobar antes del
 despliegue su compatibilidad con las claves y relaciones anteriores; no se
 transforman datos desconocidos automáticamente.
 
-Se conserva el índice de avisos y se añade el de exploración en
+Se conservan los índices existentes y se añaden los de candidaturas y matches en
 [firestore.indexes.json](firestore.indexes.json). Desde `backend/`, con Firebase
 CLI autenticado y permiso de administrar índices:
 
@@ -528,23 +562,30 @@ lo necesita el recorrido de publicación. La ejecución no utilizó Firebase ni
 Azure de producción. El emulador no demuestra el despliegue de índices ni el
 funcionamiento en producción.
 
-#### US 4.9: evidencia por criterio de aceptación
+#### US 4.9: evidencia histórica por criterio de aceptación
+
+Esta tabla registra la verificación de US4.9 antes de US5.8; su semántica de
+match inmediato está supersedida por la evidencia actual de US5.8 al final de
+este README.
 
 | CA | Prueba y método | Resultado y límite |
 |---|---|---|
-| CA-01 — Acceso al explorador | `test_all_three_endpoints_enforce_roles_without_persisting_changes`, `test_authentication_and_buyer_permissions_for_both_endpoints` y `test_private_notices_include_match_buyer_home_and_stable_pagination`: BUYER consulta y decide; vendedor/BUYER en endpoint no permitido reciben 403 y sin token 401. | **Parcial (solo API):** autenticación/autorización y exploración están verificadas; inicio/ruta de interfaz no pertenece a esta US. La prueba integrada de roles usa verifier/perfil mockeados; Firestore es emulado. |
+| CA-01 — Acceso al explorador | `test_all_three_endpoints_enforce_roles_without_persisting_changes` y `test_authentication_and_buyer_permissions_for_both_endpoints`: BUYER consulta y decide; vendedor/BUYER en endpoint no permitido reciben 403 y sin token 401. | **Parcial (solo API):** autenticación/autorización y exploración están verificadas; inicio/ruta de interfaz no pertenece a esta US. La prueba integrada de roles usa verifier/perfil mockeados; Firestore es emulado. |
 | CA-02 — Información y fotografías | `test_explore_excludes_only_own_decisions_and_preserves_all_photos` y `ListingContractTests.test_all_public_fields_and_ordered_photos_without_internal_data`: respuesta con datos del anuncio y todas las URLs de foto en el orden persistido. | **Parcial (solo API):** contrato, datos y orden pasan con Firestore Emulator; no se verifica mostrar tarjeta ni recorrer fotos en UI, ni recuperar los blobs de Azure. |
-| CA-03 — Creación del match | `test_like_has_exactly_one_consistent_decision_match_and_notice` y `test_same_decision_retries_return_identical_records`: un POST LIKE guarda decisión y match asociados al comprador/anuncio; repetición devuelve mismo match y no duplica. | **Pasa en API/persistencia local:** Firestore Emulator; interacción swipe/botón no verificada en esta US. |
-| CA-04 — Aviso al Vendedor | `test_private_notices_include_match_buyer_home_and_stable_pagination`: notificación contiene identidad del comprador, vivienda y match; consulta filtrada por vendedor. | **Pasa con Firestore Emulator:** no verifica presentación visual del aviso. |
+| CA-03 — Creación del match | Comportamiento previo a US5.8: un LIKE se confirmaba inmediatamente. | **Histórico, supersedido:** el contrato actual crea match solo tras ACCEPT del Vendedor. |
+| CA-04 — Aviso al Vendedor | Comportamiento previo a US5.8: aviso generado al recibir LIKE. | **Histórico, supersedido:** el contrato actual crea aviso al Comprador tras ACCEPT; la candidatura se lista por API del propietario. |
 | CA-05 — Descarte persistente | `test_pass_creates_only_decision_and_no_notice`, `test_explore_excludes_only_own_decisions_and_preserves_all_photos` y `test_empty_and_exact_limit_pages_have_no_next_cursor`: PASS persiste sin match/aviso y deja de aparecer al mismo comprador. | **Pasa en API/persistencia local:** UI de «No me interesa» no verificada en esta US. |
-| CA-06 — Independencia entre Compradores | `test_two_buyers_match_same_home_without_reserving_or_hiding_it`: dos compradores guardan matches separados para la misma vivienda; sus decisiones no se comparten. | **Pasa con Firestore Emulator.** |
+| CA-06 — Independencia entre Compradores | `test_two_buyers_create_independent_matches_with_same_home`: dos Compradores generan matches separados para la misma vivienda. | **Pasa con Firestore Emulator.** |
 | CA-07 — Continuidad y fin de la exploración | `test_pagination_ties_previous_page_decisions_and_last_page`, `test_scan_multiple_batches_of_decided_homes_without_skip_or_n_plus_one` y `test_empty_and_exact_limit_pages_have_no_next_cursor`: se decide en página previa, se obtiene la siguiente pendiente y la API devuelve lista vacía al terminar. | **Parcial (solo API):** cursor y fin de resultados pasan; mostrar la siguiente tarjeta y el mensaje de fin en interfaz no se verificó en esta US. |
-| CA-08 — Fallos y reintentos | `test_each_staged_write_failure_rolls_back_entire_operation`, `test_rejected_commit_does_not_persist_any_staged_document`, `test_same_decision_retries_return_identical_records`, `test_simultaneous_identical_likes_converge_to_same_match_and_notice` y `test_internal_failures_are_safe_for_both_endpoints`: se inspeccionan errores, rollback, respuesta idempotente y conteos finales. | **Parcial (solo backend):** errores y reintento sin duplicados pasan en emulador; aviso visual del problema y control para reintentar en UI no se verificaron en esta US. |
+| CA-08 — Fallos y reintentos | `test_each_staged_write_failure_rolls_back_entire_operation`, `test_rejected_commit_does_not_persist_any_staged_document`, `test_same_decision_retries_return_identical_records`, `test_simultaneous_identical_likes_converge_to_same_pending_candidate` y `test_internal_failures_are_safe_for_both_endpoints`: se inspeccionan errores, rollback, respuesta idempotente y conteos finales. | **Parcial (solo backend):** errores y reintento sin duplicados pasan en emulador; aviso visual del problema y control para reintentar en UI no se verificaron en esta US. |
 
 La suite confirma la persistencia local emulada y usa fallos de escritura
 inyectados para algunos escenarios. No prueba Firebase/Azure de producción.
 
-#### US 4.10: recorrido integrado publicación-exploración-match
+#### US 4.10: recorrido integrado publicación-exploración-match (histórico)
+
+La siguiente ejecución es anterior a US5.8 y documenta el comportamiento de
+ese momento; la confirmación inmediata descrita aquí ya no es el contrato vigente.
 
 En la ejecución conjunta de US4.10, la suite pasó **167 tests** con el comando
 anterior. `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`
@@ -607,9 +648,9 @@ filtra por `recipient_uid`, ordena `created_at` e ID descendentes y no escribe
 en Firestore. Los cursores firmados están ligados a la cuenta. Las respuestas
 incluyen `items` y `next_cursor`.
 
-La comprobación del 10 de noviembre de 2026 pasó **172 tests** con Auth y
+La comprobación histórica del 10 de noviembre de 2026 pasó **172 tests** con Auth y
 Firestore Emulator de proyecto demo; Azure Blob se simula. El test de flujo
-integrado crea el aviso del LIKE para el propietario y comprueba su lectura,
+integrado de esa US creaba el aviso del LIKE para el propietario y comprobaba su lectura,
 logout, rechazo del token revocado y persistencia tras nuevo inicio de sesión.
 Otra prueba escribe fixtures locales destinados a BUYER, SELLER y una tercera
 cuenta y verifica el aislamiento, parámetros manipulados y que las lecturas no
@@ -625,7 +666,56 @@ prueba visual usa Auth Emulator y respuestas API interceptadas; el navegador
 no consulta Firestore directamente. Se contrastaron viewports 1280×900 y
 390×844 emulados, no dispositivos físicos.
 
-**Límite US5:** este árbol no contiene endpoint ni productor de la confirmación
-US5 que cree un aviso para BUYER. La API puede consultar avisos BUYER si ya
-están persistidos, pero no se afirma que la confirmación los genere. Esa parte
-queda sin verificar y fuera de esta implementación de consulta.
+US5.8 añade el productor de aviso al Comprador al aceptar una candidatura; su
+persistencia en Firestore Emulator y lectura por el usuario se verifican en la
+sección siguiente.
+
+## US5.8: APIs, permisos y transiciones del match
+
+El recorrido implementado separa la decisión del Comprador del match confirmado:
+LIKE persiste una candidatura PENDING sin match/aviso; el propietario puede
+consultar sus candidatos y aceptar o rechazar. ACCEPT crea el match y el aviso
+para el Comprador en una transacción; REJECT persiste el rechazo y no genera
+match ni aviso. Las listas de matches se filtran por UID autenticado y solo
+incluyen decisiones aceptadas. Otro Comprador puede interesarse por la misma
+vivienda de forma independiente.
+
+La suite se ejecutó con el comando de emuladores indicado en este README:
+Auth y Firestore Emulator locales, Azure Blob mockeado, sin credenciales ni
+servicios de producción. **Resultado final: 182 tests, todos pasan**, sin
+omisiones; `manage.py check` no detectó incidencias. La primera suite detectó
+un error de serialización del cursor de candidatos; se normalizaron timestamps
+antes de firmar/devolver páginas y la suite completa se repitió con éxito.
+Después se añadió una comprobación de retry del Comprador tras REJECT; el test
+de transición se volvió a ejecutar de forma aislada en el emulador y pasó.
+
+| CA US5 | Evidencia automatizada | Resultado / límite |
+|---|---|---|
+| CA-01 — Consulta de matches del Comprador | `test_accept_and_reject_are_persistent_idempotent_and_independent`, `test_two_buyers_create_independent_matches_with_same_home`, `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`; GET `/api/matches` filtra BUYER. | **Pasa con Firestore Emulator**; no hay pantalla de matches en esta US. |
+| CA-02 — Interés mutuo obligatorio | `test_like_creates_one_pending_candidate_without_confirming_a_match`, `test_accept_and_reject_are_persistent_idempotent_and_independent`; LIKE deja lista confirmada vacía hasta ACCEPT. | **Pasa con Firestore Emulator.** |
+| CA-03 — Consulta de candidatos del Vendedor | `test_candidates_and_matches_are_scoped_by_verified_owner_and_role`, `test_match_and_candidate_lists_paginate_and_return_empty_distinctly`; candidatos incluyen comprador y vivienda y están filtrados por vendedor. | **Pasa con Firestore Emulator**; no se verificó una interfaz de vendedor. |
+| CA-04 — Confirmación del match | `test_accept_and_reject_are_persistent_idempotent_and_independent`, `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`; aceptación produce match para ambas listas. | **Pasa con Firestore Emulator.** |
+| CA-05 — Rechazo de candidatura | `test_accept_and_reject_are_persistent_idempotent_and_independent`; REJECT desaparece de pendientes y no crea match ni aviso. | **Pasa con Firestore Emulator.** |
+| CA-06 — Privacidad e independencia | `test_candidates_and_matches_are_scoped_by_verified_owner_and_role`, `test_two_buyers_create_independent_matches_with_same_home`; IDs/roles ajenos reciben 403/404 y la otra candidatura permanece intacta. | **Pasa con emulador**; Auth verifier es mock en tests de permisos, real en flujo integrado. |
+| CA-07 — Persistencia y ausencia de duplicados | `test_accept_and_reject_are_persistent_idempotent_and_independent`; reintentos comprueban IDs y fechas sin cambios. | **Pasa con Firestore Emulator.** |
+| CA-08 — Listas vacías y errores | `test_match_and_candidate_lists_paginate_and_return_empty_distinctly`, `MatchApiTests.test_invalid_payloads_identifiers_and_query_are_rejected`, `test_simultaneous_accept_and_reject_have_one_atomic_winner`, `test_accept_creation_failures_roll_back_decision_match_and_notice`. | **Pasa con mocks y emulador**; falla de persistencia inyectada y carrera realmente concurrente, con estado final inspeccionado. |
+
+Suposiciones: `decision_id` (clave canónica buyer-vivienda) identifica la
+candidatura; BUYER puede repetir LIKE para recuperar el estado/match actual,
+pero no revertir una decisión SELLER. Los matches históricos con decisión LIKE
+y documento match preexistente se leen como aceptados; no se migran datos
+externos. El aviso se genera al aceptar y se entrega al Comprador; no se añadió
+pantalla para revisar candidatos ni matches. Los índices fueron modificados en
+`firestore.indexes.json`, pero no se desplegaron ni verificaron en producción.
+BuyerHome se ajustó para confirmar respuestas PENDING, ACCEPT recuperadas tras
+un retry y el resultado REJECT, sin mostrar un match antes de tiempo. `npm test` pasó 25 tests; `npm run lint` y
+`npm run build` terminaron correctamente. Lint conserva advertencias del
+repositorio (efectos con setState, import no usado y Fast Refresh); no se
+abordaron por ser ajenas a US5.8. No se verificó la interfaz con navegador ni
+hardware móvil en esta US.
+
+Cambios funcionales incluidos: endpoints `GET /api/matches`,
+`GET /api/matches/candidatos`, `POST /api/matches/candidaturas/{id}/decision`,
+transición transaccional e idempotente, filtros por propiedad/rol, paginación,
+índices Firestore, aviso de aceptación al Comprador y ajuste del explorador para
+mostrar interés pendiente en lugar de anunciar un match inmediato.

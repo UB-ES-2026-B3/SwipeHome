@@ -9,17 +9,17 @@ Los consumidores pueden usar los contratos documentados en el
 
 BUYER: GET `/api/inmuebles/explorar` y POST
 `/api/inmuebles/{id}/decision` con `{"decision":"LIKE"}` o PASS.
-LIKE crea directamente match y aviso; no requiere aceptación del Vendedor ni
-redirige a una pantalla US5.
-BUYER y SELLER: GET `/api/notificaciones` devuelve sus propios avisos.
-Ambos GET usan `items/next_cursor`, `limit` 20 por defecto, máximo 50.
-Conservar el cursor al decidir sobre páginas previas para continuar sin saltos.
-401 requiere recuperar el acceso; 500 permite reintentar sin cerrar la sesión.
-Los avisos nuevos incluyen match, Comprador y vivienda; los históricos sin
-match mantienen sus cuatro campos previos.
+LIKE crea una candidatura pendiente, no un match confirmado. BuyerHome acepta
+PENDING sin match y comunica que se avisará al confirmar; una respuesta de retry
+puede incluir ACCEPT y el match. El Vendedor dispone de API para consultar y
+decidir candidatos; esta US no añade pantallas de listas del Vendedor ni matches.
+BUYER y SELLER: GET `/api/matches` devuelve matches propios confirmados y GET
+`/api/notificaciones` devuelve avisos propios. Los GET usan `items/next_cursor`,
+límite 20 por defecto y máximo 50.
 
 US4.10 corrigió la integración frontend: exploración con cursor, decisión por ID
-y cuerpo `{decision}`; confirma solo respuestas coherentes con decisión/match.
+y cuerpo `{decision}`; confirma solo respuestas coherentes con el estado de
+candidatura/match.
 Los controles soportan galería, gestos horizontales, teclado, retry y mensaje
 vacío. `npm test` pasa 20 tests; lint y build terminan correctamente.
 
@@ -57,9 +57,15 @@ se comprobó ruta protegida sin sesión, datos/fecha, carga, vacío, fallo inici
 y retry, fallo de actualización conservando avisos y retry, paginación con
 solapamiento sin duplicados y refresco con nuevos resultados. Viewports 1280×900
 y 390×844 en navegador de escritorio emulado; no certifica hardware físico ni
-persistencia Firestore de la UI. Persistencia backend del aviso SELLER tras
-re-login sí se probó aparte en Auth/Firestore Emulator. En este árbol no existe
-el productor de confirmación US5 para aviso BUYER; ese evento queda no verificado.
+persistencia Firestore de la UI. US5.8 verificó aparte la persistencia backend
+del aviso de confirmación al Comprador con Auth/Firestore Emulator; no se
+verificó la presentación visual de ese nuevo evento.
+
+US5.8 ajustó BuyerHome para distinguir PENDING, ACCEPT y REJECT y para tolerar
+un retry que recupera una decisión SELLER ya persistida. La
+suite frontend actual pasa 25 tests; lint y build terminan correctamente, con
+warnings de lint no bloqueantes. No se añadió pantalla de candidatos/matches ni
+se validó visualmente el flujo en navegador para esta US.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

@@ -1,17 +1,19 @@
 # Pautas vigentes de trabajo en SwipeHome
 
-## Continuidad US4 — 8 noviembre 2026
+## Continuidad US5.8 — ciclo de candidatura
 
 Este archivo es documentación del equipo, no una skill instalada.
-El usuario autorizó implementar US 4.4–4.7 usando Firebase/Firestore.
-Revisar [US4 backend](us4_backend.md), [US6 backend](us6_backend.md) y
+El contrato vigente separa LIKE pendiente de match confirmado: solo la
+aceptación del propietario crea el match. Revisar [US4 backend](us4_backend.md),
+[US6 backend](us6_backend.md) y
 [README backend](../backend/README.md) antes de continuar.
 
 - Conservar Firebase Auth/Firestore y sus cuentas/anuncios/fotografías.
 - Identidad desde `request.user`, construido con token y perfil verificados.
-- LIKE crea directamente decisión, match y aviso. No añadir aceptación.
-- Mantener todas las escrituras US4 en `repository.record_decision`; no
-  escribir documentos equivalentes con IDs arbitrarios ni omitir la transacción.
+- LIKE crea candidatura PENDING sin match/aviso; mantener la decisión SELLER
+  mediante `repository.transition_seller_decision` y no duplicar documentos.
+- Toda transición, match y aviso se escriben en la transacción del repositorio;
+  no omitir la comprobación de propiedad o rol.
 - No atribuir CHECK/FK SQL a Firestore: unicidad de path y controles del
   servicio son garantías distintas. Accesos directos de clientes siguen cerrados.
 - Mantener fechas e identidades inmutables y paginación por fecha/ID sin OFFSET.

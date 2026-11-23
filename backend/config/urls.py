@@ -5,6 +5,7 @@ from accounts.notification_views import notifications
 from config.health import health
 from properties.views import create_property
 from properties.discovery_views import explore_listings, listing_decision
+from properties.match_views import candidate_decision, matches, pending_candidates
 from properties.views import decide_property
 
 
@@ -23,6 +24,9 @@ urlpatterns = [
     path("api/auth/logout", logout, name="logout"),
     path("api/inmuebles/explorar", explore_listings, name="explore-listings"),
     path("api/inmuebles/<str:listing_id>/decision", listing_decision, name="listing-decision"),
+    path("api/matches", matches, name="matches"),
+    path("api/matches/candidatos", pending_candidates, name="pending-candidates"),
+    path("api/matches/candidaturas/<str:decision_id>/decision", candidate_decision, name="candidate-decision"),
     path("api/inmuebles", create_property, name="create-property"),
     path("api/inmuebles/decidir", decide_property, name="decide-property"),
 ]

@@ -21,6 +21,7 @@ def decide(user, listing_id, value):
         "decision": {
             "id": decision["id"], "listing_id": decision["listing_id"],
             "value": decision["value"], "created_at": timestamp(decision["created_at"]),
+            "seller_decision": decision.get("seller_decision"),
         },
         "match": None if match is None else {
             "id": match["id"], "decision_id": match["decision_id"],

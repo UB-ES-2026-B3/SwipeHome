@@ -186,7 +186,7 @@ La validación debe controlar memoria y píxeles además del tamaño comprimido.
 
 Para certificar estas US, combinaría pruebas unitarias de validación, integración con imágenes reales y fallos de confirmación simulados, y pruebas de recuperación tras reiniciar el proceso. **Los mocks actuales del repositorio no demuestran por sí solos persistencia, rollback ni limpieza de archivos.**
 
-## QA US 4.9 — APIs e integridad de decisiones y matches (10 noviembre 2026)
+## QA US 4.9 — APIs e integridad de decisiones y matches (histórico anterior a US5.8)
 
 Se ejecutó desde `backend/` el comando de `emulators:exec` del README con Auth
 y Firestore Emulator para `demo-swipehome-us4`: **166 tests correctos, cero
@@ -199,14 +199,14 @@ Los CA oficiales sustituyen cualquier agrupación anterior:
 
 | CA oficial | Pruebas que lo cubren en esta US | Resultado |
 |---|---|---|
-| CA-01 — Acceso al explorador | `test_all_three_endpoints_enforce_roles_without_persisting_changes`, `test_authentication_and_buyer_permissions_for_both_endpoints`, `test_private_notices_include_match_buyer_home_and_stable_pagination`. | **Parcial (solo API):** endpoint de exploración y permisos de decisiones verificados; acceso al inicio/ruta de explorador en la interfaz no verificado. El test integrado de roles usa verifier/perfil mockeados. |
+| CA-01 — Acceso al explorador | `test_all_three_endpoints_enforce_roles_without_persisting_changes`, `test_authentication_and_buyer_permissions_for_both_endpoints`. | **Parcial (solo API):** endpoint de exploración y permisos de decisiones verificados; acceso al inicio/ruta de explorador en la interfaz no verificado. El test integrado de roles usa verifier/perfil mockeados. |
 | CA-02 — Información y fotografías | `test_explore_excludes_only_own_decisions_and_preserves_all_photos`, `test_all_public_fields_and_ordered_photos_without_internal_data`. | **Parcial (solo API):** datos públicos y orden de URLs verificados en Firestore Emulator; no se verificó tarjeta ni recorrido de fotografías en UI, ni descarga desde Azure. |
-| CA-03 — Creación del match | `test_like_has_exactly_one_consistent_decision_match_and_notice`, `test_same_decision_retries_return_identical_records`. | **Pasa en API/persistencia local:** un LIKE crea la relación correcta y el retry devuelve el mismo match; gesto/botón de interfaz no verificado. |
-| CA-04 — Aviso al Vendedor | `test_private_notices_include_match_buyer_home_and_stable_pagination`. | **Pasa con Firestore Emulator:** comprador y vivienda son identificables y se filtran por vendedor; presentación visual no verificada. |
+| CA-03 — Creación del match | En esa versión un LIKE creaba match inmediatamente y el retry devolvía el mismo registro. | **Histórico, supersedido:** ahora requiere ACCEPT del Vendedor. |
+| CA-04 — Aviso al Vendedor | En esa versión el LIKE generaba aviso al propietario. | **Histórico, supersedido:** actualmente ACCEPT genera aviso para el Comprador. |
 | CA-05 — Descarte persistente | `test_pass_creates_only_decision_and_no_notice`, `test_explore_excludes_only_own_decisions_and_preserves_all_photos`, `test_empty_and_exact_limit_pages_have_no_next_cursor`. | **Pasa en API/persistencia local:** PASS excluye la vivienda para ese comprador; control de descarte en UI no verificado. |
-| CA-06 — Independencia entre Compradores | `test_two_buyers_match_same_home_without_reserving_or_hiding_it`. | **Pasa con Firestore Emulator:** decisiones y matches separados permiten a ambos interesarse. |
+| CA-06 — Independencia entre Compradores | `test_two_buyers_create_independent_matches_with_same_home`. | **Pasa con Firestore Emulator:** cada Comprador conserva decisión y match propios. |
 | CA-07 — Continuidad y fin de la exploración | `test_pagination_ties_previous_page_decisions_and_last_page`, `test_scan_multiple_batches_of_decided_homes_without_skip_or_n_plus_one`, `test_empty_and_exact_limit_pages_have_no_next_cursor`. | **Parcial (solo API):** cursor devuelve viviendas pendientes y API expresa el fin como `items: []`, `next_cursor: null`; tarjeta siguiente y mensaje de fin en UI no verificados. |
-| CA-08 — Fallos y reintentos | `test_each_staged_write_failure_rolls_back_entire_operation`, `test_rejected_commit_does_not_persist_any_staged_document`, `test_same_decision_retries_return_identical_records`, `test_simultaneous_identical_likes_converge_to_same_match_and_notice`, `test_internal_failures_are_safe_for_both_endpoints`. | **Parcial (solo backend):** errores, rollback, estado final e idempotencia pasan; aviso de fallo/carga y acción de reintento visible en UI no verificados. |
+| CA-08 — Fallos y reintentos | `test_each_staged_write_failure_rolls_back_entire_operation`, `test_rejected_commit_does_not_persist_any_staged_document`, `test_same_decision_retries_return_identical_records`, `test_simultaneous_identical_likes_converge_to_same_pending_candidate`, `test_internal_failures_are_safe_for_both_endpoints`. | **Parcial (solo backend):** errores, rollback, estado final e idempotencia pasan; aviso de fallo/carga y acción de reintento visible en UI no verificados. |
 
 `test_all_three_endpoints_enforce_roles_without_persisting_changes` se añadió
 para reforzar el control de permisos API de CA-01. No se añadieron tests de
@@ -220,7 +220,7 @@ Firestore Emulator con fallos inyectados, no demuestra atomicidad distribuida
 con proveedores remotos. Navegación, tarjeta/carrusel, aviso de fin y reintento
 visible pertenecen a la interfaz y quedan fuera de verificación de esta US.
 
-## QA US 4.10 — recorrido completo del explorador (10 noviembre 2026)
+## QA US 4.10 — recorrido completo del explorador (histórico anterior a US5.8)
 
 Se corrigió BuyerHome para usar la API vigente (paginación por cursor y POST
 `/api/inmuebles/{id}/decision` con `{decision}`), mantener la confirmación y
@@ -239,8 +239,8 @@ del test backend con Firestore Emulator, no Firestore/Azure de producción.
 |---|---|---|
 | CA-01 — Acceso al explorador | Auth Emulator para la sesión Buyer; navegación BuyerHome en navegador con `/api/auth/me` interceptado. Tests de roles/sesión de US4.9 verifican permisos API y ausencia de escrituras indebidas. | **Parcial:** UI Buyer comprobada con perfil mock; permisos API pasan en tests backend, pero esta ejecución no probó la ruta UI con cada rol. |
 | CA-02 — Información y fotografías | Publicación US3 por API de dos anuncios, cada uno con dos fotos en orden; GET de exploración serializa datos/fotos. Navegador fixture muestra campos, cambia foto y mantiene el contador. | **Pasa con mocks para UI:** Firestore Emulator para datos/URLs; Azure Blob mock, sin descarga real. |
-| CA-03 — Creación del match | Backend LIKE devuelve match persistido para Comprador/anuncio; BuyerHome confirma LIKE desde botón y avanza. Se comprobó doble clic con 503 y retry en fixture. | **Pasa:** creación real en Firestore Emulator; interacciones y confirmación de UI con API mock. |
-| CA-04 — Aviso al Vendedor | El test integrado consulta GET `/api/notificaciones` con sesión del propietario y verifica comprador/anuncio del match. | **Pasa con Firestore Emulator:** no se validó una pantalla visual de avisos US5. |
+| CA-03 — Creación del match | En esa versión LIKE devolvía un match inmediatamente; BuyerHome confirmaba LIKE. | **Histórico, supersedido:** ahora LIKE queda pendiente hasta ACCEPT. |
+| CA-04 — Aviso al Vendedor | En esa versión el test integrado consultaba el aviso generado al recibir LIKE. | **Histórico, supersedido:** US5.8 verifica el aviso al Comprador tras aceptar. |
 | CA-05 — Descarte persistente | PASS persiste sin match/aviso, el explorador lo excluye después de volver a iniciar sesión; BuyerHome usa flecha izquierda y muestra confirmación. | **Pasa:** persistencia/emisión API con Firestore Emulator; UI con mock. |
 | CA-06 — Independencia entre Compradores | El test registra dos Compradores y permite un match distinto de cada uno con la misma vivienda. | **Pasa con Firestore Emulator.** |
 | CA-07 — Continuidad y fin de la exploración | Paginación por cursor y lista vacía API; la UI avanza al siguiente elemento y representa estado sin viviendas con fixture. | **Pasa con mocks en UI** y emulador para el contrato backend. |
@@ -317,7 +317,7 @@ certificación de dispositivos móviles físicos.
 mantiene advertencias existentes. No se modificaron dependencias ni se probaron
 servicios de producción.
 
-## US 7.4 — recepción y consulta de notificaciones
+## US 7.4 — recepción y consulta de notificaciones (resultado histórico)
 
 Se corrigió la consulta para que BUYER y SELLER puedan obtener únicamente
 avisos destinados a su UID verificado. La vista rechaza parámetros de identidad,
@@ -331,20 +331,60 @@ fallo de actualización; una actualización fallida conserva la lista.
 | Criterio | Prueba/comprobación | Resultado |
 |---|---|---|
 | CA-01 — Acceso a avisos propios | `FirestoreDecisionTests.test_buyer_and_seller_can_read_only_their_own_notifications` consulta como BUYER/SELLER con Firestore Emulator; pantalla `/notificaciones` autenticada en navegador. | Pasa con emuladores en API; pasa con mocks de API en UI. |
-| CA-02 — Mensaje, fecha y hora | `test_private_notices_include_match_buyer_home_and_stable_pagination` verifica aviso generado al propietario; fixture buyer verifica mensaje/fecha; navegador comprueba presentación de fecha y hora local. | Pasa con Firestore Emulator y mocks de UI. |
+| CA-02 — Mensaje, fecha y hora | En la versión histórica se verificaba aviso al propietario; fixture y navegador comprobaban mensaje/fecha/hora. | Pasa en esa versión; el destinatario/productor actual se actualizó en US5.8. |
 | CA-03 — Orden y actualización | Prueba de backend fija fechas iguales y valida desempate por ID/cursor; navegador prueba refresco y paginación con solapamiento. | Pasa con emuladores y mocks de API; sin duplicados. |
 | CA-04 — Privacidad | Avisos fixture para tres cuentas; consulta BUYER/SELLER devuelve exclusivamente el recipient propio; `uid` y `recipient_uid` manipulados y cursor de otra cuenta se rechazan. | Pasa con Firestore Emulator y tests API. |
-| CA-05 — Conservación | `FirebaseFlowTests.test_real_registration_login_publication_like_logout_and_relogin`: Auth Emulator, aviso SELLER, logout/revocación, nuevo login y reconsulta en Firestore Emulator. | Pasa con emuladores locales; no es Firebase de producción. |
+| CA-05 — Conservación | En la versión histórica, Auth Emulator, aviso SELLER, logout/revocación, nuevo login y reconsulta Firestore. | Pasa en esa versión; US5.8 crea el aviso al Comprador tras ACCEPT. |
 | CA-06 — Vacío, fallo y retry | `NotificationApiTests` cubre vacío; navegador fuerza carga, 500 inicial y retry, 500 al actualizar conservando datos y retry exitoso. | Vacío pasa; fallos/retry pasan con mocks. |
-| Interés US4 al propietario | `test_private_notices_include_match_buyer_home_and_stable_pagination` y flujo integrado de Auth/Firestore Emulator tras LIKE. | Pasa con emuladores. |
+| Interés US4 al propietario | Flujo integrado tras LIKE en la versión anterior. | Histórico, supersedido por la candidatura pendiente de US5.8. |
 | PASS no crea aviso; consultar no altera matches | `test_pass_creates_only_decision_and_no_notice`; test de lectura compara estado de `swipes/matches` antes/después. | Pasa con Firestore Emulator. |
-| Confirmación US5 crea aviso BUYER | Inspección de rutas/vistas/servicios del árbol: no existe endpoint/productor US5 de confirmación. La API puede leer una notificación BUYER ya persistida, pero no se puede generar este evento en la implementación presente. | **No verificado** (productor ausente, no se inventó ni amplió US5). |
+| Confirmación US5 crea aviso BUYER | La comprobación de US7.4 precede al productor de US5.8. | En esa revisión no estaba implementado; ahora verificado por US5.8 abajo. |
 | Sesión y responsive | Ruta protegida probada sin sesión; navegador emulado en 1280×900 y 390×844, sin desbordamiento horizontal. | Pasa con Auth Emulator/API mockeada; no probado en móvil físico. |
 
-Validación: `npx.cmd --yes --package firebase-tools@15.34.1 firebase
+Validación histórica: `npx.cmd --yes --package firebase-tools@15.34.1 firebase
 emulators:exec --project demo-swipehome-us4 --only auth,firestore --config
 tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts
 properties --verbosity 2"` — 172 tests; Azure Blob mockeado.
 Frontend: `npm test` — 25 tests; `npm run lint` y `npm run build` finalizan.
 Lint reporta advertencias no bloqueantes de proyecto. No se usaron servicios ni
 credenciales reales y no se modificaron dependencias.
+
+## US 5.8 — APIs, permisos y transiciones del match
+
+Se implementó el recorrido completo por API: un LIKE crea `swipes` con estado
+PENDING; solo SELLER propietario puede aceptar/rechazar. ACCEPT actualiza la
+candidatura y crea match y notificación para BUYER en la misma transacción.
+REJECT queda persistido, desaparece de pendientes y no genera match/aviso.
+`GET /api/matches` devuelve solo matches confirmados propios; candidatos y
+transiciones se filtran por identidad/propiedad. Las operaciones son paginadas,
+idempotentes y con índices nuevos. BuyerHome se ajustó para comunicar interés
+pendiente y tratar respuestas recuperadas ya aceptadas sin falsos éxitos.
+
+### Evidencia por criterio de aceptación
+
+| CA | Prueba/comprobación | Resultado |
+|---|---|---|
+| CA-01 — Consulta de matches del Comprador | `test_accept_and_reject_are_persistent_idempotent_and_independent`, `test_two_buyers_create_independent_matches_with_same_home` y flujo de publicación consultan GET `/api/matches` como BUYER. | **Pasa con Firestore Emulator**; no hay pantalla de matches. |
+| CA-02 — Interés mutuo obligatorio | `test_like_creates_one_pending_candidate_without_confirming_a_match`: LIKE no crea match y la lista del Comprador sigue vacía hasta ACCEPT. | **Pasa con Firestore Emulator.** |
+| CA-03 — Consulta de candidatos del Vendedor | `test_candidates_and_matches_are_scoped_by_verified_owner_and_role`, `test_match_and_candidate_lists_paginate_and_return_empty_distinctly`: se devuelven identidad del Comprador y vivienda, solo al propietario. | **Pasa con Firestore Emulator**; no hay interfaz de candidatos. |
+| CA-04 — Confirmación del match | `test_accept_and_reject_are_persistent_idempotent_and_independent`, `test_two_buyers_create_independent_matches_with_same_home` y `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`: match visible para ambos roles. | **Pasa con Firestore Emulator.** |
+| CA-05 — Rechazo de candidatura | `test_accept_and_reject_are_persistent_idempotent_and_independent`: REJECT sale de pendientes y no crea match ni aviso. | **Pasa con Firestore Emulator.** |
+| CA-06 — Privacidad e independencia | `test_candidates_and_matches_are_scoped_by_verified_owner_and_role` prueba roles/propietarios ajenos y estado final; dos compradores crean matches independientes para la misma vivienda. | **Pasa con emulador**; tests unitarios de permiso usan perfil mock, flujo integrado usa Auth Emulator. |
+| CA-07 — Persistencia y ausencia de duplicados | `test_accept_and_reject_are_persistent_idempotent_and_independent` repite decisiones, compara IDs/fechas y comprueba estados; flujo integrado cubre relogin. | **Pasa con Auth/Firestore Emulator.** |
+| CA-08 — Listas vacías y errores | `MatchApiTests.test_invalid_payloads_identifiers_and_query_are_rejected`, `test_simultaneous_accept_and_reject_have_one_atomic_winner`, `test_accept_creation_failures_roll_back_decision_match_and_notice`. | **Pasa con mocks y emulador:** carrera real con hilos/barrera; fallos inyectados; estado final inspeccionado. |
+
+Validación final backend: comando `firebase emulators:exec` del README, **182
+tests pasan**, sin omisiones; `manage.py check` sin incidencias. Se corrigió
+durante la ejecución un error al serializar timestamps del cursor y se repitió
+la suite completa, que pasó. Tras añadir la comprobación de retry tras REJECT,
+el test de transición volvió a pasar en ejecución aislada con el emulador.
+Azure Blob se mockeó. Frontend: `npm test` pasa 25
+tests; lint/build pasan. Oxlint informa warnings no bloqueantes, no modificados
+por estar fuera de alcance. No hubo validación visual/hardware móvil de US5.8.
+
+Suposiciones y límites: `decision_id` identifica la candidatura por la clave
+canónica Comprador-vivienda. Reintentar LIKE devuelve el estado actual y no
+revierte decisiones del Vendedor. Los registros históricos LIKE+match se
+consideran aceptados; no se migraron datos externos. El aviso se crea para el
+Comprador al aceptar. No se desplegaron índices de producción ni se usaron
+servicios reales. No se añadieron pantallas de candidatos o matches.

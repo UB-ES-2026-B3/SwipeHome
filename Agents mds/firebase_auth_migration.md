@@ -1,23 +1,22 @@
 # Firebase Auth y Firestore: continuidad vigente
 
-## Estado US4 — 8 noviembre 2026
+## Estado US5.8 — ciclo de match vigente
 
-El usuario autorizó mantener Firebase Auth/Firestore para US 4.4–4.7.
-La migración a Firebase ya está implementada en esta rama; el plan original
+Se conserva Firebase Auth/Firestore. El plan original de migración a Firebase
 que sigue se conserva como historial y no debe ejecutarse de nuevo.
 
 Los contratos de autenticación/perfil/logout vigentes están en
 [US6 backend](us6_backend.md). Exploración, decisiones y avisos están en
 [US4 backend](us4_backend.md) y [README backend](../backend/README.md).
-LIKE crea directamente match y aviso; no requiere aceptación posterior.
-Se reutilizan `listings` y `notifications`, se añaden `swipes/matches` con
-claves canónicas y transacciones. No se añaden ORM ni sesiones por cookies.
+LIKE crea una candidatura pendiente; el propietario acepta/rechaza y solo
+aceptar crea match y aviso al Comprador. Se reutilizan `listings` y
+`notifications`, con `swipes/matches`, claves canónicas y transacciones.
+No se añaden ORM ni sesiones por cookies.
 La evolución es aditiva; los índices se definen pero no se despliegan remotamente.
 
-La última suite completa de backend pasa 171 tests con Auth y Firestore
-Emulator, sin omisiones, incluidas las regresiones de US6.8. Los resultados
-históricos y pendientes del plan de octubre que siguen no sustituyen ese estado
-comprobado.
+La verificación actual de US5.8 y sus límites están en el
+[README backend](../backend/README.md); los resultados históricos y pendientes
+del plan de octubre que siguen no sustituyen ese contrato.
 
 US6.9 verificó en la interfaz el perfil de ambos roles, edición, cambio de
 contraseña y logout con Auth Emulator y respuestas API interceptadas. El retry

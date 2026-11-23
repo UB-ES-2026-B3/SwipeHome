@@ -270,7 +270,7 @@ def revoke_session(uid, auth_time):
     _revocation_document(uid, auth_time).set({"revoked": True})
 
 
-# Única colección de avisos; US4 podrá escribir aquí en una implementación futura.
+# Avisos de interés y confirmación; los destinatarios se verifican en cada consulta.
 NOTIFICATIONS_COLLECTION = "notifications"
 
 
@@ -399,13 +399,24 @@ def _write_decision(transaction, refs, buyer_uid, listing_id, value, buyer_name)
         if decision["value"] != value:
             raise DecisionConflict()
         if value == "LIKE":
-            if (
-                not snapshots["match"].exists or not snapshots["notice"].exists
-                or match.get("buyer_uid") != buyer_uid or match.get("listing_id") != listing_id
-                or match.get("decision_id") != key or notice.get("match_id") != refs["match"].id
-                or notice.get("recipient_uid") != listing["seller_uid"]
-                or notice.get("buyer_uid") != buyer_uid or notice.get("listing_id") != listing_id
-            ):
+            seller_decision = decision.get("seller_decision")
+            if seller_decision is None and snapshots["match"].exists:
+                # Previously confirmed US4 records remain confirmed after the
+                # additive US5 transition is deployed.
+                seller_decision = "ACCEPT"
+            if seller_decision not in {"PENDING", "ACCEPT", "REJECT"}:
+                raise InconsistentDecision()
+            if decision.get("seller_uid", listing["seller_uid"]) != listing["seller_uid"]:
+                raise InconsistentDecision()
+            if seller_decision == "ACCEPT":
+                if (
+                    not snapshots["match"].exists
+                    or match.get("buyer_uid") != buyer_uid or match.get("listing_id") != listing_id
+                    or match.get("seller_uid", listing["seller_uid"]) != listing["seller_uid"]
+                    or match.get("decision_id") != key
+                ):
+                    raise InconsistentDecision()
+            elif snapshots["match"].exists:
                 raise InconsistentDecision()
         elif snapshots["match"].exists or snapshots["notice"].exists:
             raise InconsistentDecision()
@@ -415,24 +426,221 @@ def _write_decision(transaction, refs, buyer_uid, listing_id, value, buyer_name)
     created_at = datetime.now(timezone.utc)
     decision = {
         "buyer_uid": buyer_uid, "listing_id": listing_id,
+        "seller_uid": listing["seller_uid"], "buyer_name": buyer_name,
         "value": value, "created_at": created_at,
     }
-    transaction.create(refs["decision"], decision)
-    match = None
     if value == "LIKE":
+        decision["seller_decision"] = "PENDING"
+    transaction.create(refs["decision"], decision)
+    return {"id": key, **decision}, None, True
+
+
+def transition_seller_decision(seller_uid, decision_id, value):
+    """Atomically accept or reject an existing Buyer LIKE once."""
+    import random
+    import time
+
+    from google.api_core.exceptions import Aborted, AlreadyExists
+    from .pagination import valid_document_id
+
+    if value not in {"ACCEPT", "REJECT"} or not valid_document_id(decision_id):
+        raise ValueError("Decisión de Vendedor inválida.")
+    client = firestore.client(app=get_app())
+    refs = {
+        "decision": client.collection(SWIPES_COLLECTION).document(decision_id),
+        "match": client.collection(MATCHES_COLLECTION).document(decision_id),
+        "listing": client.collection(LISTINGS_COLLECTION),
+        "notice": client.collection(NOTIFICATIONS_COLLECTION).document("buyer-match-" + decision_id),
+    }
+    operation = firestore.transactional(_transition_seller_decision)
+    for attempt in range(5):
+        try:
+            return operation(client.transaction(max_attempts=10), refs, seller_uid, value)
+        except (Aborted, AlreadyExists):
+            if attempt == 4:
+                raise
+        except ValueError as error:
+            if not isinstance(error.__cause__, Aborted) or attempt == 4:
+                raise
+        time.sleep(random.uniform(0.02, min(0.5, 0.05 * (2 ** attempt))))
+
+
+def _transition_seller_decision(transaction, refs, seller_uid, value):
+    from datetime import datetime, timezone
+    from properties.serialization import published_listing
+
+    decision_snapshot = refs["decision"].get(transaction=transaction)
+    if not decision_snapshot.exists:
+        raise ListingNotFound()
+    decision = decision_snapshot.to_dict()
+    listing_ref = refs["listing"].document(
+        decision.get("listing_id", "")
+    )
+    match_ref = refs["match"]
+    notice_ref = refs["notice"]
+    listing_snapshot = listing_ref.get(transaction=transaction)
+    match_snapshot = match_ref.get(transaction=transaction)
+    notice_snapshot = notice_ref.get(transaction=transaction)
+    if not listing_snapshot.exists or not published_listing(listing_snapshot.to_dict()):
+        raise ListingNotFound()
+    listing = listing_snapshot.to_dict()
+    if (
+        decision.get("value") != "LIKE"
+        or decision_key(decision.get("buyer_uid"), decision.get("listing_id")) != decision_snapshot.id
+        or decision.get("seller_uid", listing.get("seller_uid")) != listing.get("seller_uid")
+        or listing.get("seller_uid") != seller_uid
+    ):
+        raise ListingNotFound()
+
+    state = decision.get("seller_decision")
+    legacy_confirmed = state is None and match_snapshot.exists
+    if legacy_confirmed:
+        state = "ACCEPT"
+    if state not in {"PENDING", "ACCEPT", "REJECT"}:
+        raise InconsistentDecision()
+    if state == value:
+        match = match_snapshot.to_dict() if match_snapshot.exists else None
+        if value == "ACCEPT" and (
+            match is None
+            or match.get("buyer_uid") != decision["buyer_uid"]
+            or match.get("listing_id") != decision["listing_id"]
+            or match.get("decision_id") != decision_snapshot.id
+            or (not legacy_confirmed and not notice_snapshot.exists)
+        ):
+            raise InconsistentDecision()
+        if value == "REJECT" and (match_snapshot.exists or notice_snapshot.exists):
+            raise InconsistentDecision()
+        return {"id": decision_snapshot.id, **decision}, (
+            None if match is None else {"id": match_snapshot.id, **match}
+        ), False
+    if state != "PENDING":
+        raise DecisionConflict()
+    if match_snapshot.exists or notice_snapshot.exists:
+        raise InconsistentDecision()
+
+    decided_at = datetime.now(timezone.utc)
+    updated = {**decision, "seller_decision": value, "seller_decided_at": decided_at}
+    transaction.update(refs["decision"], {
+        "seller_decision": value, "seller_decided_at": decided_at,
+    })
+    match = None
+    if value == "ACCEPT":
         match = {
-            "buyer_uid": buyer_uid, "listing_id": listing_id,
-            "decision_id": key, "created_at": created_at,
+            "buyer_uid": decision["buyer_uid"], "seller_uid": seller_uid,
+            "listing_id": decision["listing_id"], "decision_id": decision_snapshot.id,
+            "created_at": decided_at,
         }
-        transaction.create(refs["match"], match)
-        transaction.create(refs["notice"], {
-            "recipient_uid": listing["seller_uid"], "match_id": key,
-            "buyer_uid": buyer_uid, "buyer_name": buyer_name,
-            "listing_id": listing_id, "listing_title": listing["title"],
-            "type": "MATCH", "message": "Tienes un nuevo match.",
-            "created_at": created_at,
+        transaction.create(match_ref, match)
+        transaction.create(notice_ref, {
+            "recipient_uid": decision["buyer_uid"], "match_id": decision_snapshot.id,
+            "buyer_uid": decision["buyer_uid"], "buyer_name": decision["buyer_name"],
+            "listing_id": decision["listing_id"], "listing_title": listing["title"],
+            "type": "MATCH", "message": "El propietario ha confirmado tu interés.",
+            "created_at": decided_at,
         })
-    return {"id": key, **decision}, None if match is None else {"id": key, **match}, True
+    return {"id": decision_snapshot.id, **updated}, (
+        None if match is None else {"id": decision_snapshot.id, **match}
+    ), True
+
+
+def get_pending_candidates(seller_uid, *, limit, position=None):
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    from properties.serialization import listing_item, published_listing
+
+    client = firestore.client(app=get_app())
+    collection = client.collection(SWIPES_COLLECTION)
+    query = (
+        collection.where(filter=FieldFilter("seller_uid", "==", seller_uid))
+        .where(filter=FieldFilter("value", "==", "LIKE"))
+        .where(filter=FieldFilter("seller_decision", "==", "PENDING"))
+        .order_by("created_at", direction=firestore.Query.DESCENDING)
+        .order_by("__name__", direction=firestore.Query.DESCENDING)
+    )
+    if position is not None:
+        query = query.start_after({
+            "created_at": position[0], "__name__": collection.document(position[1]),
+        })
+    candidates = []
+    for snapshot in query.limit(limit).stream():
+        decision = snapshot.to_dict()
+        listing_snapshot = client.collection(LISTINGS_COLLECTION).document(
+            decision["listing_id"]
+        ).get()
+        listing = listing_snapshot.to_dict() if listing_snapshot.exists else None
+        if (
+            not published_listing(listing) or listing.get("seller_uid") != seller_uid
+            or not isinstance(decision.get("buyer_name"), str)
+            or decision["seller_uid"] != seller_uid
+            or decision["value"] != "LIKE"
+            or decision["seller_decision"] != "PENDING"
+            or decision_key(decision.get("buyer_uid"), decision.get("listing_id")) != snapshot.id
+        ):
+            raise InconsistentDecision()
+        candidates.append({
+            "id": snapshot.id,
+            "buyer": {"id": decision["buyer_uid"], "name": decision["buyer_name"]},
+            "listing": listing_item(decision["listing_id"], listing),
+            "created_at": decision["created_at"],
+        })
+    return candidates
+
+
+def get_confirmed_matches(uid, role, *, limit, position=None):
+    from google.cloud.firestore_v1.base_query import FieldFilter
+    from properties.serialization import listing_item
+
+    if role not in {"BUYER", "SELLER"}:
+        raise ValueError("Rol no válido.")
+    field = "buyer_uid" if role == "BUYER" else "seller_uid"
+    client = firestore.client(app=get_app())
+    collection = client.collection(MATCHES_COLLECTION)
+    query = (
+        collection.where(filter=FieldFilter(field, "==", uid))
+        .order_by("created_at", direction=firestore.Query.DESCENDING)
+        .order_by("__name__", direction=firestore.Query.DESCENDING)
+    )
+    if position is not None:
+        query = query.start_after({
+            "created_at": position[0], "__name__": collection.document(position[1]),
+        })
+    matches = []
+    for snapshot in query.limit(limit).stream():
+        match = snapshot.to_dict()
+        decision_snapshot = client.collection(SWIPES_COLLECTION).document(
+            match["decision_id"]
+        ).get()
+        listing_snapshot = client.collection(LISTINGS_COLLECTION).document(
+            match["listing_id"]
+        ).get()
+        decision = decision_snapshot.to_dict() if decision_snapshot.exists else None
+        listing = listing_snapshot.to_dict() if listing_snapshot.exists else None
+        match_seller = match.get("seller_uid", listing.get("seller_uid") if listing else None)
+        if (
+            decision is None or listing is None
+            or decision.get("seller_decision") not in {"ACCEPT", None}
+            or decision.get("value") != "LIKE"
+            or match.get("decision_id") != snapshot.id
+            or decision_key(match.get("buyer_uid"), match.get("listing_id")) != snapshot.id
+            or decision.get("buyer_uid") != match.get("buyer_uid")
+            or decision.get("listing_id") != match.get("listing_id")
+            or decision.get("seller_uid", match_seller) != match_seller
+            or listing.get("seller_uid") != match_seller
+            or match.get(field) != uid
+        ):
+            raise InconsistentDecision()
+        buyer_name = decision.get("buyer_name")
+        if not isinstance(buyer_name, str) or not buyer_name:
+            buyer = get_user_profile(match["buyer_uid"])
+            if buyer is None:
+                raise InconsistentDecision()
+            buyer_name = buyer["name"]
+        matches.append({
+            "id": snapshot.id,
+            "buyer": {"id": match["buyer_uid"], "name": buyer_name},
+            "listing": listing_item(match["listing_id"], listing_snapshot.to_dict()),
+            "created_at": match["created_at"],
+        })
+    return matches
 
 
 def get_pending_listings(buyer_uid, *, limit, position=None):

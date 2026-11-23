@@ -1,6 +1,6 @@
 # Contexto backend de SwipeHome
 
-## Estado vigente — US4, US6 y US7.4 (10 noviembre 2026)
+## Estado vigente — US4, US5.8, US6 y US7.4
 
 El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
 cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
@@ -10,19 +10,22 @@ para US 4.4–4.7 y la verificación US4.9. Los contratos vigentes están en el
 
 US4 reutiliza usuarios y anuncios actuales, fotografías ordenadas en
 `listings.photos`, autenticación con revocación y la colección `notifications`.
-LIKE crea directamente decisión, match y aviso; PASS solo crea decisión.
-No hay aceptación posterior del Vendedor ni reserva del inmueble.
+Desde US5.8, LIKE crea una candidatura pendiente; el propietario puede aceptarla
+o rechazarla. Solo ACCEPT crea match y aviso privado para el Comprador. PASS
+solo guarda la decisión. No hay reserva del inmueble.
 
-`accounts/repository.py` centraliza Firestore y Azure Blob Storage, incluida la
-transacción y las claves canónicas `swipes/{key}`, `matches/{key}` y
-`notifications/match-{key}`. Firestore garantiza unicidad de path; valores,
+`accounts/repository.py` centraliza Firestore y Azure Blob Storage, incluidas
+las transacciones y las claves canónicas `swipes/{key}`, `matches/{key}` y
+`notifications/buyer-match-{key}`. Firestore garantiza unicidad de path; valores,
 referencias y conjunto completo son garantías del servicio, no CHECK/FK.
 Los reintentos equivalentes son 200, nuevos 201 y contrarios 409.
 Abortos de lectura/commit y colisiones usan transacciones nuevas acotadas.
 
 GET `/api/inmuebles/explorar` y POST `/api/inmuebles/{id}/decision` son BUYER;
-GET `/api/notificaciones` permite BUYER y SELLER para consultar solo avisos de
-la cuenta autenticada. `request.user` se construye desde el token verificado y
+GET `/api/matches` admite ambos roles; GET de candidatos y POST de transición
+son solo SELLER y comprueban propiedad. GET `/api/notificaciones` permite BUYER
+y SELLER para consultar solo avisos de la cuenta autenticada.
+`request.user` se construye desde el token verificado y
 el perfil, sin aceptar selectores de identidad del cliente.
 Los GET comparten `limit/cursor` 20/50, orden fecha/ID descendentes y cursor
 firmado. Exploración carga decisiones en batch, sin OFFSET ni consultas por foto.
@@ -39,12 +42,10 @@ presentación, continuación visible y reintento de interfaz no son pruebas de
 esta US de backend. Evidencia y límites por CA en [US4 backend](us4_backend.md).
 Azure Blob se mockea y no se probó producción.
 
-US4.10 añade `test_published_multi_photo_listings_survive_full_buyer_flow`:
-publicación multipart US3 con dos fotos, exploración, LIKE/PASS, aviso privado,
-re-login, exclusión persistente y segundo Comprador con match independiente.
-La suite completa pasó 167 tests con Auth/Firestore Emulator y mocks de Azure
-Blob. La interfaz se comprobó aparte en navegador con Auth Emulator y respuestas
-de API interceptadas; no se afirmó integración de navegador con Firestore real.
+US4.10 verificó publicación multipart US3, exploración, fotos, LIKE/PASS,
+exclusión al re-login y aislamiento entre Compradores. El match inmediato de
+esa prueba es histórico y queda sustituido por la aceptación explícita de
+US5.8; su test integrado actual comprueba candidatura, aceptación y listas.
 
 US6.8: la suite actual pasó 171 tests con ambos emuladores. `ProfileSessionIntegrationTests`
 comprueba consultas/actualizaciones como BUYER y SELLER, normalización, carrera
@@ -62,17 +63,19 @@ en las pruebas US6.8 con Auth/Firestore Emulator; UI no representa persistencia
 real de Firestore.
 
 US7.4 amplía la lectura privada de notificaciones a ambos roles. La suite
-indicada en README backend pasó **172 tests** con Auth/Firestore Emulator;
-incluye aviso de interés del US4 al propietario, exclusión de PASS, paginación,
+indicada en README backend verificó paginación,
 fecha/mensaje/orden, aislamiento BUYER/SELLER/tercero, rechazo de selectores,
 consulta sin escrituras y persistencia del aviso tras logout y re-login del
 SELLER. Azure Blob se simula. La UI pasó 25 tests Node, lint/build y pruebas
 de navegador con Auth Emulator/API interceptada y viewports 1280×900/390×844
 emulados. No se usaron servicios reales ni hardware móvil.
 
-El repositorio no contiene un productor ni endpoint de confirmación US5 que
-genere avisos para BUYER. La consulta de un aviso BUYER previamente persistido
-sí está cubierta con Firestore Emulator; su creación desde US5 no está verificada.
+US5.8 añade el productor de aviso de confirmación al Comprador y la consulta
+de matches/candidaturas para ambos roles. La evidencia actual y los límites
+están en el [README backend](../backend/README.md). La suite completa de backend
+pasó 182 tests con Auth/Firestore Emulator; Azure Blob usa mocks. La carrera
+SELLER ACCEPT/REJECT usa solicitudes simultáneas reales y las pruebas de fallo
+comprueban el estado final de los documentos.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

@@ -71,6 +71,18 @@ class FirestoreDecisionTests(SimpleTestCase):
     def notices(self, uid="seller", **query):
         return self.client.get("/api/notificaciones", query, HTTP_AUTHORIZATION="Bearer " + uid)
 
+    def candidates(self, uid="seller", **query):
+        return self.client.get("/api/matches/candidatos", query, HTTP_AUTHORIZATION="Bearer " + uid)
+
+    def matches(self, uid="buyer", **query):
+        return self.client.get("/api/matches", query, HTTP_AUTHORIZATION="Bearer " + uid)
+
+    def transition(self, decision_id, value, uid="seller", client=None):
+        return (client or self.client).post(
+            f"/api/matches/candidaturas/{decision_id}/decision", json.dumps({"decision": value}),
+            content_type="application/json", HTTP_AUTHORIZATION="Bearer " + uid,
+        )
+
     def rows(self, name):
         return list(self.collection(name).stream())
 
@@ -144,19 +156,19 @@ class FirestoreDecisionTests(SimpleTestCase):
         self.assertEqual(self.rows("swipes"), [])
         self.assertEqual(self.rows("matches"), [])
 
-    def test_like_has_exactly_one_consistent_decision_match_and_notice(self):
+    def test_like_creates_one_pending_candidate_without_confirming_a_match(self):
         response = self.post()
         self.assertEqual(response.status_code, 201, response.content)
-        self.assertEqual(self.counts(), (1, 1, 1))
-        decision, match, notice = (self.rows(name)[0] for name in ("swipes", "matches", "notifications"))
+        self.assertEqual(response.json()["decision"]["seller_decision"], "PENDING")
+        self.assertIsNone(response.json()["match"])
+        self.assertEqual(self.counts(), (1, 0, 0))
+        decision = self.rows("swipes")[0]
         self.assertEqual(decision.id, response.json()["decision"]["id"])
         self.assertEqual(decision.to_dict()["value"], "LIKE")
-        self.assertEqual(match.to_dict()["decision_id"], decision.id)
-        for snapshot in (decision, match, notice):
-            self.assertEqual(snapshot.to_dict()["buyer_uid"], "buyer")
-            self.assertEqual(snapshot.to_dict()["listing_id"], "home")
-        self.assertEqual(notice.to_dict()["recipient_uid"], "seller")
-        self.assertEqual(notice.to_dict()["match_id"], match.id)
+        self.assertEqual(decision.to_dict()["seller_uid"], "seller")
+        self.assertEqual(decision.to_dict()["seller_decision"], "PENDING")
+        self.assertEqual(self.candidates().json()["items"][0]["buyer"]["id"], "buyer")
+        self.assertEqual(self.matches().json()["items"], [])
         self.assertTrue(self.collection("listings").document("home").get().to_dict()["published"])
 
     def test_pass_creates_only_decision_and_no_notice(self):
@@ -196,17 +208,30 @@ class FirestoreDecisionTests(SimpleTestCase):
 
     def test_each_staged_write_failure_rolls_back_entire_operation(self):
         original = Transaction.create
-        for failed_collection in ("swipes", "matches", "notifications"):
-            def fail(transaction, reference, data):
-                if reference.parent.id == self.collection(failed_collection).id:
-                    raise RuntimeError("private credentials SQL")
-                return original(transaction, reference, data)
-            with self.subTest(stage=failed_collection), patch.object(Transaction, "create", new=fail):
-                response = self.post()
+        def fail(transaction, reference, data):
+            if reference.parent.id == self.collection("swipes").id:
+                raise RuntimeError("private credentials SQL")
+            return original(transaction, reference, data)
+        with patch.object(Transaction, "create", new=fail):
+            response = self.post()
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn("private", response.content.decode())
+        self.assertEqual(self.counts(), (0, 0, 0))
+        self.assertEqual(self.post().status_code, 201)
+
+        decision_id = self.rows("swipes")[0].id
+        original_update = Transaction.update
+        def fail_accept(transaction, reference, field_updates):
+            if reference.parent.id == self.collection("swipes").id:
+                raise RuntimeError("private credentials SQL")
+            return original_update(transaction, reference, field_updates)
+        with patch.object(Transaction, "update", new=fail_accept):
+            response = self.transition(decision_id, "ACCEPT")
             self.assertEqual(response.status_code, 500)
             self.assertNotIn("private", response.content.decode())
-            self.assertEqual(self.counts(), (0, 0, 0))
-        self.assertEqual(self.post().status_code, 201)
+        decision = self.collection("swipes").document(decision_id).get().to_dict()
+        self.assertEqual(decision["seller_decision"], "PENDING")
+        self.assertEqual(self.counts(), (1, 0, 0))
 
     def test_rejected_commit_does_not_persist_any_staged_document(self):
         # Un create con precondición falsa fuerza un rechazo REAL de todo el commit.
@@ -214,7 +239,7 @@ class FirestoreDecisionTests(SimpleTestCase):
         original = Transaction.create
         def reject(transaction, reference, data):
             result = original(transaction, reference, data)
-            if reference.parent.id == self.collection("notifications").id:
+            if reference.parent.id == self.collection("swipes").id:
                 original(transaction, guard, {"invalid": True})
             return result
         with patch.object(Transaction, "create", new=reject):
@@ -224,6 +249,8 @@ class FirestoreDecisionTests(SimpleTestCase):
 
     def test_document_create_uniqueness_is_enforced_by_firestore(self):
         self.assertEqual(self.post().status_code, 201)
+        decision = self.rows("swipes")[0]
+        self.assertEqual(self.transition(decision.id, "ACCEPT").status_code, 201)
         for name in ("swipes", "matches", "notifications"):
             snapshot = self.rows(name)[0]
             with self.assertRaises(AlreadyExists):
@@ -232,14 +259,18 @@ class FirestoreDecisionTests(SimpleTestCase):
 
     def test_inconsistent_origin_and_missing_match_never_return_success(self):
         self.assertEqual(self.post().status_code, 201)
+        decision = self.rows("swipes")[0]
+        original = decision.to_dict()
+        decision.reference.update({"seller_uid": "foreign"})
+        self.assertEqual(self.transition(decision.id, "ACCEPT").status_code, 404)
+        decision.reference.set(original)
+        self.assertEqual(self.transition(decision.id, "ACCEPT").status_code, 201)
         match = self.rows("matches")[0]
-        original = match.to_dict()
-        for changes in ({"decision_id": "wrong"}, {"buyer_uid": "foreign"}, {"listing_id": "foreign"}):
-            match.reference.set({**original, **changes})
-            self.assertEqual(self.post().status_code, 500)
-        match.reference.delete()
-        self.assertEqual(self.post().status_code, 500)
-        self.assertEqual(self.counts(), (1, 0, 1))
+        original_match = match.to_dict()
+        match.reference.update({"decision_id": "wrong"})
+        self.assertEqual(self.transition(decision.id, "ACCEPT").status_code, 500)
+        match.reference.set(original_match)
+        self.assertEqual(self.counts(), (1, 1, 1))
 
     def test_pass_with_corrupt_match_is_rejected_and_not_promoted(self):
         self.assertEqual(self.post("PASS").status_code, 201)
@@ -260,11 +291,12 @@ class FirestoreDecisionTests(SimpleTestCase):
         with ThreadPoolExecutor(max_workers=len(values)) as executor:
             return list(executor.map(send, values))
 
-    def test_simultaneous_identical_likes_converge_to_same_match_and_notice(self):
+    def test_simultaneous_identical_likes_converge_to_same_pending_candidate(self):
         responses = self.concurrent(["LIKE"] * 3)
         self.assertEqual(sorted(code for code, _ in responses), [200, 200, 201], responses)
-        self.assertEqual(len({body["match"]["id"] for _, body in responses}), 1)
-        self.assertEqual(self.counts(), (1, 1, 1))
+        self.assertTrue(all(body["match"] is None for _, body in responses))
+        self.assertEqual(self.counts(), (1, 0, 0))
+        self.assertEqual(len(self.candidates().json()["items"]), 1)
 
     def test_simultaneous_identical_passes_converge(self):
         responses = self.concurrent(["PASS"] * 3)
@@ -276,13 +308,116 @@ class FirestoreDecisionTests(SimpleTestCase):
         self.assertEqual(sorted(code for code, _ in responses), [201, 409], responses)
         winner = next(body["decision"]["value"] for code, body in responses if code == 201)
         self.assertEqual(self.rows("swipes")[0].to_dict()["value"], winner)
-        self.assertEqual(self.counts(), (1, 1, 1) if winner == "LIKE" else (1, 0, 0))
+        self.assertEqual(self.counts(), (1, 0, 0))
 
-    def test_two_buyers_match_same_home_without_reserving_or_hiding_it(self):
+    def test_two_buyers_create_independent_matches_with_same_home(self):
         self.assertEqual(self.post(uid="buyer").status_code, 201)
         self.assertEqual(self.post(uid="buyer2").status_code, 201)
+        candidates = self.candidates().json()["items"]
+        self.assertEqual({row["buyer"]["id"] for row in candidates}, {"buyer", "buyer2"})
+        for candidate in candidates:
+            self.assertEqual(self.transition(candidate["id"], "ACCEPT").status_code, 201)
         self.assertEqual(self.counts(), (2, 2, 2))
+        self.assertEqual(len(self.matches("buyer").json()["items"]), 1)
+        self.assertEqual(len(self.matches("buyer2").json()["items"]), 1)
+        self.assertEqual(len(self.matches("seller").json()["items"]), 2)
         self.assertEqual([row["id"] for row in self.explore(uid="buyer3").json()["items"]], ["home"])
+
+    def test_accept_and_reject_are_persistent_idempotent_and_independent(self):
+        self.seed("second")
+        self.assertEqual(self.post().status_code, 201)
+        self.assertEqual(self.post(identifier="second").status_code, 201)
+        candidates = {row["listing"]["id"]: row for row in self.candidates().json()["items"]}
+
+        accepted = self.transition(candidates["home"]["id"], "ACCEPT")
+        self.assertEqual(accepted.status_code, 201, accepted.content)
+        original_match_date = self.rows("matches")[0].to_dict()["created_at"]
+        original_decision_date = self.rows("swipes")[0].to_dict()["seller_decided_at"]
+        retried = self.transition(candidates["home"]["id"], "ACCEPT")
+        self.assertEqual(retried.status_code, 200, retried.content)
+        self.assertEqual(self.rows("matches")[0].to_dict()["created_at"], original_match_date)
+        self.assertEqual(self.rows("swipes")[0].to_dict()["seller_decided_at"], original_decision_date)
+        self.assertEqual(self.transition(candidates["home"]["id"], "REJECT").status_code, 409)
+
+        rejected = self.transition(candidates["second"]["id"], "REJECT")
+        self.assertEqual(rejected.status_code, 201, rejected.content)
+        self.assertIsNone(rejected.json()["match"])
+        self.assertEqual(self.transition(candidates["second"]["id"], "REJECT").status_code, 200)
+        self.assertEqual(self.transition(candidates["second"]["id"], "ACCEPT").status_code, 409)
+        self.assertEqual({row["listing"]["id"] for row in self.candidates().json()["items"]}, set())
+        self.assertEqual({row["listing"]["id"] for row in self.matches("buyer").json()["items"]}, {"home"})
+        buyer_retry = self.post(uid="buyer", identifier="second")
+        self.assertEqual(buyer_retry.status_code, 200, buyer_retry.content)
+        self.assertEqual(buyer_retry.json()["decision"]["seller_decision"], "REJECT")
+        self.assertIsNone(buyer_retry.json()["match"])
+        self.assertEqual(self.counts(), (2, 1, 1))
+
+    def test_candidates_and_matches_are_scoped_by_verified_owner_and_role(self):
+        self.seed("other-owner", seller_uid="seller2")
+        self.assertEqual(self.post().status_code, 201)
+        self.assertEqual(self.post(identifier="other-owner").status_code, 201)
+        candidates = {row["listing"]["id"]: row for row in self.candidates().json()["items"]}
+        foreign = next(row for row in self.rows("swipes") if row.to_dict()["listing_id"] == "home")
+        self.assertEqual(self.transition(foreign.id, "ACCEPT", uid="seller2").status_code, 404)
+        self.assertEqual(self.transition(foreign.id, "ACCEPT", uid="buyer").status_code, 403)
+        self.assertEqual({row["listing"]["id"] for row in self.candidates(uid="seller2").json()["items"]},
+                         {"other-owner"})
+        self.assertEqual(self.transition(candidates["home"]["id"], "ACCEPT").status_code, 201)
+        self.assertEqual({row["listing"]["id"] for row in self.matches("buyer").json()["items"]}, {"home"})
+        self.assertEqual(self.matches("buyer2").json()["items"], [])
+        self.assertEqual(self.matches("seller2").json()["items"], [])
+
+    def test_simultaneous_accept_and_reject_have_one_atomic_winner(self):
+        self.assertEqual(self.post().status_code, 201)
+        decision_id = self.rows("swipes")[0].id
+        barrier = Barrier(2)
+
+        def send(value):
+            barrier.wait(timeout=15)
+            response = self.transition(
+                decision_id, value, client=Client(enforce_csrf_checks=True),
+            )
+            return response.status_code, response.json()
+
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            responses = list(executor.map(send, ("ACCEPT", "REJECT")))
+        self.assertEqual(sorted(status for status, _ in responses), [201, 409], responses)
+        final = self.collection("swipes").document(decision_id).get().to_dict()
+        self.assertIn(final["seller_decision"], {"ACCEPT", "REJECT"})
+        self.assertEqual(len(self.rows("matches")), 1 if final["seller_decision"] == "ACCEPT" else 0)
+        self.assertEqual(len(self.rows("notifications")), 1 if final["seller_decision"] == "ACCEPT" else 0)
+
+    def test_accept_creation_failures_roll_back_decision_match_and_notice(self):
+        self.assertEqual(self.post().status_code, 201)
+        decision_id = self.rows("swipes")[0].id
+        original = Transaction.create
+        for failed_collection in ("matches", "notifications"):
+            def fail(transaction, reference, data):
+                if reference.parent.id == self.collection(failed_collection).id:
+                    raise RuntimeError("private credentials SQL")
+                return original(transaction, reference, data)
+            with self.subTest(stage=failed_collection), patch.object(Transaction, "create", new=fail):
+                response = self.transition(decision_id, "ACCEPT")
+            self.assertEqual(response.status_code, 500)
+            self.assertNotIn("private", response.content.decode())
+            self.assertEqual(
+                self.collection("swipes").document(decision_id).get().to_dict()["seller_decision"],
+                "PENDING",
+            )
+            self.assertEqual(self.counts(), (1, 0, 0))
+
+    def test_match_and_candidate_lists_paginate_and_return_empty_distinctly(self):
+        self.seed("second")
+        self.assertEqual(self.candidates().json(), {"items": [], "next_cursor": None})
+        self.assertEqual(self.post().status_code, 201)
+        self.assertEqual(self.post(identifier="second").status_code, 201)
+        page = self.candidates(limit="1").json()
+        self.assertEqual(len(page["items"]), 1)
+        self.assertIsNotNone(page["next_cursor"])
+        last = self.candidates(limit="1", cursor=page["next_cursor"]).json()
+        self.assertEqual(len(last["items"]), 1)
+        self.assertIsNone(last["next_cursor"])
+        self.assertEqual(self.matches().json(), {"items": [], "next_cursor": None})
 
     def test_explore_excludes_only_own_decisions_and_preserves_all_photos(self):
         for identifier in ("liked", "passed", "foreign", "draft", "partial"):
@@ -337,31 +472,34 @@ class FirestoreDecisionTests(SimpleTestCase):
         self.assertEqual(self.post("PASS").status_code, 201)
         self.assertEqual(self.explore().json(), {"items": [], "next_cursor": None})
 
-    def test_private_notices_include_match_buyer_home_and_stable_pagination(self):
+    def test_private_confirmation_notices_include_buyer_and_home(self):
         self.seed("foreign", seller_uid="seller2")
         self.seed("second")
         self.assertEqual(self.post().status_code, 201)
-        self.assertEqual(self.post(identifier="second", uid="buyer2").status_code, 201)
-        self.assertEqual(self.post(identifier="foreign").status_code, 201)
-        # Fuerza empate temporal para comprobar el desempate por ID.
+        self.assertEqual(self.post(identifier="second").status_code, 201)
+        self.assertEqual(self.post(identifier="foreign", uid="buyer2").status_code, 201)
         for snapshot in self.rows("notifications"):
-            snapshot.reference.update({"created_at": STAMP})
-        first = self.notices(limit="1").json()
-        second = self.notices(limit="1", cursor=first["next_cursor"]).json()
+            self.assertEqual(snapshot.to_dict()["recipient_uid"], "buyer")
+        for candidate in self.rows("swipes"):
+            owner = "seller2" if candidate.to_dict()["listing_id"] == "foreign" else "seller"
+            self.assertEqual(self.transition(candidate.id, "ACCEPT", uid=owner).status_code, 201)
+        first = self.notices(uid="buyer", limit="1").json()
+        second = self.notices(uid="buyer", limit="1", cursor=first["next_cursor"]).json()
         items = first["items"] + second["items"]
         self.assertEqual([row["id"] for row in items], sorted([row["id"] for row in items], reverse=True))
         self.assertIsNone(second["next_cursor"])
         self.assertEqual({row["listing"]["id"] for row in items}, {"home", "second"})
-        self.assertEqual({row["buyer"]["name"] for row in items}, {"Name buyer", "Name buyer2"})
+        self.assertEqual({row["buyer"]["id"] for row in items}, {"buyer"})
         for row in items:
-            self.assertEqual(row["message"], "Tienes un nuevo match.")
-            self.assertTrue(row["created_at"].startswith("2026-11-08T00:00:00"))
+            self.assertEqual(row["message"], "El propietario ha confirmado tu interés.")
             self.assertTrue(row["created_at"].endswith("Z"))
             self.assertEqual(row["listing"]["title"], listing()["title"])
             self.assertTrue(self.collection("matches").document(row["match_id"]).get().exists)
-        self.assertEqual(len(self.notices(uid="seller2").json()["items"]), 1)
+        self.assertEqual(len(self.notices(uid="buyer2").json()["items"]), 1)
+        self.assertEqual(self.notices(uid="seller").json()["items"], [])
+        self.assertEqual(self.notices(uid="seller2").json()["items"], [])
         self.assertEqual(self.notices(recipient_uid="seller2").status_code, 400)
-        self.assertEqual(self.notices(uid="seller2", cursor=first["next_cursor"]).status_code, 400)
+        self.assertEqual(self.notices(uid="buyer2", cursor=first["next_cursor"]).status_code, 400)
 
     def test_legacy_notices_are_preserved_without_fabricated_match(self):
         self.collection("notifications").document("legacy").create({
@@ -383,7 +521,11 @@ class FirestoreDecisionTests(SimpleTestCase):
             with patch("accounts.repository.firestore.client", return_value=fresh):
                 self.assertEqual(self.post().status_code, 200)
                 self.assertEqual(self.explore().json(), {"items": [], "next_cursor": None})
-                self.assertEqual(len(self.notices().json()["items"]), 1)
+                self.assertEqual(self.notices().json()["items"], [])
+                candidate_id = self.candidates().json()["items"][0]["id"]
+                self.assertEqual(self.transition(candidate_id, "ACCEPT").status_code, 201)
+                self.assertEqual(len(self.matches("buyer").json()["items"]), 1)
+                self.assertEqual(len(self.notices(uid="buyer").json()["items"]), 1)
         finally:
             fresh.close()
 
@@ -427,6 +569,16 @@ class FirebaseFlowTests(SimpleTestCase):
         liked = client.post(url, '{"decision":"LIKE"}', content_type="application/json",
                             HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"])
         self.assertEqual(liked.status_code, 201, liked.content)
+        candidates = client.get(
+            "/api/matches/candidatos", HTTP_AUTHORIZATION="Bearer " + tokens["SELLER"]
+        )
+        self.assertEqual(candidates.status_code, 200, candidates.content)
+        self.assertEqual(len(candidates.json()["items"]), 1)
+        candidate_id = candidates.json()["items"][0]["id"]
+        self.assertEqual(client.post(
+            f"/api/matches/candidaturas/{candidate_id}/decision", '{"decision":"ACCEPT"}',
+            content_type="application/json", HTTP_AUTHORIZATION="Bearer " + tokens["SELLER"],
+        ).status_code, 201)
         self.assertEqual(client.post("/api/auth/logout",
             HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"]).status_code, 204)
         self.assertEqual(client.post(url, '{"decision":"LIKE"}', content_type="application/json",
@@ -437,13 +589,14 @@ class FirebaseFlowTests(SimpleTestCase):
             url, '{"decision":"LIKE"}', content_type="application/json", HTTP_AUTHORIZATION="Bearer " + token,
         )
         self.assertEqual(repeated.status_code, 200, repeated.content)
-        self.assertEqual(repeated.json(), liked.json())
-        notices = client.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + tokens["SELLER"])
+        self.assertEqual(repeated.json()["decision"]["id"], liked.json()["decision"]["id"])
+        self.assertIsNotNone(repeated.json()["match"])
+        notices = client.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + token)
         self.assertEqual(notices.status_code, 200, notices.content)
-        self.assertEqual(len([row for row in notices.json()["items"] if row.get("match_id") == liked.json()["match"]["id"]]), 1)
-        seller_notice = notices.json()["items"][0]
-        self.assertEqual(seller_notice["message"], "Tienes un nuevo match.")
-        self.assertTrue(seller_notice["created_at"].endswith("Z"))
+        self.assertEqual(len(notices.json()["items"]), 1)
+        buyer_notice = notices.json()["items"][0]
+        self.assertEqual(buyer_notice["message"], "El propietario ha confirmado tu interés.")
+        self.assertTrue(buyer_notice["created_at"].endswith("Z"))
 
         self.assertEqual(client.post(
             "/api/auth/logout", HTTP_AUTHORIZATION="Bearer " + tokens["SELLER"]
@@ -459,10 +612,7 @@ class FirebaseFlowTests(SimpleTestCase):
             "/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + seller_token
         )
         self.assertEqual(persisted_notice.status_code, 200, persisted_notice.content)
-        self.assertEqual(
-            [row["id"] for row in persisted_notice.json()["items"]],
-            [seller_notice["id"]],
-        )
+        self.assertEqual(persisted_notice.json()["items"], [])
 
     def test_published_multi_photo_listings_survive_full_buyer_flow(self):
         import requests
@@ -538,15 +688,30 @@ class FirebaseFlowTests(SimpleTestCase):
         liked = decide(tokens["BUYER"][0], published[0], "LIKE")
         passed = decide(tokens["BUYER"][0], published[1], "PASS")
         self.assertEqual(liked.status_code, 201, liked.content)
-        self.assertEqual(liked.json()["match"]["listing_id"], published[0])
+        self.assertEqual(liked.json()["decision"]["seller_decision"], "PENDING")
+        self.assertIsNone(liked.json()["match"])
         self.assertEqual(passed.status_code, 201, passed.content)
         self.assertIsNone(passed.json()["match"])
 
-        notices = client.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + seller_token)
-        self.assertEqual(notices.status_code, 200, notices.content)
-        self.assertEqual(len(notices.json()["items"]), 1)
-        self.assertEqual(notices.json()["items"][0]["listing"]["id"], published[0])
-        self.assertEqual(notices.json()["items"][0]["buyer"]["id"], registered_users["BUYER"][0]["uid"])
+        candidates = client.get("/api/matches/candidatos", HTTP_AUTHORIZATION="Bearer " + seller_token)
+        self.assertEqual(candidates.status_code, 200, candidates.content)
+        self.assertEqual(len(candidates.json()["items"]), 1)
+        candidate_id = candidates.json()["items"][0]["id"]
+        self.assertEqual(candidates.json()["items"][0]["listing"]["id"], published[0])
+        self.assertEqual(candidates.json()["items"][0]["buyer"]["id"], registered_users["BUYER"][0]["uid"])
+        self.assertEqual(client.get(
+            "/api/matches", HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"][0],
+        ).json()["items"], [])
+        self.assertEqual(client.post(
+            f"/api/matches/candidaturas/{candidate_id}/decision", '{"decision":"ACCEPT"}',
+            content_type="application/json", HTTP_AUTHORIZATION="Bearer " + seller_token,
+        ).status_code, 201)
+        buyer_matches = client.get(
+            "/api/matches", HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"][0],
+        )
+        seller_matches = client.get("/api/matches", HTTP_AUTHORIZATION="Bearer " + seller_token)
+        self.assertEqual(len(buyer_matches.json()["items"]), 1)
+        self.assertEqual(len(seller_matches.json()["items"]), 1)
 
         self.assertEqual(client.post(
             "/api/auth/logout", HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"][0],
@@ -561,7 +726,8 @@ class FirebaseFlowTests(SimpleTestCase):
         ).json(), {"items": [], "next_cursor": None})
         repeated_like = decide(relogged_token, published[0], "LIKE")
         self.assertEqual(repeated_like.status_code, 200, repeated_like.content)
-        self.assertEqual(repeated_like.json(), liked.json())
+        self.assertEqual(repeated_like.json()["decision"]["id"], liked.json()["decision"]["id"])
+        self.assertEqual(repeated_like.json()["match"]["id"], buyer_matches.json()["items"][0]["id"])
 
         second_buyer = client.get(
             "/api/inmuebles/explorar", HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"][1],
@@ -569,10 +735,18 @@ class FirebaseFlowTests(SimpleTestCase):
         self.assertEqual({item["id"] for item in second_buyer.json()["items"]}, set(published))
         second_like = decide(tokens["BUYER"][1], published[0], "LIKE")
         self.assertEqual(second_like.status_code, 201, second_like.content)
-        self.assertNotEqual(second_like.json()["match"]["id"], liked.json()["match"]["id"])
-        final_notices = client.get("/api/notificaciones", HTTP_AUTHORIZATION="Bearer " + seller_token)
-        self.assertEqual(final_notices.status_code, 200, final_notices.content)
-        self.assertEqual(len(final_notices.json()["items"]), 2)
+        seller_candidates = client.get(
+            "/api/matches/candidatos", HTTP_AUTHORIZATION="Bearer " + seller_token,
+        )
+        self.assertEqual(len(seller_candidates.json()["items"]), 1)
+        self.assertEqual(client.post(
+            f"/api/matches/candidaturas/{seller_candidates.json()['items'][0]['id']}/decision",
+            '{"decision":"ACCEPT"}', content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer " + seller_token,
+        ).status_code, 201)
+        second_matches = client.get("/api/matches", HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"][1])
+        self.assertEqual(len(second_matches.json()["items"]), 1)
+        self.assertNotEqual(second_matches.json()["items"][0]["id"], buyer_matches.json()["items"][0]["id"])
 
     def login(self, email, password, requests):
         host = os.environ["FIREBASE_AUTH_EMULATOR_HOST"]
