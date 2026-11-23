@@ -27,6 +27,8 @@ function MatchCard({ match }) {
             {property.city} · <strong><PropertyPrice value={property.price} monthly /></strong>
           </p>
         ) : <p className="property-card__location">Ficha no disponible</p>}
+        {property.availability === 'CLOSED' && <p className="property-availability">Anuncio cerrado{property.closure_reason ? ` · ${property.closure_reason}` : ''}</p>}
+        {property.availability === 'PAUSED' && <p className="property-availability">Anuncio pausado</p>}
         <dl className="buyer-matches__metadata">
           <div><dt>Vendedor</dt><dd>{match.seller?.name || 'No disponible'}</dd></div>
           <div><dt>Confirmado el</dt><dd>
@@ -118,6 +120,7 @@ export function BuyerMatchesPage() {
         </Link>
         <div className="buyer-matches__heading">
           <h1 className="home-page__title">Mis matches</h1>
+          <Link className="btn btn--ghost" to="/comprador/propuestas">Propuestas recibidas</Link>
           <button type="button" className="btn btn--ghost" disabled={loading} onClick={refreshMatches}>Actualizar</button>
         </div>
         {matches.length > 0 && (

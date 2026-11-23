@@ -69,6 +69,32 @@ export function decideCandidate(matchId, decision) {
   })
 }
 
+export function getProposals(cursor = null, signal) {
+  const query = new URLSearchParams({ limit: '20' })
+  if (cursor) query.set('cursor', cursor)
+  return authenticatedRequest(`/api/propuestas?${query}`, { method: 'GET', signal })
+}
+
+export function getProposal(proposalId, signal) {
+  return authenticatedRequest(`/api/propuestas/${encodeURIComponent(proposalId)}`, { method: 'GET', signal })
+}
+
+export function createProposal(listingId, matchId, requestId) {
+  return authenticatedRequest('/api/propuestas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ listing_id: listingId, match_id: matchId, request_id: requestId }),
+  })
+}
+
+export function resolveProposal(proposalId, action) {
+  return authenticatedRequest(`/api/propuestas/${encodeURIComponent(proposalId)}/${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
+  })
+}
+
 export function decideProperty(propertyId, decision) {
   return authenticatedRequest(`/api/inmuebles/${encodeURIComponent(propertyId)}/decision`, {
     method: 'POST',
