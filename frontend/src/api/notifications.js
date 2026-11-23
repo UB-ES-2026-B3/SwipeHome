@@ -1,4 +1,5 @@
 import { auth } from '../firebase'
+import { apiUrl } from './baseUrl'
 
 /**
  * Obtiene las notificaciones del usuario autenticado.
@@ -49,7 +50,7 @@ export async function getNotifications({ limit = 10, cursor } = {}) {
     // CA-01: GET /api/notificaciones con sesión existente
     // CA-02: Header Authorization con Bearer token
     // CA-06: cache 'no-store' para evitar datos cacheados
-    const response = await fetch(`/api/notificaciones?${params}`, {
+    const response = await fetch(apiUrl(`/api/notificaciones?${params}`), {
       method: 'GET',
       headers: { 
         'Authorization': `Bearer ${token}`,

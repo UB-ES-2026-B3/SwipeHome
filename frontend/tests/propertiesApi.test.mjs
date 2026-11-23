@@ -3,9 +3,11 @@ import { File } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import vm from 'node:vm'
+import { apiUrl } from '../src/api/baseUrl.js'
 
 const source = readFileSync(new URL('../src/api/properties.js', import.meta.url), 'utf8')
   .replace(/^import .* from '..\/firebase'$/m, '')
+  .replace(/^import .* from '.\/baseUrl'$/m, '')
   .replace(/^export /gm, '')
 
 function harness({ user, response = { ok: true, status: 201, data: { id: 'listing-1' } }, networkFailure = false } = {}) {
@@ -13,6 +15,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
   const auth = { currentUser: user ?? { getIdToken: async () => 'firebase-id-token' } }
   const context = vm.createContext({
     auth,
+    apiUrl,
     FormData,
     URLSearchParams,
     fetch: async (path, options) => {

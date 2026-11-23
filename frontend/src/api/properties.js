@@ -1,4 +1,5 @@
 import { auth } from '../firebase'
+import { apiUrl } from './baseUrl'
 
 const SESSION_GONE = new Set([
   'auth/user-token-expired',
@@ -21,7 +22,7 @@ async function authenticatedRequest(path, options = {}) {
     throw error
   }
 
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     headers: { ...options.headers, Authorization: `Bearer ${token}` },
     cache: 'no-store',
