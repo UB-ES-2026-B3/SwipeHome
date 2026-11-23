@@ -231,3 +231,15 @@ Verificación US8.6:
 (incluido el efecto de carga del componente nuevo) y `npm run build` termina
 correctamente. Azure no participa en esta US y no se probaron índices ni datos
 remotos.
+
+## Disponibilidad en «Mis matches» (US9.7)
+
+BUYER y SELLER ven «Vivienda no disponible» cuando `GET /api/matches`
+devuelve `listing.available: false`. La tarjeta conserva la vivienda y la
+fecha de confirmación del match.
+
+`npm test` pasó 29 pruebas, incluida una respuesta simulada con un anuncio
+disponible y otro cerrado. `npm run lint` terminó con advertencias
+preexistentes y `npm run build` pasó. La verificación de este cambio de
+interfaz se limita al contrato del cliente y la compilación. El cierre y
+la disponibilidad persistentes se comprueban por API con los emuladores.

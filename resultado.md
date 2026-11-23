@@ -457,3 +457,50 @@ Límites: la UI fue contrastada con Auth Emulator y API HTTP interceptada, no co
 persistencia real desde el navegador. Firestore y Auth Emulator verificaron
 persistencia, aislamiento, filtros, reset y rollback de escritura. Azure Blob
 se mockea. No se desplegaron índices remotos ni se probó producción.
+
+## QA US9.7 — permisos, concurrencia e integridad de la selección
+
+Se completaron las rutas de propuestas y se conservaron las decisiones y los
+matches previos. Una propuesta tiene su propio ID e historial. El anuncio
+limita a una propuesta pendiente. Al aceptar, un único commit guarda el
+estado definitivo, cierra la vivienda y crea los avisos. «Mis matches» indica
+si la vivienda está cerrada. El contrato está en el [README backend](backend/README.md).
+
+| CA | Prueba y estado final | Resultado |
+|---|---|---|
+| CA-01 | `test_proposal_requires_a_confirmed_match_for_that_home` admite el match confirmado y rechaza LIKE pendiente, rechazado, PASS, cuenta sin candidatura y match de otra vivienda. Las peticiones rechazadas dejan Firestore intacto. | Pasa |
+| CA-02 | `test_only_the_owner_and_recipient_can_access_or_update_the_proposal` comprueba el detalle de vivienda, condiciones y Vendedor con tokens válidos. Los casos de aceptación y rechazo comprueban la respuesta del destinatario y el estado persistido. | Pasa |
+| CA-03 | `test_acceptance_closes_only_its_home_and_notifies_affected_candidates_privately` comprueba selección ACCEPTED, vínculo en el anuncio, Comprador elegido, fecha y retirada de publicación en Firestore. | Pasa |
+| CA-04 | `test_reject_cancel_and_delayed_retries_keep_separate_intents_and_notices` comprueba REJECTED y CANCELLED, restitución del anuncio a su estado anterior y nuevos envíos al mismo Comprador y a otro. | Pasa |
+| CA-05 | `test_concurrent_incompatible_proposals_and_repeated_acceptance_have_one_winner` y `test_concurrent_accept_and_cancel_leave_one_atomic_terminal_state` sincronizan dos peticiones HTTP antes de entrar en el repositorio. Las carreras devuelven 201/409 para acciones incompatibles y 201/200 para ACCEPT repetido. Se comprueban los documentos y avisos finales. | Pasa |
+| CA-06 | El caso de aceptación consulta exploración antes y después con una cuenta sin decisión. Los matches conservan su ID y devuelven la disponibilidad del anuncio, y el panel de pendientes omite las candidaturas de viviendas cerradas. El test Node confirma el campo en una respuesta simulada. | Pasa en API. Cliente pasa con mocks. |
+| CA-07 | Los casos de aceptación, rechazo y cancelación comprueban destinatarios y tipos en la API de avisos. El cierre notifica a los otros matches confirmados y LIKE pendientes, con datos de la vivienda exclusivamente. Las carreras y los reintentos comprueban el número exacto de avisos. | Pasa |
+| CA-08 | El caso de acceso comprueba 401 sin sesión o con token inválido, 403 por rol y 404 entre cuentas. Se rechazan selectores de identidad. El caso de aceptación compara viviendas y propuestas ajenas, candidaturas y matches antes y después del cierre. | Pasa |
+| CA-09 | El caso de rechazo y cancelación reintenta con la misma clave y vuelve a iniciar sesión para recuperar historial paginado. Conserva IDs, fechas y avisos al reintentar tras una nueva propuesta. ACCEPT simultáneo converge en una única selección. | Pasa |
+| CA-10 | `test_firestore_rejects_commits_without_partial_proposals_or_closures` añade una precondición inválida al commit que evalúa Firestore. `test_notification_failure_rolls_back_acceptance_and_retry_writes_each_notice_once` inyecta el fallo del aviso tras preparar el cierre. `test_response_loss_after_real_commit_is_recoverable_for_creation_and_acceptance` simula la pérdida de la respuesta tras el commit real. Se comprueban los estados completos y los reintentos. | Pasa con mocks y persistencia real del emulador |
+
+**Ejecución local del 23 de noviembre de 2026.** La suite `accounts properties`
+pasó 199 pruebas sin omisiones con Auth Emulator y Firestore Emulator Standard.
+La revalidación posterior de `properties.test_selection` pasó 9 de 9 tras
+añadir la lectura consistente del detalle y ampliar la prueba de commit
+rechazado al cierre. Java 21, Python 3.13.2 y Firebase Tools 15.34.1 estuvieron
+disponibles. Ante el fallo del lanzador `npx` en modo sin conexión se invocó la
+misma versión ya instalada en caché, con el proyecto y la configuración del
+README. Azure Blob se simuló en la suite completa.
+
+**Frontend.** `npm test` pasó 29 pruebas. `npm run lint` y `npm run build`
+finalizaron correctamente. Las nueve advertencias de lint preceden al cambio.
+La etiqueta se compiló y el dato que la activa se probó mediante el cliente
+con una respuesta simulada. Su aspecto en navegador queda sin verificar.
+
+**Decisiones y límites.** La clave de idempotencia se eligió para distinguir un
+nuevo envío de un reintento tardío. Los candidatos afectados son compradores
+con match confirmado o LIKE pendiente para el anuncio cerrado. Los avisos son
+registros privados de la aplicación. La distribución en un commit está sujeta
+a la capacidad de una transacción de Firestore. La validación se limita a
+loopback y datos sintéticos. El despliegue de índices, datos históricos externos
+y servicios de producción quedan sin verificar.
+
+**Fuera de alcance.** El endpoint heredado `POST /api/inmuebles/decidir` usa
+la colección antigua `decisions` y conserva su contrato de autenticación
+separado. Se mantiene como trabajo independiente de las propuestas.

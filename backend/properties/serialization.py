@@ -8,9 +8,13 @@ INTEGER_MINIMUMS = {"price_cents": 1, "surface_hundredths": 1, "bedrooms": 0,
                     "bathrooms": 1, "people": 1}
 
 
+def listing_available(data):
+    return data.get("published") is True and data.get("available") is not False
+
+
 def published_listing(data):
     """Mismo esquema que create_listing; los documentos parciales no se publican."""
-    if not isinstance(data, dict) or data.get("published") is not True:
+    if not isinstance(data, dict) or not listing_available(data):
         return False
     if not all(isinstance(data.get(k), str) and data[k].strip()
                for k in (*TEXT_FIELDS, "seller_uid")):

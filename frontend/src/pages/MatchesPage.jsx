@@ -135,6 +135,7 @@ export function MatchesPage() {
                     <p className="matches-page__location">
                       {[match.listing.street, match.listing.city].filter(Boolean).join(' · ')}
                     </p>
+                    {match.listing.available === false && <p>Vivienda no disponible</p>}
                     <p>
                       {user?.role === 'BUYER'
                         ? `Vendedor y tú habéis confirmado el interés en esta vivienda.`

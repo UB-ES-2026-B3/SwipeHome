@@ -1,6 +1,6 @@
 # Contexto backend de SwipeHome
 
-## Estado vigente — US4, US5.8–US5.9, US6 y US7.4
+## Estado vigente — US4, US5.8–US5.9, US6, US7.4, US8.6 y US9.7
 
 El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
 cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
@@ -94,6 +94,16 @@ excluir decisiones propias. El cursor incorpora una huella de la configuración.
 La suite completa pasó 190 tests con Auth/Firestore Emulator; 29 tests de
 `FirestoreDecisionTests` incluyen aislamiento y rollback de filtros. Las reglas
 remotas no se desplegaron y Azure Blob sigue mockeado.
+
+US9.7 verifica las propuestas y la selección definitiva a partir de matches
+confirmados. Cada intención de envío conserva su identificador, su historial
+y sus avisos. El documento del anuncio arbitra propuestas pendientes rivales.
+Al aceptar, la misma transacción cierra el anuncio, guarda la selección y
+emite los avisos privados. Otros candidatos reciben la indisponibilidad de
+la vivienda. Los matches conservan su historial y exponen la disponibilidad.
+Los dos índices de `selections` están declarados en el repositorio.
+El contrato está en el [README backend](../backend/README.md) y la evidencia
+por criterio en [resultado.md](../resultado.md).
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

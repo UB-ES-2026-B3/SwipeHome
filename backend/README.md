@@ -793,3 +793,50 @@ login. Se comprobaron 390×844 y 1280×900, sin overflow horizontal. Esta
 comprobación **no** es persistencia Firestore de la interfaz ni prueba en móvil
 físico; esa persistencia se verifica en la suite backend con emuladores. No se
 implementó chat ni se depende de él para ver matches.
+
+## US9.7 — Propuestas y selección de compradores
+
+Las propuestas parten de un match confirmado para la vivienda del Vendedor.
+Un LIKE pendiente, rechazado o de otro anuncio no habilita una propuesta.
+Las rutas requieren un ID token Firebase válido.
+
+| Ruta | Acceso y contrato |
+|---|---|
+| `POST /api/inmuebles/{listing_id}/propuestas` | Propietario SELLER. Recibe `{"buyer_uid":"…","idempotency_key":"…"}`. La clave admite entre 16 y 128 letras ASCII, números, guiones o guiones bajos. Puede usarse un UUID. |
+| `GET /api/propuestas` | Devuelve `items/next_cursor` con las propuestas propias del propietario o destinatario. Usa `limit/cursor` con orden descendente por fecha e ID. |
+| `GET /api/propuestas/{id}` | Propietario o destinatario. Incluye estado, Vendedor, match y vivienda con precio, superficie, descripción, condiciones, fotografías y disponibilidad. |
+| `POST /api/propuestas/{id}/decision` | Recibe `{"decision":"ACCEPT"\|"REJECT"\|"CANCEL"}`. El destinatario acepta o rechaza y el propietario cancela. |
+
+Las mutaciones devuelven 201 en el primer cambio y 200 al repetir la misma
+intención. Reutiliza la misma clave de creación para el mismo intento, incluso
+tras perder la respuesta. El reintento devuelve el estado actual de esa
+propuesta. Después de un rechazo o una cancelación, usa una clave nueva para
+enviar otra, incluso al mismo Comprador. Los accesos entre cuentas devuelven
+404, los roles incompatibles 403, las peticiones sin sesión 401 y los estados
+o usos de clave incompatibles 409.
+
+Firestore guarda cada propuesta con un ID derivado del anuncio y la clave de
+creación. Una referencia en el anuncio limita a una propuesta pendiente.
+ACCEPT registra la selección definitiva, retira el anuncio del explorador y
+devuelve `listing.available: false` en los matches existentes. REJECT y CANCEL
+liberan la referencia y mantienen la vivienda disponible. Candidaturas y
+matches conservan sus documentos.
+
+Cada mutación guarda sus avisos privados en el mismo commit que los cambios
+del anuncio y de la propuesta. Se avisa al destinatario del envío y de la
+cancelación, al propietario de la respuesta y al destinatario del cierre que
+aceptó. Los demás compradores con un match confirmado o una candidatura
+pendiente reciben solo la identidad de la vivienda y su indisponibilidad.
+Si Firestore rechaza el commit, se puede repetir la intención. Si se pierde
+la respuesta después del commit, la misma petición recupera el resultado.
+El número de avisos en un cierre está sujeto al tamaño y duración de una
+transacción de Firestore.
+
+La suite completa se ejecuta con el comando de emuladores de este README.
+Desde `backend`, este comando ejecuta los nueve casos de US9.7.
+
+```powershell
+npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test properties.test_selection --verbosity 2"
+```
+
+La [matriz de US9.7](../resultado.md) recoge la evidencia y sus límites.

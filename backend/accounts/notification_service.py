@@ -26,5 +26,9 @@ def list_notifications(user, params):
                 "buyer": {"id": row["buyer_uid"], "name": row["buyer_name"]},
                 "listing": {"id": row["listing_id"], "title": row["listing_title"]},
             })
+        elif row["type"].startswith("SELECTION_") and "listing_id" in row:
+            item["listing"] = {"id": row["listing_id"], "title": row["listing_title"]}
+            if "selection_id" in row:
+                item["selection_id"] = row["selection_id"]
         items.append(item)
     return page_result(items, limit, user.uid, salt=CURSOR_SALT)

@@ -7,6 +7,7 @@ from properties.views import create_property
 from properties.discovery_views import explore_listings, listing_decision
 from properties.preferences_views import buyer_preferences
 from properties.match_views import candidate_decision, matches, pending_candidates
+from properties.selection_views import create_selection, selection, selection_decision, selections
 from properties.views import decide_property
 
 
@@ -29,6 +30,10 @@ urlpatterns = [
     path("api/matches", matches, name="matches"),
     path("api/matches/candidatos", pending_candidates, name="pending-candidates"),
     path("api/matches/candidaturas/<str:decision_id>/decision", candidate_decision, name="candidate-decision"),
+    path("api/inmuebles/<str:listing_id>/propuestas", create_selection, name="create-selection"),
+    path("api/propuestas", selections, name="selections"),
+    path("api/propuestas/<str:selection_id>", selection, name="selection"),
+    path("api/propuestas/<str:selection_id>/decision", selection_decision, name="selection-decision"),
     path("api/inmuebles", create_property, name="create-property"),
     path("api/inmuebles/decidir", decide_property, name="decide-property"),
 ]

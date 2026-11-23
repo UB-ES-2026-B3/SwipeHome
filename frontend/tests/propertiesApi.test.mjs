@@ -163,3 +163,15 @@ test('sends seller decisions only to the selected candidate', async () => {
   assert.equal(calls[0][1].headers['Content-Type'], 'application/json')
   assert.deepEqual(JSON.parse(calls[0][1].body), { decision: 'ACCEPT' })
 })
+
+test('preserves listing availability in existing matches', async () => {
+  const items = [
+    { id: 'match-closed', listing: { id: 'closed', available: false } },
+    { id: 'match-open', listing: { id: 'open', available: true } },
+  ]
+  const { api } = harness({ response: { ok: true, status: 200, data: { items } } })
+
+  const result = await api.getMatches()
+
+  assert.deepEqual(result.data.items.map(({ listing }) => listing.available), [false, true])
+})
