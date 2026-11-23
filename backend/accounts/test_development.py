@@ -60,3 +60,23 @@ class RenderSettingsTests(SimpleTestCase):
     def test_extra_allowed_hosts_from_env(self):
         config = load_settings(ALLOWED_HOSTS=" a.example.com, ,b.example.com ")
         self.assertEqual(config.ALLOWED_HOSTS[-2:], ["a.example.com", "b.example.com"])
+
+
+class TlsProxySettingsTests(SimpleTestCase):
+    """DJANGO_BEHIND_TLS_PROXY: mismo efecto que Render en otros hosts (Azure)."""
+
+    def test_flag_trusts_forwarded_proto(self):
+        config = load_settings(DJANGO_BEHIND_TLS_PROXY="1")
+        self.assertEqual(config.SECURE_PROXY_SSL_HEADER, ("HTTP_X_FORWARDED_PROTO", "https"))
+        # El flag no añade hosts: en Azure se definen con ALLOWED_HOSTS.
+        self.assertEqual(config.ALLOWED_HOSTS, ["localhost", "127.0.0.1", "testserver"])
+
+    def test_without_flag_or_render_there_is_no_proxy_header(self):
+        for value in ("", "0", "true"):
+            with self.subTest(value=value):
+                config = load_settings(DJANGO_BEHIND_TLS_PROXY=value)
+                self.assertFalse(hasattr(config, "SECURE_PROXY_SSL_HEADER"))
+
+    def test_render_still_enables_it_without_the_flag(self):
+        config = load_settings(RENDER_EXTERNAL_HOSTNAME="swipehome.onrender.com", DJANGO_BEHIND_TLS_PROXY="")
+        self.assertEqual(config.SECURE_PROXY_SSL_HEADER, ("HTTP_X_FORWARDED_PROTO", "https"))

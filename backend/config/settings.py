@@ -21,7 +21,12 @@ ALLOWED_HOSTS += [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split("
 
 # Render termina el TLS en su proxy y reenvia a Django por HTTP. Sin esto
 # Django cree que la peticion es insegura (request.is_secure() es falso).
-if _RENDER_HOST:
+# DJANGO_BEHIND_TLS_PROXY=1 hace lo mismo en cualquier otro host cuyo proxy
+# termine el TLS y envie X-Forwarded-Proto (p. ej. Azure Container Apps).
+# Solo debe activarse detras de un proxy asi: si no, el cliente podria
+# falsificar la cabecera.
+_BEHIND_TLS_PROXY = os.environ.get("DJANGO_BEHIND_TLS_PROXY", "").strip() == "1"
+if _RENDER_HOST or _BEHIND_TLS_PROXY:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 INSTALLED_APPS = ["accounts"]
