@@ -1,6 +1,6 @@
 # Contexto backend de SwipeHome
 
-## Estado vigente — US4, US5.8, US6 y US7.4
+## Estado vigente — US4, US5.8–US5.9, US6 y US7.4
 
 El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
 cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
@@ -76,6 +76,15 @@ están en el [README backend](../backend/README.md). La suite completa de backen
 pasó 182 tests con Auth/Firestore Emulator; Azure Blob usa mocks. La carrera
 SELLER ACCEPT/REJECT usa solicitudes simultáneas reales y las pruebas de fallo
 comprueban el estado final de los documentos.
+
+US5.9 amplía `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`
+para dos viviendas del mismo Vendedor y dos Compradores: LIKE sigue pendiente,
+ACCEPT aparece en las dos listas, REJECT no aparece en ninguna y un retry de
+ACCEPT conserva el mismo match. La suite completa del comando documentado pasó
+184 tests con Auth y Firestore Emulator; Azure Blob permanece mockeado. No se
+usaron servicios reales. La interfaz se probó separadamente con Auth Emulator
+y un mock HTTP local, no contra Firestore; los resultados/límites están en el
+[README backend](../backend/README.md) y [resultado.md](../resultado.md).
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

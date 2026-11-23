@@ -125,11 +125,11 @@ fecha/hora local y estado vacío. No hubo desbordamiento horizontal en
 1280×900 ni 390×844. Es responsive emulado en escritorio, no una prueba en
 hardware móvil ni persistencia real de UI en Firestore.
 
-No hay en este árbol implementación de confirmación US5 ni un escritor de
-avisos destinados al Comprador. Se puede consultar un aviso BUYER previamente
-persistido, pero su creación por US5 queda no verificada. La persistencia del
-aviso de interés al SELLER sí se comprobó con Auth/Firestore Emulator en
-backend, incluyendo cierre y nuevo inicio de sesión.
+El estado descrito en la comprobación US7.4 precede a US5.8. US5.8 añadió el
+aviso al Comprador al aceptar una candidatura y US5.9 incorporó la consulta
+visual de matches y la gestión de candidaturas del Vendedor. La persistencia de
+avisos/matches se comprueba en backend con Auth/Firestore Emulator; la UI de
+US5.9 se validó aparte contra un mock HTTP local.
 
 ## Integración US6
 
@@ -177,3 +177,32 @@ interceptaron con fixtures. Se comprobó:
 El backend de US6.8 ya verificó aparte persistencia, duplicados concurrentes,
 cambio de contraseña y revocación con Auth/Firestore Emulator. No se desplegó
 Firebase ni se probó en producción en esta US.
+
+## Recorrido de matches y candidaturas (US5.9)
+
+`/mis-matches` es una ruta protegida compartida por BUYER y SELLER; consulta
+`GET /api/matches` y presenta solo registros confirmados del usuario. BuyerHome
+conserva el aviso de interés enviado sin presentarlo como confirmación. El
+inicio SELLER incorpora «Candidaturas pendientes», que consulta
+`GET /api/matches/candidatos` y permite ACCEPT/REJECT mediante el endpoint
+existente. Se identifica al Comprador y la vivienda. Las decisiones bloquean
+solicitudes repetidas; si la respuesta es ambigua o falla, se conserva la
+candidatura para reintentar y no se muestra éxito sin confirmación. Cargas,
+listas vacías, errores y paginación tienen estados visibles.
+
+`npm test` pasa 27 pruebas, incluidas las nuevas llamadas autenticadas,
+paginación y decisión por ID. `npm run lint` y `npm run build` finalizan; Oxlint
+mantiene advertencias (`set-state-in-effect` en páginas, importación no usada y
+Fast Refresh), sin errores de lint bloqueantes.
+
+En navegador se utilizó Auth Emulator real y un mock HTTP local en memoria
+(no Firestore ni el backend real): BUYER envió interés y vio confirmación; antes
+de ACCEPT la lista de matches quedó vacía. SELLER identificó vivienda/comprador
+y aceptó con Enter; la lista SELLER mostró el match. Un segundo Comprador mostró
+interés en otra vivienda y SELLER la rechazó con doble clic; desapareció de
+pendientes, no se incorporó a matches y el primer match se conservó. Se
+comprobaron lista vacía, fallo 503 con retry y 401 con regreso al login.
+Viewports 390×844 y 1280×900 no tuvieron overflow horizontal. Es una prueba
+emulada en navegador de escritorio, no hardware móvil ni persistencia real de
+la UI. La persistencia, privacidad, re-login e idempotencia se verifican aparte
+con Auth/Firestore Emulator en backend. La visualización no depende de chat.

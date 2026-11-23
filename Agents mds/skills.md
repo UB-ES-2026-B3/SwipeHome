@@ -1,6 +1,6 @@
 # Pautas vigentes de trabajo en SwipeHome
 
-## Continuidad US5.8 — ciclo de candidatura
+## Continuidad US5.9 — ciclo integrado de candidatura y match
 
 Este archivo es documentación del equipo, no una skill instalada.
 El contrato vigente separa LIKE pendiente de match confirmado: solo la
@@ -18,6 +18,12 @@ aceptación del propietario crea el match. Revisar [US4 backend](us4_backend.md)
   servicio son garantías distintas. Accesos directos de clientes siguen cerrados.
 - Mantener fechas e identidades inmutables y paginación por fecha/ID sin OFFSET.
 - Conservar avisos históricos; no fabricarles relaciones ausentes.
+- Consumir los endpoints `/api/matches` y `/api/matches/candidatos` con el token
+  Firebase actual; no aceptar UIDs del cliente como filtro de cuenta.
+- Mostrar únicamente matches confirmados; una candidatura solo desaparece de
+  pendientes después de una respuesta SELLER coherente y confirmada.
+- Mantener botones de decisión reentrantes protegidos por bloqueo local y dejar
+  reintentar errores sin simular un resultado guardado.
 - Ejecutar las pruebas reales de concurrencia en los emuladores demo.
 - Actualizar documentación con resultados reales; no tocar credenciales.
 - Preservar cambios ajenos y el registro local excluido de Git.

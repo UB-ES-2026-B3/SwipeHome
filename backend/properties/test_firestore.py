@@ -734,19 +734,56 @@ class FirebaseFlowTests(SimpleTestCase):
         )
         self.assertEqual({item["id"] for item in second_buyer.json()["items"]}, set(published))
         second_like = decide(tokens["BUYER"][1], published[0], "LIKE")
+        second_rejected = decide(tokens["BUYER"][1], published[1], "LIKE")
         self.assertEqual(second_like.status_code, 201, second_like.content)
+        self.assertEqual(second_rejected.status_code, 201, second_rejected.content)
         seller_candidates = client.get(
             "/api/matches/candidatos", HTTP_AUTHORIZATION="Bearer " + seller_token,
         )
-        self.assertEqual(len(seller_candidates.json()["items"]), 1)
+        self.assertEqual(len(seller_candidates.json()["items"]), 2)
+        candidates_by_listing = {
+            item["listing"]["id"]: item for item in seller_candidates.json()["items"]
+        }
+        self.assertEqual(set(candidates_by_listing), set(published))
+        self.assertTrue(all(
+            item["buyer"]["id"] == registered_users["BUYER"][1]["uid"]
+            for item in candidates_by_listing.values()
+        ))
         self.assertEqual(client.post(
-            f"/api/matches/candidaturas/{seller_candidates.json()['items'][0]['id']}/decision",
+            f"/api/matches/candidaturas/{candidates_by_listing[published[0]]['id']}/decision",
             '{"decision":"ACCEPT"}', content_type="application/json",
             HTTP_AUTHORIZATION="Bearer " + seller_token,
         ).status_code, 201)
+        accepted_retry = client.post(
+            f"/api/matches/candidaturas/{candidates_by_listing[published[0]]['id']}/decision",
+            '{"decision":"ACCEPT"}', content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer " + seller_token,
+        )
+        self.assertEqual(accepted_retry.status_code, 200, accepted_retry.content)
+        self.assertEqual(
+            accepted_retry.json()["match"]["id"],
+            candidates_by_listing[published[0]]["id"],
+        )
+        self.assertEqual(client.post(
+            f"/api/matches/candidaturas/{candidates_by_listing[published[1]]['id']}/decision",
+            '{"decision":"REJECT"}', content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer " + seller_token,
+        ).status_code, 201)
+        self.assertEqual(client.get(
+            "/api/matches/candidatos", HTTP_AUTHORIZATION="Bearer " + seller_token,
+        ).json()["items"], [])
         second_matches = client.get("/api/matches", HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"][1])
         self.assertEqual(len(second_matches.json()["items"]), 1)
         self.assertNotEqual(second_matches.json()["items"][0]["id"], buyer_matches.json()["items"][0]["id"])
+        self.assertEqual(second_matches.json()["items"][0]["listing"]["id"], published[0])
+        seller_matches = client.get("/api/matches", HTTP_AUTHORIZATION="Bearer " + seller_token)
+        self.assertEqual(
+            {(item["buyer"]["id"], item["listing"]["id"]) for item in seller_matches.json()["items"]},
+            {
+                (registered_users["BUYER"][0]["uid"], published[0]),
+                (registered_users["BUYER"][1]["uid"], published[0]),
+            },
+        )
 
     def login(self, email, password, requests):
         host = os.environ["FIREBASE_AUTH_EMULATOR_HOST"]

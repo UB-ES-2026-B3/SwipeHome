@@ -54,6 +54,31 @@ export function decideProperty(propertyId, decision) {
   })
 }
 
+function pagedUrl(path, { limit = 20, cursor } = {}) {
+  const query = new URLSearchParams({ limit: String(limit) })
+  if (cursor) query.set('cursor', cursor)
+  return `${path}?${query}`
+}
+
+export function getMatches(options) {
+  return authenticatedRequest(pagedUrl('/api/matches', options))
+}
+
+export function getPendingCandidates(options) {
+  return authenticatedRequest(pagedUrl('/api/matches/candidatos', options))
+}
+
+export function decideCandidate(decisionId, decision) {
+  return authenticatedRequest(
+    `/api/matches/candidaturas/${encodeURIComponent(decisionId)}/decision`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ decision }),
+    },
+  )
+}
+
 export function publishProperty(fields, photos) {
   const values = {
     title: fields.title,

@@ -21,7 +21,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
       return { ok: response.ok, status: response.status, json: async () => response.data }
     },
   })
-  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty };', context)
+  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getMatches, getPendingCandidates, decideCandidate };', context)
   return { api: context.api, calls, auth }
 }
 
@@ -112,4 +112,27 @@ test('sends decisions to the selected listing endpoint with only the decision', 
   assert.equal(calls[0][1].method, 'POST')
   assert.equal(calls[0][1].headers['Content-Type'], 'application/json')
   assert.deepEqual(JSON.parse(calls[0][1].body), { decision: 'LIKE' })
+})
+
+test('loads private match and pending-candidate pages with the shared cursor contract', async () => {
+  const { api, calls } = harness()
+
+  await api.getMatches({ limit: 12, cursor: 'match cursor' })
+  await api.getPendingCandidates()
+
+  assert.equal(calls[0][0], '/api/matches?limit=12&cursor=match+cursor')
+  assert.equal(calls[1][0], '/api/matches/candidatos?limit=20')
+  assert.equal(calls[0][1].cache, 'no-store')
+  assert.match(calls[0][1].headers.Authorization, /^Bearer firebase-id-token$/)
+})
+
+test('sends seller decisions only to the selected candidate', async () => {
+  const { api, calls } = harness()
+
+  await api.decideCandidate('candidate/id', 'ACCEPT')
+
+  assert.equal(calls[0][0], '/api/matches/candidaturas/candidate%2Fid/decision')
+  assert.equal(calls[0][1].method, 'POST')
+  assert.equal(calls[0][1].headers['Content-Type'], 'application/json')
+  assert.deepEqual(JSON.parse(calls[0][1].body), { decision: 'ACCEPT' })
 })

@@ -155,6 +155,9 @@ export function BuyerHome() {
         <Logo size="sm" to="/comprador/inicio" />
         <div className="buyer-dashboard__account">
           <span className="buyer-dashboard__role uniform-action">Comprador</span>
+          <button type="button" className="uniform-action" onClick={() => navigate('/mis-matches')}>
+            Mis matches
+          </button>
           <button type="button" className="uniform-action" onClick={() => navigate('/notificaciones')}>
             Notificaciones
           </button>

@@ -3,6 +3,7 @@ import { useAuth } from './hooks/useAuth'
 import { BuyerHome } from './pages/BuyerHome'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
+import { MatchesPage } from './pages/MatchesPage'
 import { PropertyPublish } from './pages/PropertyPublish'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { PublishPropertyPage } from './pages/PublishPropertyPage'
@@ -102,6 +103,15 @@ export default function App() {
         element={
           <PrivateRoute>
             <NotificationsPage />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/mis-matches"
+        element={
+          <PrivateRoute>
+            <MatchesPage />
           </PrivateRoute>
         }
       />

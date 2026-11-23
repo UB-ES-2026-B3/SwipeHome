@@ -1,6 +1,6 @@
 # Contexto del proyecto SwipeHome
 
-## Estado vigente — US4, US5.8, US6 y US7.4
+## Estado vigente — US4, US5.8–US5.9, US6 y US7.4
 
 El stack vigente es Django con Firebase Auth y Firestore. La implementación
 de US 4.4–4.7 sobre ese stack fue autorizada explícitamente por el usuario.
@@ -20,6 +20,7 @@ Compradores pueden tener matches independientes con la misma vivienda.
 | US 4.9 | Verificación de permisos, datos, paginación, privacidad, concurrencia y rollback con persistencia local aislada. |
 | US 4.10 | Verificación integrada del recorrido de exploración, decisiones y avisos; UI contrastada con API mockeada y persistencia backend en emuladores. |
 | US 5.8 | APIs de matches/candidaturas, aceptación/rechazo transaccional, privacidad, concurrencia, idempotencia y rollback con Firestore Emulator. |
+| US 5.9 | Recorrido integrado Buyer–Seller en interfaz: candidaturas, aceptación/rechazo y matches privados para ambos roles; backend emulado y UI verificada con Auth Emulator y API mock local. |
 | US 7.4 | Lectura privada de avisos para BUYER y SELLER, pantalla, paginación, errores, estados vacíos y persistencia del aviso de interés. |
 | US 6.8 | Verificación de perfil, cambio de contraseña y logout para BUYER/SELLER; concurrencia, integridad y continuidad probadas con emuladores. |
 | US 6.9 | Recorrido de perfil y logout para ambos roles verificado en navegador con Auth Emulator y API interceptada; cobertura de persistencia backend reutilizada de US6.8. |
@@ -46,10 +47,11 @@ La referencia de modelos, atomicidad, concurrencia, compatibilidad histórica y
 resultados reales es [US4 backend](us4_backend.md). Los contratos HTTP completos,
 ejemplos y comandos están en el [README backend](../backend/README.md).
 US7.4 verificó la consulta paginada de avisos; US5.8 añade el productor del
-aviso al aceptar y verifica que el Comprador consulta el match confirmado.
-La suite de backend de US5.8 pasó 182 tests con Auth/Firestore Emulator; Azure
-Blob se mockea, los índices no se desplegaron y no se añadió UI de listas de
-matches. Evidencia por CA en el [README backend](../backend/README.md).
+aviso al aceptar y US5.9 incorpora pantallas para candidaturas del Vendedor y
+matches de ambos roles. La suite de backend de US5.9 pasó 184 tests con
+Auth/Firestore Emulator; Azure Blob se mockea, los índices no se desplegaron y
+la UI se probó con Auth Emulator y API mock local, no contra Firestore. Evidencia
+por CA en el [README backend](../backend/README.md) y [resultado.md](../resultado.md).
 El backlog original de Sprint 0 se conserva a continuación como historial:
 sus afirmaciones sobre funcionalidades futuras no describen el estado actual.
 

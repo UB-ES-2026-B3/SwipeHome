@@ -1,6 +1,6 @@
 # Contexto frontend de SwipeHome
 
-## Integración y verificación vigente US7.4 — 10 noviembre 2026
+## Integración y verificación vigente US5.9 — 23 noviembre 2026
 
 La autenticación vigente sigue siendo Firebase Auth con ID token Bearer y
 revocación US6.
@@ -11,11 +11,12 @@ BUYER: GET `/api/inmuebles/explorar` y POST
 `/api/inmuebles/{id}/decision` con `{"decision":"LIKE"}` o PASS.
 LIKE crea una candidatura pendiente, no un match confirmado. BuyerHome acepta
 PENDING sin match y comunica que se avisará al confirmar; una respuesta de retry
-puede incluir ACCEPT y el match. El Vendedor dispone de API para consultar y
-decidir candidatos; esta US no añade pantallas de listas del Vendedor ni matches.
-BUYER y SELLER: GET `/api/matches` devuelve matches propios confirmados y GET
-`/api/notificaciones` devuelve avisos propios. Los GET usan `items/next_cursor`,
-límite 20 por defecto y máximo 50.
+puede incluir ACCEPT y el match. US5.9 añade `SellerCandidates` al inicio del
+Vendedor para revisar/aceptar/rechazar solicitudes y la ruta protegida
+`/mis-matches` para consultar la lista propia de ambos roles. BUYER y SELLER:
+GET `/api/matches` devuelve matches confirmados propios; GET `/api/matches/candidatos`
+es exclusivo del Vendedor y filtra sus viviendas. Los GET usan
+`items/next_cursor`, límite 20 por defecto y máximo 50.
 
 US4.10 corrigió la integración frontend: exploración con cursor, decisión por ID
 y cuerpo `{decision}`; confirma solo respuestas coherentes con el estado de
@@ -62,10 +63,16 @@ del aviso de confirmación al Comprador con Auth/Firestore Emulator; no se
 verificó la presentación visual de ese nuevo evento.
 
 US5.8 ajustó BuyerHome para distinguir PENDING, ACCEPT y REJECT y para tolerar
-un retry que recupera una decisión SELLER ya persistida. La
-suite frontend actual pasa 25 tests; lint y build terminan correctamente, con
-warnings de lint no bloqueantes. No se añadió pantalla de candidatos/matches ni
-se validó visualmente el flujo en navegador para esta US.
+un retry que recupera una decisión SELLER ya persistida. US5.9 añadió funciones
+de API autenticadas para candidatos/matches y la decisión SELLER; la interfaz
+elimina una candidatura solo tras confirmar una respuesta coherente, bloquea
+dobles envíos y permite reintentar errores. `npm test` pasa 27 pruebas; lint y
+build finalizan. El navegador usó Auth Emulator real y un mock HTTP local en
+memoria: se verificaron interés pendiente, ACCEPT por teclado, REJECT con
+doble clic, lista vacía, retry tras 503, expiración 401 y aislamiento visual.
+Viewports 390×844 y 1280×900 no tuvieron overflow horizontal. No es persistencia
+Firestore del navegador ni prueba en hardware físico; backend y persistencia se
+verifican aparte con Auth/Firestore Emulator.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

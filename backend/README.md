@@ -694,9 +694,9 @@ de transición se volvió a ejecutar de forma aislada en el emulador y pasó.
 
 | CA US5 | Evidencia automatizada | Resultado / límite |
 |---|---|---|
-| CA-01 — Consulta de matches del Comprador | `test_accept_and_reject_are_persistent_idempotent_and_independent`, `test_two_buyers_create_independent_matches_with_same_home`, `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`; GET `/api/matches` filtra BUYER. | **Pasa con Firestore Emulator**; no hay pantalla de matches en esta US. |
+| CA-01 — Consulta de matches del Comprador | `test_accept_and_reject_are_persistent_idempotent_and_independent`, `test_two_buyers_create_independent_matches_with_same_home`, `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`; GET `/api/matches` filtra BUYER. | **Pasa con Firestore Emulator**; pantalla añadida y verificada en US5.9. |
 | CA-02 — Interés mutuo obligatorio | `test_like_creates_one_pending_candidate_without_confirming_a_match`, `test_accept_and_reject_are_persistent_idempotent_and_independent`; LIKE deja lista confirmada vacía hasta ACCEPT. | **Pasa con Firestore Emulator.** |
-| CA-03 — Consulta de candidatos del Vendedor | `test_candidates_and_matches_are_scoped_by_verified_owner_and_role`, `test_match_and_candidate_lists_paginate_and_return_empty_distinctly`; candidatos incluyen comprador y vivienda y están filtrados por vendedor. | **Pasa con Firestore Emulator**; no se verificó una interfaz de vendedor. |
+| CA-03 — Consulta de candidatos del Vendedor | `test_candidates_and_matches_are_scoped_by_verified_owner_and_role`, `test_match_and_candidate_lists_paginate_and_return_empty_distinctly`; candidatos incluyen comprador y vivienda y están filtrados por vendedor. | **Pasa con Firestore Emulator**; interfaz añadida y verificada en US5.9. |
 | CA-04 — Confirmación del match | `test_accept_and_reject_are_persistent_idempotent_and_independent`, `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`; aceptación produce match para ambas listas. | **Pasa con Firestore Emulator.** |
 | CA-05 — Rechazo de candidatura | `test_accept_and_reject_are_persistent_idempotent_and_independent`; REJECT desaparece de pendientes y no crea match ni aviso. | **Pasa con Firestore Emulator.** |
 | CA-06 — Privacidad e independencia | `test_candidates_and_matches_are_scoped_by_verified_owner_and_role`, `test_two_buyers_create_independent_matches_with_same_home`; IDs/roles ajenos reciben 403/404 y la otra candidatura permanece intacta. | **Pasa con emulador**; Auth verifier es mock en tests de permisos, real en flujo integrado. |
@@ -714,11 +714,49 @@ BuyerHome se ajustó para confirmar respuestas PENDING, ACCEPT recuperadas tras
 un retry y el resultado REJECT, sin mostrar un match antes de tiempo. `npm test` pasó 25 tests; `npm run lint` y
 `npm run build` terminaron correctamente. Lint conserva advertencias del
 repositorio (efectos con setState, import no usado y Fast Refresh); no se
-abordaron por ser ajenas a US5.8. No se verificó la interfaz con navegador ni
-hardware móvil en esta US.
+abordaron por ser ajenas a US5.8. En aquel corte no se verificó la interfaz con navegador
+ni hardware móvil; la verificación visual queda ampliada en US5.9.
 
 Cambios funcionales incluidos: endpoints `GET /api/matches`,
 `GET /api/matches/candidatos`, `POST /api/matches/candidaturas/{id}/decision`,
 transición transaccional e idempotente, filtros por propiedad/rol, paginación,
 índices Firestore, aviso de aceptación al Comprador y ajuste del explorador para
 mostrar interés pendiente en lugar de anunciar un match inmediato.
+
+## US5.9: recorrido integrado Comprador–Vendedor
+
+US5.9 añade la interfaz protegida `/mis-matches` para BUYER y SELLER y el panel
+«Candidaturas pendientes» del Vendedor. BuyerHome mantiene la confirmación de
+interés enviado sin presentarlo como match. El panel del Vendedor identifica
+Comprador y vivienda, ofrece ACCEPT/REJECT con bloqueo de envíos repetidos y
+mantiene disponible el reintento tras errores. Las pantallas muestran cargas,
+listas vacías, errores y reintentos; solo una respuesta coherente elimina la
+candidatura de pendientes.
+
+El recorrido persistente se verificó con Auth y Firestore Emulator mediante
+`FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`:
+un Vendedor publica dos viviendas, dos Compradores muestran interés, el
+Vendedor acepta una candidatura y rechaza otra. Se comprobaron listas privadas
+de ambos roles, continuidad al re-login, el estado final tras REJECT y un retry
+de ACCEPT con el mismo match. La suite completa indicada en este README pasó
+**184 tests**, sin omisiones; Azure Blob usa mocks y no se usaron Firebase/Azure
+de producción.
+
+| CA US5 | Evidencia automatizada | Resultado / límite |
+|---|---|---|
+| CA-01 — Matches del Comprador | `test_published_multi_photo_listings_survive_full_buyer_flow` consulta GET `/api/matches` como ambos Compradores. | **Pasa con Firestore Emulator**; la presentación visual se prueba con API mock local. |
+| CA-02 — Interés mutuo obligatorio | LIKE crea candidatura PENDING; lista Buyer vacía hasta ACCEPT, verificado por `test_like_creates_one_pending_candidate_without_confirming_a_match` y flujo integrado. | **Pasa con Firestore Emulator.** |
+| CA-03 — Candidaturas del Vendedor | Flujo integrado contrasta `buyer` y `listing` para cada candidatura; permisos también en `test_candidates_and_matches_are_scoped_by_verified_owner_and_role`. | **Pasa con Firestore Emulator**; UI usa mock HTTP. |
+| CA-04 — Confirmación | Aceptación y consulta de listas Buyer/Seller en el flujo integrado y `test_accept_and_reject_are_persistent_idempotent_and_independent`. | **Pasa con Firestore Emulator.** |
+| CA-05 — Rechazo | El flujo integrado rechaza la candidatura de la segunda vivienda; después no queda pendiente ni aparece en matches. | **Pasa con Firestore Emulator.** |
+| CA-06 — Privacidad e independencia | Flujo de dos Compradores/dos viviendas, más `test_candidates_and_matches_are_scoped_by_verified_owner_and_role` y `test_two_buyers_create_independent_matches_with_same_home`. | **Pasa con emulador**; permisos unitarios usan perfiles mock, Auth Emulator es real en el flujo integrado. |
+| CA-07 — Persistencia y duplicados | Re-login y retry ACCEPT en `test_published_multi_photo_listings_survive_full_buyer_flow`; IDs/fechas inmutables en `test_accept_and_reject_are_persistent_idempotent_and_independent`. | **Pasa con Auth/Firestore Emulator.** |
+| CA-08 — Vacíos y errores | Vacíos/cursor y errores en `test_match_and_candidate_lists_paginate_and_return_empty_distinctly`, `MatchApiTests.test_invalid_payloads_identifiers_and_query_are_rejected` y fallos atómicos US5.8. | **Pasa con mocks y emulador**; en navegador se simularon 503/retry y 401. |
+
+La interfaz se verificó en navegador de escritorio con Auth Emulator real y un
+mock HTTP local en memoria para la API: interés pendiente, ACCEPT por teclado,
+REJECT por doble clic, lista vacía, error 503 reintentable y 401 que conduce al
+login. Se comprobaron 390×844 y 1280×900, sin overflow horizontal. Esta
+comprobación **no** es persistencia Firestore de la interfaz ni prueba en móvil
+físico; esa persistencia se verifica en la suite backend con emuladores. No se
+implementó chat ni se depende de él para ver matches.

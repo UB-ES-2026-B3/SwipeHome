@@ -988,6 +988,112 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .seller-dashboard__notifications {
   margin-top: var(--sp-8);
 }
+.seller-dashboard__candidates {
+  margin-top: var(--sp-8);
+}
+.seller-dashboard__candidate-list,
+.matches-page__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+  list-style: none;
+}
+.seller-dashboard__candidate,
+.matches-page__item {
+  padding: var(--sp-3);
+  background: var(--c-white);
+  border: 1px solid var(--c-gray-100);
+  border-radius: var(--r-card);
+  box-shadow: var(--shadow-card);
+}
+.seller-dashboard__candidate {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+.seller-dashboard__candidate h3,
+.matches-page__item h2 {
+  font-size: 1.1rem;
+  font-weight: 800;
+}
+.seller-dashboard__candidate p,
+.matches-page__location {
+  margin-top: 4px;
+  color: var(--c-gray-700);
+}
+.seller-dashboard__candidate-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.seller-dashboard__candidate-actions .btn {
+  min-height: 40px;
+  padding: 8px 18px;
+}
+.seller-dashboard__candidate-actions .btn--dark {
+  color: var(--c-white);
+  background: var(--c-black);
+}
+.seller-dashboard__feedback {
+  padding: 12px 14px;
+  margin-bottom: var(--sp-2);
+  color: #176b38;
+  background: #eefaf2;
+  border-radius: var(--r-input);
+}
+.matches-page {
+  min-height: 100vh;
+  background: var(--c-gray-50);
+}
+.matches-page__header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+.matches-page__content {
+  width: min(100% - 32px, 900px);
+  margin: 0 auto;
+  padding: var(--sp-6) 0;
+}
+.matches-page__heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-4);
+}
+.matches-page__heading h1 {
+  font-size: clamp(2rem, 5vw, 3rem);
+  letter-spacing: -.04em;
+}
+.matches-page__heading p {
+  color: var(--c-gray-700);
+  margin-top: 4px;
+}
+.matches-page__message {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+  padding: var(--sp-4);
+  background: var(--c-white);
+  border: 1px solid var(--c-gray-100);
+  border-radius: var(--r-card);
+  color: var(--c-gray-700);
+}
+.matches-page__message--error { color: var(--c-error); }
+.matches-page__item article {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+}
+.matches-page__item time {
+  margin-top: var(--sp-1);
+  color: var(--c-gray-400);
+  font-size: .8125rem;
+}
 .seller-dashboard__section-header {
   display: flex;
   align-items: center;
@@ -1179,6 +1285,9 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   .seller-dashboard__content { padding: var(--sp-4) var(--sp-2); }
   .seller-dashboard__account-name { display: none; }
   .seller-dashboard__role { font-size: 0.65rem; }
+  .seller-dashboard__candidate { align-items: stretch; flex-direction: column; }
+  .seller-dashboard__candidate-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .seller-dashboard__candidate-actions .btn { padding-inline: 8px; }
   .publish-page__header { padding: 12px var(--sp-2); }
   .publish-page__inner { margin-inline: var(--sp-2); padding: var(--sp-3); width: auto; }
   .publish-form__grid,
@@ -1407,6 +1516,24 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 
 @media (max-width: 600px) {
   .home-page__header { padding: var(--sp-2); }
+  .buyer-dashboard__account,
+  .seller-dashboard__account,
+  .matches-page__header-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 4px;
+  }
+  .buyer-dashboard__account .uniform-action,
+  .seller-dashboard__account .uniform-action,
+  .matches-page__header-actions .uniform-action {
+    width: 100% !important;
+    min-width: 0 !important;
+    padding-inline: 6px !important;
+    font-size: 12px !important;
+  }
+  .matches-page__content { width: min(100% - 24px, 900px); padding: var(--sp-4) 0; }
+  .matches-page__heading { align-items: stretch; flex-direction: column; }
+  .matches-page__heading .btn { width: 100%; }
   .profile-page__header { padding: 12px var(--sp-2); }
   .profile-page__header-actions { gap: var(--sp-1); }
   .profile-page__back,

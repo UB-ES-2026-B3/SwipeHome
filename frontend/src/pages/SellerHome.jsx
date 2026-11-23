@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { getNotifications } from '../api/notifications'
 import { getActiveProperties } from '../api/properties'
 import { Logo } from '../components/Logo'
+import { SellerCandidates } from '../components/SellerCandidates'
 import { useAuth } from '../hooks/useAuth'
 
 function formatNotificationDate(value) {
@@ -88,6 +89,9 @@ export function SellerHome() {
         <Logo size="sm" to="/vendedor/inicio" />
         <div className="seller-dashboard__account">
           <span className="seller-dashboard__role uniform-action">Vendedor</span>
+          <button type="button" className="uniform-action" onClick={() => navigate('/mis-matches')}>
+            Mis matches
+          </button>
           <button type="button" className="uniform-action" onClick={() => navigate('/notificaciones')}>
             Notificaciones
           </button>
@@ -152,6 +156,8 @@ export function SellerHome() {
             </div>
           ) : null}
         </section>
+
+        <SellerCandidates />
 
         <section className="seller-dashboard__notifications" aria-labelledby="notifications-title">
           <div className="seller-dashboard__section-header">
