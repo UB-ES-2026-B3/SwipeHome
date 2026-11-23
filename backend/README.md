@@ -73,9 +73,9 @@ desde la consola de Firebase al terminar.
 | `GET` | `/api/inmuebles/mios` | Publicaciones propias del SELLER con estado y acciones: 200 / 401 / 403 / 500 |
 | `GET` | `/api/inmuebles/{id}/gestion` | Detalle de un anuncio propio para gestionarlo: 200 / 401 / 403 / 404 / 500 |
 | `PATCH` | `/api/inmuebles/{id}` | Modificar datos y fotografías (JSON o multipart): 200 / 400 / 401 / 403 / 404 / 409 / 500 |
-| `POST` | `/api/inmuebles/{id}/pausar` | Pausar un anuncio activo: 200 / 401 / 403 / 404 / 409 / 500 |
-| `POST` | `/api/inmuebles/{id}/reactivar` | Reactivar un anuncio pausado: 200 / 401 / 403 / 404 / 409 / 500 |
-| `POST` | `/api/inmuebles/{id}/retirar` | Cerrar manualmente el anuncio: 200 / 401 / 403 / 404 / 409 / 500 |
+| `POST` | `/api/inmuebles/{id}/pausar` | Pausar un anuncio activo (`{"version":N}`): 200 / 400 / 401 / 403 / 404 / 409 / 500 |
+| `POST` | `/api/inmuebles/{id}/reactivar` | Reactivar un anuncio pausado (`{"version":N}`): 200 / 400 / 401 / 403 / 404 / 409 / 500 |
+| `POST` | `/api/inmuebles/{id}/retirar` | Cerrar manualmente el anuncio (`{"version":N}`): 200 / 400 / 401 / 403 / 404 / 409 / 500 |
 | `GET` | `/api/inmuebles/explorar` | Viviendas pendientes BUYER paginadas. |
 | `POST` | `/api/inmuebles/{id}/decision` | Decisión BUYER; LIKE crea match y aviso: 201 / 200 / 400 / 401 / 403 / 404 / 409 / 500 |
 | `GET` | `/api/health` | Comprobación de vida. No toca Firebase. |
@@ -799,7 +799,7 @@ candidaturas en otras viviendas. Firebase Bearer y roles verificados del perfil.
 - `GET /api/propuestas/{id}`: detalle privado, condiciones actuales y vendedor.
 - `POST /api/propuestas/{id}/aceptar`, `/rechazar` (BUYER), `/cancelar` (SELLER): `{}`.
 - `PATCH /api/inmuebles/{id}`: edición de todos los campos canónicos US3 sin fotos.
-- `PUT /api/inmuebles/{id}/disponibilidad`: `{"availability":"ACTIVE"}` o PAUSED.
+- `PUT /api/inmuebles/{id}/disponibilidad`: `{"availability":"ACTIVE","version":N}` o PAUSED.
 
 PENDING pasa a ACCEPTED/REJECTED/CANCELLED; ACCEPTED es definitivo y cierra la
 vivienda con motivo «Alquiler acordado». PENDING bloquea edición/disponibilidad.

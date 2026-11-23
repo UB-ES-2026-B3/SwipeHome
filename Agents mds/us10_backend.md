@@ -43,11 +43,13 @@ Los IDs del cuerpo no acreditan identidad ni propiedad.
 
 ### Control de versión
 
-Cada operación de escritura incrementa `version`. El cliente puede enviar `"version": N`
-para detectar modificaciones concurrentes; si la versión almacenada no coincide, se devuelve `409`.
+Toda mutación de un anuncio existente debe enviar `"version": N`. Las escrituras
+que cambian el anuncio incrementan `version`; si la versión almacenada no coincide,
+se devuelve `409`.
 
-Repetir una transición idéntica (pausar un anuncio ya pausado, retirar uno ya retirado)
-devuelve `200` con el estado persistido.
+Repetir una transición idéntica con la versión inmediatamente anterior (por ejemplo,
+reintentar una pausa tras perder la respuesta) devuelve `200` con el estado persistido.
+Las peticiones más antiguas o las transiciones incompatibles devuelven `409`.
 
 ## Estados y transiciones
 

@@ -216,14 +216,14 @@ class ProposalFirestoreTests(SimpleTestCase):
         self.assertEqual(response.status_code, 201)
         self.assertEqual(self.request("post", "/api/propuestas", data=data).status_code, 200)
         proposal_id = response.json()["id"]
-        edit = {"title": "Changed", "street": "Street", "city": "Barcelona", "postal_code": "08001", "description": "Description", "price": "950.50", "surface": "65.50", "bedrooms": 2, "bathrooms": 1, "people": 3, "shared_accommodation": "No"}
+        edit = {"title": "Changed", "street": "Street", "city": "Barcelona", "postal_code": "08001", "description": "Description", "price": "950.50", "surface": "65.50", "bedrooms": 2, "bathrooms": 1, "people": 3, "shared_accommodation": "No", "version": 1}
         self.assertEqual(self.request("patch", "/api/inmuebles/home", data=edit).status_code, 409)
-        self.assertEqual(self.request("put", "/api/inmuebles/home/disponibilidad", data={"availability": "PAUSED"}).status_code, 409)
+        self.assertEqual(self.request("put", "/api/inmuebles/home/disponibilidad", data={"availability": "PAUSED", "version": 1}).status_code, 409)
         path = "/api/propuestas/" + proposal_id + "/rechazar"
         self.assertEqual(self.request("post", path, "buyer", {}).status_code, 200)
         self.assertEqual(self.request("post", path, "buyer", {}).status_code, 200)
         self.assertEqual(self.request("patch", "/api/inmuebles/home", data=edit).status_code, 200)
-        self.assertEqual(self.request("put", "/api/inmuebles/home/disponibilidad", data={"availability": "PAUSED"}).status_code, 200)
+        self.assertEqual(self.request("put", "/api/inmuebles/home/disponibilidad", data={"availability": "PAUSED", "version": 2}).status_code, 200)
         self.assertEqual(self.request("post", "/api/propuestas/" + proposal_id + "/aceptar", "buyer", {}).status_code, 409)
 
 

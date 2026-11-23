@@ -80,7 +80,7 @@ class ManagementHttpTests(SimpleTestCase):
             self.assertEqual(res.status_code, 404)
 
         with patch.object(repo, "pause_listing", side_effect=repo.ProposalNotFound):
-            res = self.request("post", "/api/inmuebles/unknown/pausar")
+            res = self.request("post", "/api/inmuebles/unknown/pausar", data={"version": 1})
             self.assertEqual(res.status_code, 404)
 
     def test_patch_validation_cannot_change_id_or_owner(self):
@@ -143,7 +143,7 @@ class ManagementHttpTests(SimpleTestCase):
         # Error interno 500 no expone secretos
         with patch.object(repo, "get_listing", return_value=existing_listing):
             with patch.object(repo, "update_listing_full", side_effect=RuntimeError("database password 123")):
-                res = self.request("patch", "/api/inmuebles/home1", data=valid_fields)
+                res = self.request("patch", "/api/inmuebles/home1", data={**valid_fields, "version": 1})
                 self.assertEqual(res.status_code, 500)
                 self.assertNotIn("password", res.content.decode())
 
@@ -292,13 +292,13 @@ class ManagementFirestoreTests(SimpleTestCase):
 
     def test_ca04_pause_and_reactivate(self):
         # 1. Pausar anuncio activo
-        res_pause = self.client.post("/api/inmuebles/home1/pausar", **self.auth_headers("seller1"))
+        res_pause = self.client.post("/api/inmuebles/home1/pausar", json.dumps({"version": 1}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_pause.status_code, 200)
         self.assertEqual(res_pause.json()["availability"], "PAUSED")
         self.assertEqual(res_pause.json()["version"], 2)
 
         # Reintento idéntico de pausa -> 200 idempotente
-        res_pause_retry = self.client.post("/api/inmuebles/home1/pausar", **self.auth_headers("seller1"))
+        res_pause_retry = self.client.post("/api/inmuebles/home1/pausar", json.dumps({"version": 1}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_pause_retry.status_code, 200)
         self.assertEqual(res_pause_retry.json()["availability"], "PAUSED")
 
@@ -318,13 +318,13 @@ class ManagementFirestoreTests(SimpleTestCase):
         self.assertEqual(res_swipe.status_code, 409)
 
         # 2. Reactivar anuncio
-        res_reactivate = self.client.post("/api/inmuebles/home1/reactivar", **self.auth_headers("seller1"))
+        res_reactivate = self.client.post("/api/inmuebles/home1/reactivar", json.dumps({"version": 2}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_reactivate.status_code, 200)
         self.assertEqual(res_reactivate.json()["availability"], "ACTIVE")
         self.assertEqual(res_reactivate.json()["version"], 3)
 
         # Reintento idéntico de reactivación -> 200 idempotente
-        res_reactivate_retry = self.client.post("/api/inmuebles/home1/reactivar", **self.auth_headers("seller1"))
+        res_reactivate_retry = self.client.post("/api/inmuebles/home1/reactivar", json.dumps({"version": 2}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_reactivate_retry.status_code, 200)
         self.assertEqual(res_reactivate_retry.json()["availability"], "ACTIVE")
 
@@ -345,30 +345,30 @@ class ManagementFirestoreTests(SimpleTestCase):
         repo.record_seller_decision("seller1", match2["id"], "LIKE")
 
         # Retirar anuncio
-        res_withdraw = self.client.post("/api/inmuebles/home1/retirar", **self.auth_headers("seller1"))
+        res_withdraw = self.client.post("/api/inmuebles/home1/retirar", json.dumps({"version": 1}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_withdraw.status_code, 200)
         self.assertEqual(res_withdraw.json()["availability"], "CLOSED")
         self.assertEqual(res_withdraw.json()["closure_reason"], "WITHDRAWN")
 
         # Reintento idéntico de retirada -> 200 idempotente
-        res_withdraw_retry = self.client.post("/api/inmuebles/home1/retirar", **self.auth_headers("seller1"))
+        res_withdraw_retry = self.client.post("/api/inmuebles/home1/retirar", json.dumps({"version": 1}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_withdraw_retry.status_code, 200)
         self.assertEqual(res_withdraw_retry.json()["availability"], "CLOSED")
         self.assertEqual(res_withdraw_retry.json()["closure_reason"], "WITHDRAWN")
 
         # No se puede reabrir un anuncio cerrado -> 409
-        res_reopen = self.client.post("/api/inmuebles/home1/reactivar", **self.auth_headers("seller1"))
+        res_reopen = self.client.post("/api/inmuebles/home1/reactivar", json.dumps({"version": 2}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_reopen.status_code, 409)
 
         # No se puede pausar un anuncio cerrado -> 409
-        res_pause_closed = self.client.post("/api/inmuebles/home1/pausar", **self.auth_headers("seller1"))
+        res_pause_closed = self.client.post("/api/inmuebles/home1/pausar", json.dumps({"version": 2}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_pause_closed.status_code, 409)
 
         # Anuncio cerrado está en modo solo lectura para edición -> 409
         edit_fields = {
             "title": "Intento de edición en cerrado", "street": "Calle 1", "city": "Barcelona",
             "postal_code": "08001", "description": "Desc", "price": "900.00", "surface": "50.00",
-            "bedrooms": 1, "bathrooms": 1, "people": 1, "shared_accommodation": "No",
+            "bedrooms": 1, "bathrooms": 1, "people": 1, "shared_accommodation": "No", "version": 2,
         }
         res_edit_closed = self.client.patch(
             "/api/inmuebles/home1",
@@ -406,7 +406,7 @@ class ManagementFirestoreTests(SimpleTestCase):
         edit_fields = {
             "title": "Intento con propuesta pendiente", "street": "Calle 1", "city": "Barcelona",
             "postal_code": "08001", "description": "Desc", "price": "900.00", "surface": "50.00",
-            "bedrooms": 1, "bathrooms": 1, "people": 1, "shared_accommodation": "No",
+            "bedrooms": 1, "bathrooms": 1, "people": 1, "shared_accommodation": "No", "version": 1,
         }
         res_edit = self.client.patch(
             "/api/inmuebles/home1",
@@ -417,10 +417,10 @@ class ManagementFirestoreTests(SimpleTestCase):
         self.assertEqual(res_edit.status_code, 409)
 
         # Tampoco se puede pausar ni retirar
-        res_pause = self.client.post("/api/inmuebles/home1/pausar", **self.auth_headers("seller1"))
+        res_pause = self.client.post("/api/inmuebles/home1/pausar", json.dumps({"version": 1}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_pause.status_code, 409)
 
-        res_withdraw = self.client.post("/api/inmuebles/home1/retirar", **self.auth_headers("seller1"))
+        res_withdraw = self.client.post("/api/inmuebles/home1/retirar", json.dumps({"version": 1}), content_type="application/json", **self.auth_headers("seller1"))
         self.assertEqual(res_withdraw.status_code, 409)
 
         # En la consulta de gestión se indica has_pending_proposal: True y can_edit: False

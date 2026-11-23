@@ -4,6 +4,7 @@ import logging
 from functools import wraps
 
 from django.http import JsonResponse
+from django.http.multipartparser import MultiPartParserError
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_http_methods
 
@@ -11,7 +12,7 @@ from accounts import repository
 from accounts.authentication import firebase_role
 from accounts.pagination import InvalidQuery, timestamp, valid_document_id
 from .serialization import listing_item
-from .validation import photo_uploads, validate_photos, validate_property
+from .validation import FIELD_ALIASES, photo_uploads, validate_photos, validate_property
 
 logger = logging.getLogger(__name__)
 
@@ -39,10 +40,26 @@ def guarded(view):
     return wrapped
 
 
-def _extract_version_from_body(request):
+def _parse_version(value):
+    if isinstance(value, bool):
+        raise InvalidInput("Versión inválida.")
+    if isinstance(value, int) and value >= 1:
+        return value
+    if isinstance(value, str) and value.isascii() and value.isdecimal():
+        parsed = int(value)
+        if parsed >= 1:
+            return parsed
+    raise InvalidInput("Versión inválida.")
+
+
+def _extract_version_from_body(request, *, required=True):
     if not request.body:
+        if required:
+            raise InvalidInput("Se requiere una versión.")
         return None
     if request.content_type != "application/json":
+        if required:
+            raise InvalidInput("Se requiere una versión.")
         return None
     try:
         data = json.loads(request.body)
@@ -50,11 +67,9 @@ def _extract_version_from_body(request):
             raise InvalidInput("Se requiere un objeto JSON.")
         version = data.get("version")
         if version is not None:
-            if isinstance(version, int) and version >= 1:
-                return version
-            if isinstance(version, str) and version.isdigit():
-                return int(version)
-            raise InvalidInput("Versión inválida.")
+            return _parse_version(version)
+        if required:
+            raise InvalidInput("Se requiere una versión.")
         return None
     except json.JSONDecodeError:
         raise InvalidInput("JSON malformado.")
@@ -95,6 +110,7 @@ def edit_listing(request, listing_id):
     new_photos = None
     retained_photos = None
     existing_edit_data = None
+    provided_fields = None
 
     if request.content_type == "application/json":
         try:
@@ -114,13 +130,13 @@ def edit_listing(request, listing_id):
         if "propietario" in data and str(data["propietario"]) != str(request.user.uid):
             return JsonResponse({"errors": {"propietario": "No se permite cambiar el propietario."}}, status=400)
 
+        if "version" not in data:
+            raise InvalidInput("Se requiere una versión.")
         if "version" in data:
             v = data["version"]
-            if isinstance(v, int) and v >= 1:
-                expected_version = v
-            elif isinstance(v, str) and v.isdigit():
-                expected_version = int(v)
-            else:
+            try:
+                expected_version = _parse_version(v)
+            except InvalidInput:
                 return JsonResponse({"errors": {"version": "Versión inválida."}}, status=400)
 
         if "photos" in data:
@@ -156,6 +172,10 @@ def edit_listing(request, listing_id):
             return JsonResponse({"errors": errors}, status=400)
         values["price_cents"] = int(values.pop("price") * 100)
         values["surface_hundredths"] = int(values.pop("surface") * 100)
+        provided_fields = {
+            field for field, aliases in FIELD_ALIASES.items()
+            if any(alias in data for alias in aliases)
+        }
 
     elif request.content_type.startswith("multipart/form-data"):
         # Django only populates request.POST/FILES for POST; for PATCH we need
@@ -165,9 +185,12 @@ def edit_listing(request, listing_id):
             files_data = request.FILES
         else:
             from django.http.multipartparser import MultiPartParser
-            post_data, files_data = MultiPartParser(
-                request.META, request, request.upload_handlers
-            ).parse()
+            try:
+                post_data, files_data = MultiPartParser(
+                    request.META, request, request.upload_handlers
+                ).parse()
+            except MultiPartParserError:
+                raise InvalidInput("Multipart inválido.") from None
         data = post_data
         if "id" in data and str(data["id"]) != str(listing_id):
             return JsonResponse({"errors": {"id": "No se permite cambiar el identificador."}}, status=400)
@@ -178,13 +201,13 @@ def edit_listing(request, listing_id):
         if "propietario" in data and str(data["propietario"]) != str(request.user.uid):
             return JsonResponse({"errors": {"propietario": "No se permite cambiar el propietario."}}, status=400)
 
+        if "version" not in data:
+            raise InvalidInput("Se requiere una versión.")
         if "version" in data:
             v = data["version"]
-            if isinstance(v, int) and v >= 1:
-                expected_version = v
-            elif isinstance(v, str) and v.isdigit():
-                expected_version = int(v)
-            else:
+            try:
+                expected_version = _parse_version(v)
+            except InvalidInput:
                 return JsonResponse({"errors": {"version": "Versión inválida."}}, status=400)
 
         retained_raw = (data.getlist("existing_photos") or
@@ -242,6 +265,10 @@ def edit_listing(request, listing_id):
             return JsonResponse({"errors": errors}, status=400)
         values["price_cents"] = int(values.pop("price") * 100)
         values["surface_hundredths"] = int(values.pop("surface") * 100)
+        provided_fields = {
+            field for field, aliases in FIELD_ALIASES.items()
+            if any(alias in data for alias in aliases)
+        }
 
     else:
         raise InvalidInput("Tipo de contenido no admitido.")
@@ -253,6 +280,7 @@ def edit_listing(request, listing_id):
         new_photos=new_photos,
         retained_photos=retained_photos,
         expected_version=expected_version,
+        provided_fields=provided_fields,
     )
     result = listing_item(listing_id, listing)
     result["version"] = int(listing.get("version", 1))

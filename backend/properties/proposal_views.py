@@ -119,9 +119,24 @@ from .management_views import edit_listing
 def availability(request, listing_id):
     if not valid_document_id(listing_id):
         raise repository.ProposalNotFound()
-    data = body(request, {"availability"})
+    data = body(request, {"availability", "version"})
     if not isinstance(data["availability"], str) or data["availability"] not in {"ACTIVE", "PAUSED"}:
         raise InvalidInput()
-    listing = repository.update_listing(request.user.uid, listing_id, data)
-    return JsonResponse({"id": listing_id, "availability": repository.listing_availability(listing)})
+    if (
+        not isinstance(data["version"], int)
+        or isinstance(data["version"], bool)
+        or data["version"] < 1
+    ):
+        raise InvalidInput()
+    listing = repository.update_listing(
+        request.user.uid,
+        listing_id,
+        {"availability": data["availability"]},
+        expected_version=data["version"],
+    )
+    return JsonResponse({
+        "id": listing_id,
+        "availability": repository.listing_availability(listing),
+        "version": int(listing.get("version", 1)),
+    })
 

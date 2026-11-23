@@ -25,6 +25,7 @@ Colección `listings`, con id generado por Firestore:
 import hashlib
 import json
 import logging
+from urllib.parse import urlsplit
 from uuid import uuid4
 
 from azure.storage.blob import ContentSettings
@@ -138,6 +139,8 @@ def create_listing(uid, *, values, photos) -> dict:
                 reference.id,
                 type(probe_error).__name__,
             )
+            for blob in uploaded:
+                _queue_photo_cleanup(getattr(blob, "url", None))
             raise
         if snapshot.exists:
             logger.warning(
@@ -246,8 +249,14 @@ def save_property_decision(uid, property_id, decision):
     }
 
 
-def _cleanup_uploaded(uploaded):
+def _cleanup_uploaded(uploaded, protected_urls=None):
+    protected_urls = set(protected_urls or ())
     for blob in uploaded:
+        if getattr(blob, "url", None) in protected_urls:
+            logger.warning(
+                "Se conserva una fotografía potencialmente referenciada tras un fallo de persistencia."
+            )
+            continue
         try:
             blob.delete_blob()
         except Exception as cleanup_error:
@@ -261,15 +270,10 @@ def _cleanup_uploaded(uploaded):
 def _cleanup_removed_blob(photo_url):
     try:
         container = get_container_client()
-        container_prefix = f"/{container.container_name}/"
-        if container_prefix in photo_url:
-            blob_name = photo_url.split(container_prefix, 1)[1].split("?")[0]
-        else:
-            parts = photo_url.split("?")[0].rstrip("/").split("/")
-            if len(parts) >= 2:
-                blob_name = f"{parts[-2]}/{parts[-1]}"
-            else:
-                blob_name = parts[-1]
+        blob_name = _blob_name_for_url(container, photo_url)
+        if not blob_name:
+            logger.info("No se elimina una fotografía externa al contenedor configurado.")
+            return
         blob = container.get_blob_client(blob_name)
         blob.delete_blob()
     except Exception as cleanup_error:
@@ -299,6 +303,68 @@ def _queue_photo_cleanup(photo_url):
             "No se pudo registrar la fotografía huérfana para recuperación (%s).",
             type(queue_error).__name__,
         )
+
+
+def process_photo_cleanup(*, limit=100):
+    """Reintenta limpiezas pendientes sin borrar fotos aún referenciadas."""
+    client = _selection_client()
+    processed = 0
+    query = client.collection(PHOTO_CLEANUP_COLLECTION).where(
+        "processed", "==", False
+    ).limit(limit)
+    for snapshot in query.stream():
+        data = snapshot.to_dict() or {}
+        photo_url = data.get("photo_url")
+        try:
+            references = list(_listings().where(
+                "photos", "array_contains", photo_url
+            ).limit(1).stream()) if photo_url else []
+            if not references:
+                _delete_photo_blob(photo_url)
+            snapshot.reference.update({
+                "processed": True,
+                "attempts": int(data.get("attempts", 0)) + 1,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            processed += 1
+        except Exception as cleanup_error:
+            snapshot.reference.update({
+                "attempts": int(data.get("attempts", 0)) + 1,
+                "last_error": type(cleanup_error).__name__,
+                "updated_at": firestore.SERVER_TIMESTAMP,
+            })
+            logger.warning(
+                "No se pudo completar una limpieza pendiente (%s).",
+                type(cleanup_error).__name__,
+            )
+    return processed
+
+
+def _delete_photo_blob(photo_url):
+    if not photo_url:
+        return
+    container = get_container_client()
+    blob_name = _blob_name_for_url(container, photo_url)
+    if not blob_name:
+        return
+    container.get_blob_client(blob_name).delete_blob()
+
+
+def _blob_name_for_url(container, photo_url):
+    if not isinstance(photo_url, str):
+        return None
+    parsed = urlsplit(photo_url)
+    container_url = getattr(container, "url", None)
+    if not isinstance(container_url, str) or not container_url:
+        return None
+    configured = urlsplit(container_url)
+    expected_path = f"/{container.container_name}/"
+    if parsed.scheme != configured.scheme or parsed.netloc != configured.netloc:
+        return None
+    if not parsed.path.startswith(expected_path):
+        return None
+    blob_name = parsed.path[len(expected_path):]
+    return blob_name or None
 
 
 def update_user_profile(uid, values):
@@ -1099,7 +1165,7 @@ def get_proposals(uid, role, *, limit, position=None):
     return records
 
 
-def update_listing(seller_uid, listing_id, changes):
+def update_listing(seller_uid, listing_id, changes, expected_version=None):
     client = _selection_client()
     def write(tx):
         ref, listing = _owned_listing(tx, client, listing_id, seller_uid)
@@ -1107,6 +1173,16 @@ def update_listing(seller_uid, listing_id, changes):
         if control.get("pending_proposal_id") or control.get("accepted_proposal_id") or listing_availability(listing) == "CLOSED":
             raise DecisionConflict()
         current_version = int(listing.get("version", 1))
+        if expected_version is not None and expected_version != current_version:
+            target = changes.get("availability")
+            if (
+                target == listing_availability(listing)
+                and expected_version == current_version - 1
+            ):
+                return
+            raise VersionConflict()
+        if "availability" in changes and changes["availability"] == listing_availability(listing):
+            return
         update_data = {
             **changes,
             "version": current_version + 1,
@@ -1257,14 +1333,18 @@ def pause_listing(seller_uid, listing_id, expected_version=None):
         control = _selection_ref(client, listing_id).get(transaction=tx).to_dict() or {}
         current_availability = listing_availability(listing)
         current_version = int(listing.get("version", 1))
-        if current_availability == "PAUSED":
-            return {"id": listing_id, "availability": "PAUSED", "version": current_version}
         if current_availability == "CLOSED":
             raise DecisionConflict()
         if control.get("pending_proposal_id"):
             raise DecisionConflict()
         if expected_version is not None and expected_version != current_version:
+            if current_availability == "PAUSED" and expected_version == current_version - 1:
+                return {"id": listing_id, "availability": "PAUSED", "version": current_version}
             raise VersionConflict()
+        if current_availability == "PAUSED":
+            if expected_version is not None:
+                raise DecisionConflict()
+            return {"id": listing_id, "availability": "PAUSED", "version": current_version}
         new_version = current_version + 1
         tx.update(ref, {
             "availability": "PAUSED",
@@ -1282,14 +1362,18 @@ def reactivate_listing(seller_uid, listing_id, expected_version=None):
         control = _selection_ref(client, listing_id).get(transaction=tx).to_dict() or {}
         current_availability = listing_availability(listing)
         current_version = int(listing.get("version", 1))
-        if current_availability == "ACTIVE":
-            return {"id": listing_id, "availability": "ACTIVE", "version": current_version}
         if current_availability == "CLOSED":
             raise DecisionConflict()
         if control.get("pending_proposal_id"):
             raise DecisionConflict()
         if expected_version is not None and expected_version != current_version:
+            if current_availability == "ACTIVE" and expected_version == current_version - 1:
+                return {"id": listing_id, "availability": "ACTIVE", "version": current_version}
             raise VersionConflict()
+        if current_availability == "ACTIVE":
+            if expected_version is not None:
+                raise DecisionConflict()
+            return {"id": listing_id, "availability": "ACTIVE", "version": current_version}
         new_version = current_version + 1
         tx.update(ref, {
             "availability": "ACTIVE",
@@ -1311,6 +1395,12 @@ def withdraw_listing(seller_uid, listing_id, expected_version=None):
         current_closure = listing.get("closure_reason")
         if current_availability == "CLOSED":
             if current_closure == "WITHDRAWN":
+                if expected_version is not None:
+                    if expected_version == current_version - 1:
+                        return {"id": listing_id, "availability": "CLOSED", "closure_reason": "WITHDRAWN", "version": current_version}
+                    if expected_version == current_version:
+                        raise DecisionConflict()
+                    raise VersionConflict()
                 return {"id": listing_id, "availability": "CLOSED", "closure_reason": "WITHDRAWN", "version": current_version}
             raise DecisionConflict()
         if control.get("pending_proposal_id"):
@@ -1339,7 +1429,15 @@ def withdraw_listing(seller_uid, listing_id, expected_version=None):
     return result
 
 
-def update_listing_full(seller_uid, listing_id, values, new_photos=None, retained_photos=None, expected_version=None):
+def update_listing_full(
+    seller_uid,
+    listing_id,
+    values,
+    new_photos=None,
+    retained_photos=None,
+    expected_version=None,
+    provided_fields=None,
+):
     uploaded_blobs = []
     new_photo_urls = []
     if new_photos:
@@ -1375,8 +1473,12 @@ def update_listing_full(seller_uid, listing_id, values, new_photos=None, retaine
             raise VersionConflict()
 
         current_photos = list(listing.get("photos", []))
+        if any(not isinstance(photo, str) or not photo.strip() for photo in current_photos):
+            raise InvalidPhotos("El anuncio contiene una referencia de fotografía inválida.")
         if retained_photos is not None:
             for p in retained_photos:
+                if not isinstance(p, str) or not p.strip():
+                    raise InvalidPhotos("La fotografía conservada no es válida.")
                 if p not in current_photos:
                     raise InvalidPhotos("La fotografía conservada no pertenece al anuncio.")
             final_photos = list(retained_photos) + new_photo_urls
@@ -1392,8 +1494,13 @@ def update_listing_full(seller_uid, listing_id, values, new_photos=None, retaine
 
         removed_photos = [p for p in current_photos if p not in final_photos]
         new_version = current_version + 1
+        field_names = set(provided_fields) if provided_fields is not None else set(values)
+        field_names = {
+            {"price": "price_cents", "surface": "surface_hundredths"}.get(field, field)
+            for field in field_names
+        }
         update_data = {
-            **values,
+            **{field: values[field] for field in field_names},
             "photos": final_photos,
             "version": new_version,
             "updated_at": firestore.SERVER_TIMESTAMP,
@@ -1403,7 +1510,20 @@ def update_listing_full(seller_uid, listing_id, values, new_photos=None, retaine
     try:
         _run_selection_transaction(client, write)
     except Exception:
-        _cleanup_uploaded(uploaded_blobs)
+        try:
+            persisted = get_listing(listing_id)
+        except Exception as probe_error:
+            logger.error(
+                "No se pudo confirmar la edición de %s (%s); "
+                "se conservan sus fotografías para recuperación.",
+                listing_id,
+                type(probe_error).__name__,
+            )
+            for blob in uploaded_blobs:
+                _queue_photo_cleanup(getattr(blob, "url", None))
+            raise
+        protected = set(persisted.get("photos", [])) if persisted else set()
+        _cleanup_uploaded(uploaded_blobs, protected_urls=protected)
         raise
 
     for p in removed_photos:
