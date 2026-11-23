@@ -723,6 +723,39 @@ transición transaccional e idempotente, filtros por propiedad/rol, paginación,
 índices Firestore, aviso de aceptación al Comprador y ajuste del explorador para
 mostrar interés pendiente en lugar de anunciar un match inmediato.
 
+## US8.6: filtros del explorador y perfil
+
+Los Compradores tienen filtros privados persistidos en
+`users/{uid}.preferences`. El contrato `GET/PUT /api/auth/preferences`
+devuelve o reemplaza solo los filtros propios y exige rol `BUYER`. Los filtros
+permitidos son precio mínimo/máximo, superficie mínima/máxima, mínimos de
+dormitorios/baños/personas y alojamiento compartido. Los límites decimales usan
+hasta dos decimales y los enteros son no negativos. Se rechazan mínimos mayores
+que máximos, tipos incorrectos y campos desconocidos.
+
+La exploración pasa el mapa guardado al repositorio y excluye también viviendas
+ya valoradas. El cursor se firma con una huella de la configuración para impedir
+reutilizar una página de otra combinación. Un restablecimiento escribe solo
+`preferences` sin borrar `swipes`, `matches` ni avisos.
+
+| CA US8 | Evidencia | Resultado / límite |
+|---|---|---|
+| CA-01 — Acceso | API unitaria `BuyerPreferencesApiTests`; componente compartido en explorador/perfil. | Pasa en API; UI con mock/browser. |
+| CA-02 — Características | Validación decimal/entera, límites combinados y normalización en `preferences.py`. | Pasa. |
+| CA-03 — Aplicación | `matches_filters` y `get_pending_listings(..., filters=...)`; filtro de vivienda publicada/no valorada. | Pasa con mocks y Firestore Emulator. |
+| CA-04 — Conservación | Escritura en perfil y recarga de `GET /api/auth/preferences`; test de otro cliente del mismo UID. | Pasa con Firestore Emulator. |
+| CA-05 — Restablecimiento | Escritura de mapa vacío y test de PASS previo conservado. | Pasa con Firestore Emulator. |
+| CA-06 — Sin coincidencias | Estado vacío del explorador y acciones de modificar/restablecer en `BuyerHome`. | Pasa con mocks de navegador. |
+| CA-07 — Datos inválidos | `BuyerPreferencesApiTests.test_invalid_filters_and_payloads_do_not_write` conserva el último mapa al rechazar. | Pasa. |
+| CA-08 — Independencia | Perfiles BUYER separados y prueba con dos UIDs en Firestore Emulator. | Pasa con emulador. |
+| CA-09 — Fallos/reintento | Inyección de fallo 500 de escritura/consulta y reintento; estado final inspeccionado. | Pasa con mocks/emulador. |
+
+La comprobación del navegador usó Auth Emulator y API interceptada en viewports
+móvil/escritorio. Verificó aplicación, cancelación, validación, restablecimiento,
+bloqueo visual de swipes durante la petición y presencia del mismo formulario
+desde perfil. No certifica hardware físico ni Firestore real; persistencia,
+aislamiento, rollback y lectura con filtros usan los emuladores.
+
 ## US5.9: recorrido integrado Comprador–Vendedor
 
 US5.9 añade la interfaz protegida `/mis-matches` para BUYER y SELLER y el panel

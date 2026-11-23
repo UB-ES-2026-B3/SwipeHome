@@ -17,9 +17,12 @@ from google.cloud import firestore
 from google.cloud.firestore_v1.transaction import Transaction
 
 from accounts import repository
+from properties.preferences import DEFAULT_FILTERS, validate_filters
 from properties.test_discovery import STAMP, listing
 
 PROJECT = "demo-swipehome-us4"
+REAL_GET_BUYER_PREFERENCES = repository.get_buyer_preferences
+EMPTY_STORED_FILTERS = validate_filters(DEFAULT_FILTERS)
 
 
 @skipUnless(os.environ.get("FIRESTORE_EMULATOR_HOST"), "Requiere Firestore Emulator local.")
@@ -50,6 +53,10 @@ class FirestoreDecisionTests(SimpleTestCase):
             side_effect=lambda uid: {"role": "SELLER" if uid.startswith("seller") else "BUYER",
                                      "name": "Name " + uid, "uid": uid},
         ))
+        self.preferences = self.enterContext(patch(
+            "accounts.repository.get_buyer_preferences",
+            return_value=EMPTY_STORED_FILTERS,
+        ))
         self.client = Client(enforce_csrf_checks=True)
         self.seed("home")
 
@@ -67,6 +74,15 @@ class FirestoreDecisionTests(SimpleTestCase):
 
     def explore(self, uid="buyer", **query):
         return self.client.get("/api/inmuebles/explorar", query, HTTP_AUTHORIZATION="Bearer " + uid)
+
+    def preference_request(self, uid, filters=None, *, client=None):
+        target = client or self.client
+        if filters is None:
+            return target.get("/api/auth/preferences", HTTP_AUTHORIZATION="Bearer " + uid)
+        return target.put(
+            "/api/auth/preferences", json.dumps(filters), content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer " + uid,
+        )
 
     def notices(self, uid="seller", **query):
         return self.client.get("/api/notificaciones", query, HTTP_AUTHORIZATION="Bearer " + uid)
@@ -528,6 +544,84 @@ class FirestoreDecisionTests(SimpleTestCase):
                 self.assertEqual(len(self.notices(uid="buyer").json()["items"]), 1)
         finally:
             fresh.close()
+
+
+    def test_buyer_preferences_filter_isolation_reset_and_failed_write_are_persistent(self):
+        self.preferences.side_effect = REAL_GET_BUYER_PREFERENCES
+        buyer_uid = "buyer-" + self.prefix
+        other_uid = "buyer-other-" + self.prefix
+        buyer_ref = self.db.collection("users").document(buyer_uid)
+        other_ref = self.db.collection("users").document(other_uid)
+        buyer_ref.create({"name": "Buyer", "email": "buyer@example.com", "role": "BUYER"})
+        other_ref.create({"name": "Other", "email": "other@example.com", "role": "BUYER"})
+        self.addCleanup(buyer_ref.delete)
+        self.addCleanup(other_ref.delete)
+
+        affordable_id = "affordable-" + self.prefix
+        self.seed(
+            affordable_id, price_cents=70000, surface_hundredths=4000,
+            bedrooms=2, bathrooms=1, people=3, shared_accommodation=False,
+        )
+        filters = {
+            "price_min": "600.00", "price_max": "800.00",
+            "surface_min": "35.00", "surface_max": None, "bedrooms_min": 2,
+            "bathrooms_min": 1, "people_min": None, "shared_accommodation": False,
+        }
+        saved = self.preference_request(buyer_uid, filters)
+        self.assertEqual(saved.status_code, 200, saved.content)
+        self.assertEqual(saved.json()["filters"], filters)
+
+        reloaded = self.preference_request(
+            buyer_uid, client=Client(enforce_csrf_checks=True),
+        )
+        self.assertEqual(reloaded.status_code, 200)
+        self.assertEqual(reloaded.json()["filters"], filters)
+        self.assertEqual(
+            [row["id"] for row in self.explore(uid=buyer_uid).json()["items"]],
+            [affordable_id],
+        )
+
+        other_filters = {
+            **filters, "price_min": "900.00", "price_max": "1000.00",
+            "surface_min": None, "bedrooms_min": None, "bathrooms_min": None,
+            "shared_accommodation": None,
+        }
+        self.assertEqual(self.preference_request(other_uid, other_filters).status_code, 200)
+        self.assertEqual(
+            [row["id"] for row in self.explore(uid=other_uid).json()["items"]],
+            ["home"],
+        )
+
+        update = type(buyer_ref).update
+
+        def fail_buyer_update(reference, *args, **kwargs):
+            if reference.id == buyer_uid:
+                raise RuntimeError("simulated Firestore write failure")
+            return update(reference, *args, **kwargs)
+
+        changed = {**filters, "price_max": "750.00"}
+        with patch.object(type(buyer_ref), "update", fail_buyer_update):
+            failed = self.preference_request(buyer_uid, changed)
+        self.assertEqual(failed.status_code, 500)
+        self.assertEqual(self.preference_request(buyer_uid).json()["filters"], filters)
+
+        self.assertEqual(self.post("PASS", uid=buyer_uid, identifier=affordable_id).status_code, 201)
+        defaults = {
+            "price_min": None, "price_max": None, "surface_min": None, "surface_max": None,
+            "bedrooms_min": None, "bathrooms_min": None, "people_min": None,
+            "shared_accommodation": None,
+        }
+        reset = self.preference_request(buyer_uid, defaults)
+        self.assertEqual(reset.status_code, 200, reset.content)
+        self.assertEqual(
+            {row["id"] for row in self.explore(uid=buyer_uid).json()["items"]},
+            {"home"},
+        )
+        with patch("properties.discovery_service.repository.get_pending_listings",
+                   side_effect=RuntimeError("simulated read failure")):
+            failed_query = self.explore(uid=buyer_uid)
+        self.assertEqual(failed_query.status_code, 500)
+        self.assertEqual(self.preference_request(buyer_uid).json()["filters"], defaults)
 
 
 @skipUnless(os.environ.get("FIRESTORE_EMULATOR_HOST") and os.environ.get("FIREBASE_AUTH_EMULATOR_HOST"),

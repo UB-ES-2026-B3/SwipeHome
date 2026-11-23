@@ -1,14 +1,29 @@
 """Consultas y decisiones de US4, siempre con identidad verificada."""
 from accounts import repository
 from accounts.pagination import page_result, parse_query, timestamp
+from .preferences import filter_salt, filters_to_api, validate_filters
 
 CURSOR_SALT = "properties.explore.v1"
 
 
 def explore(user, params):
-    limit, position = parse_query(params, user.uid, salt=CURSOR_SALT)
-    records = repository.get_pending_listings(user.uid, limit=limit + 1, position=position)
-    return page_result(records, limit, user.uid, salt=CURSOR_SALT)
+    filters = repository.get_buyer_preferences(user.uid)
+    salt = filter_salt(filters)
+    limit, position = parse_query(params, user.uid, salt=salt)
+    records = repository.get_pending_listings(
+        user.uid, limit=limit + 1, position=position, filters=filters,
+    )
+    return page_result(records, limit, user.uid, salt=salt)
+
+
+def get_filters(user):
+    return filters_to_api(repository.get_buyer_preferences(user.uid))
+
+
+def save_filters(user, payload):
+    filters = validate_filters(payload)
+    repository.update_buyer_preferences(user.uid, filters)
+    return filters_to_api(filters)
 
 
 def decide(user, listing_id, value):

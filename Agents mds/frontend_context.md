@@ -74,6 +74,15 @@ Viewports 390×844 y 1280×900 no tuvieron overflow horizontal. No es persistenc
 Firestore del navegador ni prueba en hardware físico; backend y persistencia se
 verifican aparte con Auth/Firestore Emulator.
 
+US8.6 añade `PreferenceFilters` compartido por explorador y perfil. Consulta y
+sustituye preferencias privadas, valida valores en cliente, bloquea swipes
+mientras aplica o restablece y refresca el explorador. Cancelar vuelve al último
+mapa válido; restablecer conserva swipes/matches. `npm test` pasa 28 pruebas;
+lint/build terminan. El navegador con Auth Emulator/API interceptada confirmó
+aplicación, cancelación, validación, restablecimiento y ausencia de overflow en
+390×844/1280×900. Persistencia e aislamiento reales se comprobaban aparte con
+Firestore Emulator. No se certifica hardware físico ni se verificaron servicios remotos.
+
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
 

@@ -86,6 +86,15 @@ usaron servicios reales. La interfaz se probó separadamente con Auth Emulator
 y un mock HTTP local, no contra Firestore; los resultados/límites están en el
 [README backend](../backend/README.md) y [resultado.md](../resultado.md).
 
+US8.6 añade `users/{uid}.preferences` y la API privada
+`GET/PUT /api/auth/preferences` para BUYER. El mapa almacena límites numéricos
+en unidades enteras de Firestore (centésimas de euro/m²), mínimos enteros y
+alojamiento compartido. `get_pending_listings` aplica los filtros además de
+excluir decisiones propias. El cursor incorpora una huella de la configuración.
+La suite completa pasó 190 tests con Auth/Firestore Emulator; 29 tests de
+`FirestoreDecisionTests` incluyen aislamiento y rollback de filtros. Las reglas
+remotas no se desplegaron y Azure Blob sigue mockeado.
+
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>
 

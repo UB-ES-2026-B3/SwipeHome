@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { decideProperty, exploreProperties } from '../api/properties'
 import { Logo } from '../components/Logo'
+import { PreferenceFilters } from '../components/PreferenceFilters'
 import { useAuth } from '../hooks/useAuth'
 
 export function BuyerHome() {
@@ -13,11 +14,14 @@ export function BuyerHome() {
   const [decisionError, setDecisionError] = useState('')
   const [retryDecision, setRetryDecision] = useState(null)
   const [decisionBusy, setDecisionBusy] = useState(false)
+  const [filtersOpen, setFiltersOpen] = useState(false)
+  const [filtersUpdating, setFiltersUpdating] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [gallery, setGallery] = useState({ propertyId: null, index: 0 })
   const pointerStart = useRef(null)
   const decisionLock = useRef(false)
-  const loadingLock = useRef(false)
+  const filtersLock = useRef(false)
+  const exploreRequest = useRef(0)
   const nextCursor = useRef(null)
 
   const property = properties[0]
@@ -25,29 +29,37 @@ export function BuyerHome() {
   const galleryIndex = gallery.propertyId === property?.id ? gallery.index : 0
 
   const loadProperties = useCallback(async (reset = false, showLoading = true) => {
-    if (loadingLock.current) return
-    loadingLock.current = true
-    if (reset) nextCursor.current = null
+    const requestId = ++exploreRequest.current
+    if (reset) {
+      nextCursor.current = null
+      setDecisionError('')
+      setRetryDecision(null)
+      setFeedback('')
+    }
     if (showLoading) {
       setStatus('loading')
       setError('')
     }
+    if (reset) setProperties([])
     try {
       const result = await exploreProperties(reset ? null : nextCursor.current)
+      if (requestId !== exploreRequest.current) return false
       if (!result.ok) {
         setError(result.data?.error || 'No se pudieron cargar las viviendas.')
         setStatus('error')
-        return
+        return false
       }
       const items = result.data.items || []
       setProperties((current) => reset ? items : [...current, ...items])
       nextCursor.current = result.data.next_cursor || null
       setStatus('ready')
+      if (reset && items.length === 0) setFiltersOpen(true)
+      return true
     } catch {
+      if (requestId !== exploreRequest.current) return false
       setError('No hay conexión con el servidor. Inténtalo de nuevo.')
       setStatus('error')
-    } finally {
-      loadingLock.current = false
+      return false
     }
   }, [])
 
@@ -56,7 +68,7 @@ export function BuyerHome() {
   }, [loadProperties])
 
   async function handleDecision(decision = retryDecision) {
-    if (!property || !decision || decisionLock.current) return
+    if (!property || !decision || decisionLock.current || filtersLock.current || status !== 'ready') return
     decisionLock.current = true
     setDecisionBusy(true)
     setDecisionError('')
@@ -110,14 +122,14 @@ export function BuyerHome() {
   }
 
   function handlePointerDown(event) {
-    if (decisionBusy || event.target.closest('button, a, input, select, textarea')) return
+    if (decisionBusy || filtersUpdating || filtersLock.current || event.target.closest('button, a, input, select, textarea')) return
     pointerStart.current = { x: event.clientX, y: event.clientY }
   }
 
   function handlePointerUp(event) {
     const start = pointerStart.current
     pointerStart.current = null
-    if (!start || decisionBusy || event.target.closest('button, a, input, select, textarea')) return
+    if (!start || decisionBusy || filtersUpdating || filtersLock.current || event.target.closest('button, a, input, select, textarea')) return
     const dx = event.clientX - start.x
     const dy = event.clientY - start.y
     if (Math.abs(dx) < 60 || Math.abs(dx) <= Math.abs(dy)) return
@@ -125,6 +137,7 @@ export function BuyerHome() {
   }
 
   function handleKeyDown(event) {
+    if (filtersUpdating || filtersLock.current || status !== 'ready') return
     if (event.target !== event.currentTarget && event.target.closest('button, a, input, select, textarea')) return
     if (event.key === 'ArrowRight' || event.key === 'ArrowLeft') {
       event.preventDefault()
@@ -149,6 +162,11 @@ export function BuyerHome() {
       : value
   }
 
+  const handleFiltersBusyChange = useCallback((busy) => {
+    filtersLock.current = busy
+    setFiltersUpdating(busy)
+  }, [])
+
   return (
     <main className="home-page home-page--buyer">
       <header className="home-page__header">
@@ -161,6 +179,10 @@ export function BuyerHome() {
           <button type="button" className="uniform-action" onClick={() => navigate('/notificaciones')}>
             Notificaciones
           </button>
+          <button type="button" className="uniform-action" onClick={() => setFiltersOpen((open) => !open)}
+            aria-expanded={filtersOpen} aria-controls="buyer-preferences" disabled={decisionBusy}>
+            Filtros
+          </button>
           <button type="button" className="home-page__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
             Mi perfil
           </button>
@@ -171,6 +193,15 @@ export function BuyerHome() {
       </header>
       <div className="home-page__content">
         <h1 className="home-page__title">¡Bienvenido, {user?.name || 'Comprador'}!</h1>
+        {filtersOpen && (
+          <div id="buyer-preferences">
+            <PreferenceFilters
+              onApplied={() => loadProperties(true)}
+              onBusyChange={handleFiltersBusyChange}
+              disabled={decisionBusy}
+            />
+          </div>
+        )}
         {status === 'loading' && <p className="property-explorer__message">Cargando viviendas…</p>}
         {status === 'error' && (
           <div className="property-explorer__message property-explorer__message--error" role="alert">
@@ -180,8 +211,15 @@ export function BuyerHome() {
         )}
         {status === 'ready' && !property && (
           <div className="property-explorer__message">
-            <p>{'No hay más viviendas por explorar.'}</p>
-            <button type="button" className="btn btn--ghost" onClick={() => loadProperties(true)}>Actualizar</button>
+            <p>No hay viviendas pendientes que coincidan con tus filtros. Puedes modificar o restablecer los criterios.</p>
+            <div className="property-explorer__empty-actions">
+              <button type="button" className="btn btn--ghost" onClick={() => setFiltersOpen(true)}>
+                Modificar o restablecer filtros
+              </button>
+              <button type="button" className="btn btn--ghost" onClick={() => loadProperties(true)}>
+                Actualizar
+              </button>
+            </div>
           </div>
         )}
         {feedback && <p className="property-card__feedback" role="status">{feedback}</p>}
@@ -193,6 +231,7 @@ export function BuyerHome() {
             onPointerDown={handlePointerDown}
             onPointerUp={handlePointerUp}
             onKeyDown={handleKeyDown}
+            aria-busy={filtersUpdating}
           >
             <div className="property-card__gallery">
               {photos.length > 0 ? (
@@ -233,9 +272,9 @@ export function BuyerHome() {
               </dl>
               <div className="property-card__actions">
                 <button type="button" className="swipe-btn swipe-btn--pass" onClick={() => handleDecision('PASS')}
-                  disabled={decisionBusy} aria-label="No me interesa">✕</button>
+                  disabled={decisionBusy || filtersUpdating} aria-label="No me interesa">✕</button>
                 <button type="button" className="swipe-btn swipe-btn--like" onClick={() => handleDecision('LIKE')}
-                  disabled={decisionBusy} aria-label="Me interesa">♥</button>
+                  disabled={decisionBusy || filtersUpdating} aria-label="Me interesa">♥</button>
               </div>
             </div>
           </article>

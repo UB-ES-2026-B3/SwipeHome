@@ -46,6 +46,18 @@ export function exploreProperties(cursor = null) {
   return authenticatedRequest(`/api/inmuebles/explorar?${query}`)
 }
 
+export function getBuyerFilters() {
+  return authenticatedRequest('/api/auth/preferences')
+}
+
+export function saveBuyerFilters(filters) {
+  return authenticatedRequest('/api/auth/preferences', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(filters),
+  })
+}
+
 export function decideProperty(propertyId, decision) {
   return authenticatedRequest(`/api/inmuebles/${encodeURIComponent(propertyId)}/decision`, {
     method: 'POST',

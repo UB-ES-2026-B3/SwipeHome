@@ -430,3 +430,30 @@ no usada; no se tocaron tareas ajenas. En navegador se usó Auth Emulator real
 y un mock HTTP local en memoria, no backend real ni Firestore desde la UI.
 Firebase/Azure de producción e índices remotos no se verificaron. No se probó
 un dispositivo móvil físico ni se añadió chat.
+
+## US8.6: recorrido de filtros desde exploración y perfil
+
+Se implementó la configuración privada de filtros para Compradores y su
+contrato `GET/PUT /api/auth/preferences`. Los criterios admitidos son precio,
+superficie, dormitorios, baños, personas y alojamiento compartido. La
+validación rechaza tipos, rangos invertidos y decimales excesivos; el backend
+aplica los límites a las viviendas pendientes y firma el cursor con la
+configuración para evitar respuestas de una combinación anterior.
+
+| Criterio | Prueba/evidencia | Resultado |
+|---|---|---|
+| CA-01 — Acceso | API de preferencias con rol BUYER y componente en BuyerHome/Perfil. | Pasa con emulador y mocks. |
+| CA-02 — Selección | Validación de campos compatibles y combinaciones; test de normalización. | Pasa. |
+| CA-03 — Aplicación | `matches_filters` excluye viviendas incompatibles o ya valoradas. | Pasa con mocks/Firestore Emulator. |
+| CA-04 — Conservación | Dos lecturas del mismo UID y recarga en navegador/API. | Pasa con emulador. |
+| CA-05 — Restablecimiento | Mapa vacío guarda preferencias sin borrar PASS/matches. | Pasa con Firestore Emulator. |
+| CA-06 — Sin coincidencias | Estado vacío y acciones modificar/restablecer/actualizar. | Pasa con mock de navegador. |
+| CA-07 — Datos inválidos | Rangos, tipos y campos incompletos reciben 400 sin escribir. | Pasa. |
+| CA-08 — Independencia | Dos UID BUYER con mapas separados; permisos por rol/token. | Pasa con Firestore Emulator. |
+| CA-09 — Fallos/reintentos | Fallos 500 de escritura/consulta inyectados y reintento posterior. | Pasa con mocks/emulador. |
+| Móvil/escritorio/teclado | Browser automation; viewports 390×844 y 1280×900. | Pasa en navegador emulado; no hardware físico. |
+
+Límites: la UI fue contrastada con Auth Emulator y API HTTP interceptada, no con
+persistencia real desde el navegador. Firestore y Auth Emulator verificaron
+persistencia, aislamiento, filtros, reset y rollback de escritura. Azure Blob
+se mockea. No se desplegaron índices remotos ni se probó producción.

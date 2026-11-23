@@ -206,3 +206,28 @@ Viewports 390×844 y 1280×900 no tuvieron overflow horizontal. Es una prueba
 emulada en navegador de escritorio, no hardware móvil ni persistencia real de
 la UI. La persistencia, privacidad, re-login e idempotencia se verifican aparte
 con Auth/Firestore Emulator en backend. La visualización no depende de chat.
+
+## Filtros del explorador y perfil (US8.6)
+
+`BuyerHome` presenta «Filtros» en el explorador y `Mi perfil` comparte el mismo
+componente `PreferenceFilters` para Compradores. El cliente usa
+`GET/PUT /api/auth/preferences`, bloquea acciones y swipes mientras aplica o
+restablece, conserva el último formulario válido al cancelar y distingue carga,
+validación, guardado y consulta fallida. Sin resultados ofrece modificar,
+restablecer y actualizar. Las respuestas tardías se invalidan con un identificador
+de petición y no sustituyen resultados de una configuración posterior.
+
+Verificación US8.6:
+
+| CA US8 | Método | Resultado |
+|---|---|---|
+| CA-01/02 | Navegador y tests Node del cliente | Pasa con mocks; API valida los campos reales aparte. |
+| CA-03/05 | Navegador con API interceptada y Firestore Emulator | Pasa con mocks visuales/emulador persistente. |
+| CA-04/08 | Persistencia y dos compradores en Firestore Emulator | Pasa con emuladores. |
+| CA-06/07/09 | Estados vacío/error/validación/reintento simulados | Pasa con mocks. |
+| Responsive/teclado | Browser automation y viewports emulados 390×844/1280×900 | Pasa en escritorio emulado; sin hardware físico. |
+
+`npm test` pasa 28 pruebas, `npm run lint` finaliza con advertencias existentes
+(incluido el efecto de carga del componente nuevo) y `npm run build` termina
+correctamente. Azure no participa en esta US y no se probaron índices ni datos
+remotos.

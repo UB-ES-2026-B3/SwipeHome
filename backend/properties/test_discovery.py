@@ -14,6 +14,7 @@ from accounts.notification_service import CURSOR_SALT as NOTIFICATION_SALT
 from properties.discovery_service import CURSOR_SALT
 from properties.discovery_views import explore_listings
 from properties.serialization import listing_item, published_listing
+from properties.preferences import DEFAULT_FILTERS, validate_filters
 
 STAMP = datetime(2026, 11, 8, tzinfo=timezone.utc)
 
@@ -41,6 +42,11 @@ class DiscoveryApiTests(SimpleTestCase):
             "accounts.repository.get_user_profile", return_value={"role": "BUYER", "name": "Ana"},
         ))
         self.pending = self.enterContext(patch("accounts.repository.get_pending_listings", return_value=[]))
+        self.preferences = self.enterContext(patch(
+            "accounts.repository.get_buyer_preferences",
+            return_value=validate_filters(DEFAULT_FILTERS),
+        ))
+        self.save_preferences = self.enterContext(patch("accounts.repository.update_buyer_preferences"))
         self.record = self.enterContext(patch("accounts.repository.record_decision", return_value=(
             {"id": "key", "buyer_uid": "buyer", "listing_id": "home", "value": "LIKE",
              "seller_decision": "PENDING", "created_at": STAMP},
@@ -140,9 +146,10 @@ class DiscoveryApiTests(SimpleTestCase):
         response = self.get()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"items": [], "next_cursor": None})
-        self.pending.assert_called_with("buyer", limit=21, position=None)
+        filters = validate_filters(DEFAULT_FILTERS)
+        self.pending.assert_called_with("buyer", limit=21, position=None, filters=filters)
         self.get({"limit": "50"})
-        self.pending.assert_called_with("buyer", limit=51, position=None)
+        self.pending.assert_called_with("buyer", limit=51, position=None, filters=filters)
         stamp = DatetimeWithNanoseconds.from_rfc3339("2026-11-08T00:00:00.123456789Z")
         self.pending.return_value = [listing_item(i, listing(created_at=stamp)) for i in ("z", "y", "x")]
         response = self.get({"limit": "2"}).json()
@@ -153,6 +160,19 @@ class DiscoveryApiTests(SimpleTestCase):
         position = self.pending.call_args.kwargs["position"]
         self.assertEqual(position[0].nanosecond, 123456789)
         self.assertEqual(position[1], "y")
+
+    def test_exploration_cursor_is_bound_to_the_saved_filter_configuration(self):
+        self.pending.return_value = [
+            listing_item("one", listing()), listing_item("two", listing()),
+        ]
+        response = self.get({"limit": "1"}).json()
+        cursor = response["next_cursor"]
+        filters = validate_filters({
+            **DEFAULT_FILTERS, "price_max": "950.00",
+        })
+        self.preferences.return_value = filters
+        self.assertEqual(self.get({"cursor": cursor}).status_code, 400)
+        self.pending.assert_called_once()
 
     def test_invalid_limits_queries_and_cross_resource_cursors(self):
         queries = ("limit=0", "limit=51", "limit=-1", "limit=1.5", "limit=abc", "limit=",
@@ -178,6 +198,105 @@ class DiscoveryApiTests(SimpleTestCase):
     def test_methods_outside_contract_are_405(self):
         self.assertEqual(self.client.post("/api/inmuebles/explorar").status_code, 405)
         self.assertEqual(self.client.get("/api/inmuebles/home/decision").status_code, 405)
+
+
+class BuyerPreferencesApiTests(SimpleTestCase):
+    def setUp(self):
+        self.enterContext(patch("accounts.authentication.get_app"))
+        self.enterContext(patch(
+            "accounts.authentication.auth.verify_id_token",
+            side_effect=lambda token, **kwargs: {"uid": token, "auth_time": 100},
+        ))
+        self.enterContext(patch("accounts.repository.is_session_revoked", return_value=False))
+        self.profile = self.enterContext(patch(
+            "accounts.repository.get_user_profile",
+            side_effect=lambda uid: {"role": "SELLER" if uid == "seller" else "BUYER"},
+        ))
+        self.get_preferences = self.enterContext(patch(
+            "accounts.repository.get_buyer_preferences",
+            return_value=validate_filters(DEFAULT_FILTERS),
+        ))
+        self.save_preferences = self.enterContext(patch(
+            "accounts.repository.update_buyer_preferences",
+        ))
+        self.client = Client(enforce_csrf_checks=True)
+
+    def request(self, method="get", body=None, token="buyer", path="/api/auth/preferences"):
+        headers = {} if token is None else {"HTTP_AUTHORIZATION": "Bearer " + token}
+        if method == "get":
+            return self.client.get(path, **headers)
+        return self.client.put(
+            path, json.dumps(body), content_type="application/json", **headers,
+        )
+
+    def test_preferences_are_private_to_authenticated_buyers(self):
+        response = self.request()
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["filters"], DEFAULT_FILTERS)
+        self.assertIn("no-store", response["Cache-Control"])
+        self.assertEqual(self.request(token=None).status_code, 401)
+        self.assertEqual(self.request(token="seller").status_code, 403)
+        self.assertEqual(
+            self.request(path="/api/auth/preferences?uid=other").status_code, 200,
+        )
+        self.get_preferences.assert_called_with("buyer")
+        self.assertEqual(self.client.post(
+            "/api/auth/preferences", HTTP_AUTHORIZATION="Bearer buyer",
+        ).status_code, 405)
+
+    def test_valid_filters_are_normalized_and_saved_for_verified_user(self):
+        payload = {
+            "price_min": "500.25", "price_max": "1200.00",
+            "surface_min": "35", "surface_max": None, "bedrooms_min": 2,
+            "bathrooms_min": None, "people_min": 1, "shared_accommodation": False,
+        }
+        response = self.request("put", payload)
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["filters"], {
+            **payload, "price_min": "500.25", "price_max": "1200.00",
+            "surface_min": "35.00",
+        })
+        self.save_preferences.assert_called_once_with("buyer", {
+            "price_min_cents": 50025, "price_max_cents": 120000,
+            "surface_min_hundredths": 3500, "surface_max_hundredths": None,
+            "bedrooms_min": 2, "bathrooms_min": None, "people_min": 1,
+            "shared_accommodation": False,
+        })
+
+    def test_invalid_filters_and_payloads_do_not_write(self):
+        invalid = (
+            {**DEFAULT_FILTERS, "price_min": "1200", "price_max": "900"},
+            {**DEFAULT_FILTERS, "surface_min": "-1"},
+            {**DEFAULT_FILTERS, "bedrooms_min": True},
+            {**DEFAULT_FILTERS, "shared_accommodation": "false"},
+            {key: value for key, value in DEFAULT_FILTERS.items() if key != "people_min"},
+        )
+        for payload in invalid:
+            response = self.request("put", payload)
+            self.assertEqual(response.status_code, 400, repr(payload))
+        self.assertEqual(self.request("put", []).status_code, 400)
+        self.assertEqual(self.client.put(
+            "/api/auth/preferences", b"{", content_type="application/json",
+            HTTP_AUTHORIZATION="Bearer buyer",
+        ).status_code, 400)
+        self.assertEqual(self.client.put(
+            "/api/auth/preferences", "{}", content_type="text/plain",
+            HTTP_AUTHORIZATION="Bearer buyer",
+        ).status_code, 400)
+        self.save_preferences.assert_not_called()
+
+    def test_persistence_failures_are_safe_and_retryable(self):
+        self.save_preferences.side_effect = RuntimeError("internal provider details")
+        payload = dict(DEFAULT_FILTERS, price_max="1000")
+        response = self.request("put", payload)
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn("internal provider details", response.content.decode())
+        self.assertEqual(response.json(), {
+            "error": "No se pudieron guardar los filtros. Inténtalo de nuevo.",
+        })
+        self.save_preferences.side_effect = None
+        self.assertEqual(self.request("put", payload).status_code, 200)
+        self.assertEqual(self.save_preferences.call_count, 2)
 
 
 class MatchApiTests(SimpleTestCase):

@@ -1460,6 +1460,59 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   box-shadow: var(--shadow-sm);
 }
 .profile-card h2 { font-size: 1.15rem; margin-bottom: var(--sp-3); }
+.preference-filters > p { color: var(--c-gray-700); margin: -8px 0 var(--sp-3); }
+.preference-filters__grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--sp-3);
+}
+.preference-filters__field {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--c-gray-700);
+  font-size: .875rem;
+  font-weight: 700;
+}
+.preference-filters__field input,
+.preference-filters__field select {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--c-gray-200);
+  border-radius: var(--r-input);
+  background: var(--c-white);
+  color: var(--c-black);
+  font: inherit;
+}
+.preference-filters__field input:focus-visible,
+.preference-filters__field select:focus-visible {
+  outline: 2px solid var(--c-black);
+  outline-offset: 2px;
+}
+.preference-filters__actions,
+.property-explorer__empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+.preference-filters__error,
+.preference-filters__notice--error {
+  color: #9B1C1C;
+}
+.preference-filters__notice {
+  margin: 0 0 var(--sp-2);
+  padding: 10px 12px;
+  border-radius: var(--r-input);
+  background: #EFFAF1;
+  color: #176B2C;
+}
+.preference-filters__notice--error {
+  background: #FFF1F1;
+}
 .profile-card form {
   display: flex;
   flex-direction: column;
@@ -1515,7 +1568,12 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 
 @media (max-width: 600px) {
-  .home-page__header { padding: var(--sp-2); }
+  .home-page__header { padding: var(--sp-2);     .preference-filters__grid { grid-template-columns: 1fr; }
+    .preference-filters__actions,
+    .property-explorer__empty-actions { flex-direction: column; }
+    .preference-filters__actions .btn,
+    .property-explorer__empty-actions .btn { width: 100%; }
+  }
   .buyer-dashboard__account,
   .seller-dashboard__account,
   .matches-page__header-actions {

@@ -21,7 +21,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
       return { ok: response.ok, status: response.status, json: async () => response.data }
     },
   })
-  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getMatches, getPendingCandidates, decideCandidate };', context)
+  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, getBuyerFilters, saveBuyerFilters, decideProperty, getMatches, getPendingCandidates, decideCandidate };', context)
   return { api: context.api, calls, auth }
 }
 
@@ -101,6 +101,33 @@ test('explores with the cursor-based US4 API contract', async () => {
   assert.equal(calls[0][0], '/api/inmuebles/explorar?limit=20&cursor=opaque+cursor%2Fwith+spaces')
   assert.equal(calls[1][0], '/api/inmuebles/explorar?limit=20')
   assert.match(calls[0][1].headers.Authorization, /^Bearer /)
+})
+
+test('reads and saves buyer filters with the authenticated preferences contract', async () => {
+  const filters = {
+    price_min: '500.00',
+    price_max: null,
+    surface_min: null,
+    surface_max: '90.00',
+    bedrooms_min: 2,
+    bathrooms_min: null,
+    people_min: 1,
+    shared_accommodation: false,
+  }
+  const { api, calls } = harness({
+    response: { ok: true, status: 200, data: { filters } },
+  })
+
+  const loaded = await api.getBuyerFilters()
+  await api.saveBuyerFilters(filters)
+
+  assert.equal(loaded.data.filters, filters)
+  assert.equal(calls[0][0], '/api/auth/preferences')
+  assert.equal(calls[0][1].cache, 'no-store')
+  assert.equal(calls[1][0], '/api/auth/preferences')
+  assert.equal(calls[1][1].method, 'PUT')
+  assert.equal(calls[1][1].headers['Content-Type'], 'application/json')
+  assert.deepEqual(JSON.parse(calls[1][1].body), filters)
 })
 
 test('sends decisions to the selected listing endpoint with only the decision', async () => {

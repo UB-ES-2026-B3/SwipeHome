@@ -5,6 +5,7 @@ from accounts.notification_views import notifications
 from config.health import health
 from properties.views import create_property
 from properties.discovery_views import explore_listings, listing_decision
+from properties.preferences_views import buyer_preferences
 from properties.match_views import candidate_decision, matches, pending_candidates
 from properties.views import decide_property
 
@@ -23,6 +24,7 @@ urlpatterns = [
     path("api/auth/me/password", password, name="change-password"),
     path("api/auth/logout", logout, name="logout"),
     path("api/inmuebles/explorar", explore_listings, name="explore-listings"),
+    path("api/auth/preferences", buyer_preferences, name="buyer-preferences"),
     path("api/inmuebles/<str:listing_id>/decision", listing_decision, name="listing-decision"),
     path("api/matches", matches, name="matches"),
     path("api/matches/candidatos", pending_candidates, name="pending-candidates"),

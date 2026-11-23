@@ -24,6 +24,7 @@ Compradores pueden tener matches independientes con la misma vivienda.
 | US 7.4 | Lectura privada de avisos para BUYER y SELLER, pantalla, paginación, errores, estados vacíos y persistencia del aviso de interés. |
 | US 6.8 | Verificación de perfil, cambio de contraseña y logout para BUYER/SELLER; concurrencia, integridad y continuidad probadas con emuladores. |
 | US 6.9 | Recorrido de perfil y logout para ambos roles verificado en navegador con Auth Emulator y API interceptada; cobertura de persistencia backend reutilizada de US6.8. |
+| US 8.6 | Filtros privados BUYER compartidos entre explorador y perfil; persistencia, validación, aplicación, restablecimiento y fallback documentados y probados. |
 
 Verificación US 4.9: 166 pruebas correctas con Auth y Firestore Emulator, sin
 omisiones. Contra los CA oficiales, CA-03 a CA-06 pasan en la API/persistencia;

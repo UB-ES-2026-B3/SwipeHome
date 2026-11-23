@@ -80,6 +80,32 @@ def get_user_profile(uid) -> dict | None:
     return _public_profile(uid, data)
 
 
+def get_buyer_preferences(uid) -> dict:
+    """Obtiene filtros privados del Comprador; perfiles antiguos empiezan vacíos."""
+    snapshot = _users().document(uid).get()
+    if not snapshot.exists:
+        raise ValueError("No existe el perfil del Comprador.")
+    from properties.preferences import (
+        DEFAULT_FILTERS,
+        validate_filters,
+        validate_stored_filters,
+    )
+
+    preferences = snapshot.to_dict().get("preferences")
+    if preferences is None:
+        return validate_filters(DEFAULT_FILTERS)
+    return validate_stored_filters(preferences)
+
+
+def update_buyer_preferences(uid, preferences) -> None:
+    """Reemplaza solo los filtros del usuario autenticado en una escritura."""
+    reference = _users().document(uid)
+    snapshot = reference.get()
+    if not snapshot.exists:
+        raise ValueError("No existe el perfil del Comprador.")
+    reference.update({"preferences": preferences})
+
+
 def create_listing(uid, *, values, photos) -> dict:
     """Sube fotografías y crea el anuncio, compensando fallos confirmados."""
     stored_values = {
@@ -670,7 +696,7 @@ def get_confirmed_matches(uid, role, *, limit, position=None):
     return matches
 
 
-def get_pending_listings(buyer_uid, *, limit, position=None):
+def get_pending_listings(buyer_uid, *, limit, position=None, filters=None):
     """Recorre lotes con cursor y carga decisiones en batch, sin OFFSET ni N+1.
 
     Se busca un pendiente adicional. El cursor público siempre sale del último
@@ -678,8 +704,11 @@ def get_pending_listings(buyer_uid, *, limit, position=None):
     """
     from google.cloud.firestore_v1.base_query import FieldFilter
 
+    from properties.preferences import DEFAULT_FILTERS, matches_filters, validate_filters
     from properties.serialization import listing_item, published_listing
 
+    if filters is None:
+        filters = validate_filters(DEFAULT_FILTERS)
     client = firestore.client(app=get_app())
     collection = client.collection(LISTINGS_COLLECTION)
     query = (
@@ -706,7 +735,11 @@ def get_pending_listings(buyer_uid, *, limit, position=None):
         }
         for snapshot in snapshots:
             data = snapshot.to_dict()
-            if decision_key(buyer_uid, snapshot.id) not in decisions and published_listing(data):
+            if (
+                decision_key(buyer_uid, snapshot.id) not in decisions
+                and published_listing(data)
+                and matches_filters(data, filters)
+            ):
                 records.append(listing_item(snapshot.id, data))
                 if len(records) == limit:
                     break

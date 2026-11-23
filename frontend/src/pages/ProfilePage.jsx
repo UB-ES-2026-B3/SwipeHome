@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { changePassword, updateProfile } from '../api/auth'
 import { FormField } from '../components/FormField'
 import { Logo } from '../components/Logo'
+import { PreferenceFilters } from '../components/PreferenceFilters'
 import { useAuth } from '../hooks/useAuth'
 
 const ROLE_LABELS = { BUYER: 'Comprador', SELLER: 'Vendedor' }
@@ -199,6 +200,8 @@ export function ProfilePage() {
             </div>
           </form>
         </section>
+
+        {user.role === 'BUYER' && <PreferenceFilters />}
 
         <section className="profile-card" aria-labelledby="password-title">
           <h2 id="password-title">Cambiar contraseña</h2>
