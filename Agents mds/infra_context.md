@@ -82,6 +82,58 @@ US6.9 verificó el cliente de perfil/logout contra Auth Emulator, con API
 interceptada, en viewports de escritorio y móvil emulado. No se usó Firebase de
 producción ni un dispositivo físico; detalles en el README frontend.
 
+## Azure (en migración) — 23 noviembre 2026
+
+Se prepara el repositorio para alojar SwipeHome en Azure (Azure for Students).
+**Render sigue siendo producción y la vía de vuelta atrás** hasta que el smoke
+test en Azure pase; los cambios no alteran su comportamiento. En el repositorio
+solo hay código y configuración: los recursos de Azure no se han creado.
+
+### Arquitectura acordada
+
+- **Backend:** imagen Docker (`backend/Dockerfile`) construida en la nube con
+  `az acr build` (contexto `backend/`) y ejecutada en **Azure Container Apps**,
+  ingress con puerto destino 8000. El ingress termina el TLS y reenvía
+  `X-Forwarded-Proto`. gunicorn: 2 workers × 4 hilos, `--timeout 30` (no se
+  sube: los límites de Azure Blob de arriba están calculados para ese valor).
+  Imagen `python:3.12-slim`, usuario sin privilegios, sin secretos dentro.
+- **Frontend:** **Azure Static Web Apps** (plan Free). No puede proxificar
+  `/api` a un backend externo, así que el frontend llama a la URL absoluta del
+  backend y Django responde con cabeceras CORS para el origen de SWA.
+  `frontend/public/staticwebapp.config.json` reescribe las rutas de React
+  Router a `/index.html` (excepto `/assets/*` y ficheros estáticos).
+- **Sin cambios:** Firebase Auth, Firestore y Azure Blob Storage.
+
+### Variables nuevas
+
+| Variable | Dónde | Valor |
+|---|---|---|
+| `DJANGO_BEHIND_TLS_PROXY` | Container Apps | `1`: Django confía en `X-Forwarded-Proto` (`SECURE_PROXY_SSL_HEADER`). En Render no hace falta: ya lo activa `RENDER_EXTERNAL_HOSTNAME`. Nunca sin un proxy delante, o el cliente podría falsificar la cabecera. |
+| `CORS_ALLOWED_ORIGINS` | Container Apps | Orígenes del frontend separados por comas, p. ej. `https://<app>.azurestaticapps.net`. Vacía = ningún origen (local y Render, donde todo es mismo origen). Sin credenciales CORS: la API usa `Authorization: Bearer`, no cookies. |
+| `VITE_API_BASE_URL` | Build del frontend en SWA | URL del backend sin `/api`, p. ej. `https://<app>.<región>.azurecontainerapps.io`. Se fija al compilar. Vacía = rutas relativas `/api/...`, que necesitan el proxy de Vite en local y el rewrite de Render. |
+
+Además, Container Apps necesita las mismas variables que Render (ver el
+[README backend](../backend/README.md), apartado Docker) y `ALLOWED_HOSTS` con
+su dominio, porque fuera de Render no existe `RENDER_EXTERNAL_HOSTNAME`.
+
+### Por qué `.dockerignore` es una lista blanca
+
+`az acr build` sube el contexto desde el equipo de quien lo lanza, y
+`backend/` puede contener en local el JSON de la cuenta de servicio de
+Firebase, ficheros `.env`, `.venv` o `db.sqlite3`. Una lista negra deja pasar
+cualquier fichero con un nombre no previsto. Por eso se excluye todo (`*`) y
+solo se vuelven a incluir `requirements.txt`, `manage.py`, `config/`,
+`accounts/` y `properties/`; dentro de ellos se excluyen otra vez tests,
+`__pycache__`, `*.json` y `.env*`. Si se añade un paquete Python nuevo, hay que
+incluirlo en `.dockerignore` o no llegará a la imagen.
+
+### Verificación
+
+El job «Docker (backend)» del CI construye la imagen, la arranca, espera a que
+`/api/health` responda `{"status": "ok"}` y falla si la imagen descomprimida
+supera 600 MB. Render sigue como producción hasta que el smoke test en Azure
+pase; hasta entonces no se retira ni se cambia su configuración.
+
 El plan de migración y las situaciones de ramas/despliegue de octubre que
 siguen son historial; no son instrucciones para cambiar ahora la arquitectura.
 

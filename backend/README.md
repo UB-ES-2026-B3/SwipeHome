@@ -225,6 +225,45 @@ antes de los 30 s de gunicorn; no se cambia `--timeout` (ver
 inyecta `RENDER_EXTERNAL_HOSTNAME`, y `settings.py` lo añade a `ALLOWED_HOSTS` y
 activa `SECURE_PROXY_SSL_HEADER`. Ver `infra_context.md` §3.
 
+## Docker (Azure Container Apps, en migración)
+
+`Dockerfile` crea la imagen que ejecutará Azure Container Apps; Render no la usa
+y sigue desplegando como en el apartado anterior. Se construye en la nube o en
+local, siempre con `backend/` como contexto:
+
+```powershell
+az acr build --registry <registro> --image swipehome-backend:<etiqueta> backend
+docker build -t swipehome-backend backend
+```
+
+`.dockerignore` es una lista blanca (solo entran `requirements.txt`,
+`manage.py`, `config/`, `accounts/` y `properties/`): el JSON de la cuenta de
+servicio o un `.env` dentro de `backend/` no llegan a la imagen. Si se añade
+un paquete Python nuevo, hay que incluirlo ahí.
+
+El contenedor escucha en el puerto 8000 (o `PORT`) con gunicorn, 2 workers ×
+4 hilos y `--timeout 30`. No lleva secretos: necesita las mismas variables que
+Render (`DJANGO_SECRET_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`,
+`FIREBASE_PROJECT_ID`, `FIREBASE_WEB_API_KEY`, `AZURE_STORAGE_CONNECTION_STRING`,
+`AZURE_STORAGE_CONTAINER`) más `ALLOWED_HOSTS` con el dominio del servicio
+(fuera de Render no existe `RENDER_EXTERNAL_HOSTNAME`) y las dos nuevas:
+
+- `DJANGO_BEHIND_TLS_PROXY=1`: confía en `X-Forwarded-Proto` del ingress de
+  Azure, que termina el TLS. Solo detrás de un proxy así.
+- `CORS_ALLOWED_ORIGINS`: origen del frontend en Azure Static Web Apps (p. ej.
+  `https://<app>.azurestaticapps.net`), separados por comas. Vacío no permite
+  ningún origen, que es lo correcto en local y en Render.
+
+Prueba rápida en local:
+
+```powershell
+docker run --rm -p 8000:8000 -e DJANGO_SECRET_KEY=solo-local -e ALLOWED_HOSTS=localhost swipehome-backend
+curl.exe http://localhost:8000/api/health   # {"status": "ok"}
+```
+
+El job «Docker (backend)» del CI hace esta misma comprobación en cada PR. Ver
+`infra_context.md`, apartado «Azure (en migración)».
+
 ## US6: perfil, contraseña y logout
 
 Contrato, decisiones de atomicidad, configuración y comandos del emulador:
