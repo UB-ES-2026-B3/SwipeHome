@@ -28,7 +28,7 @@ PASSWORD = "Test password value 123!"
 
 
 @skipUnless(AUTH_HOST and FIRESTORE_HOST, "Requiere Auth y Firestore Emulator.")
-class SelectionIntegrationTests(LiveServerTestCase):
+class SelectionEmulatorFixture(LiveServerTestCase):
     host = "127.0.0.1"
     databases = set()
 
@@ -143,6 +143,8 @@ class SelectionIntegrationTests(LiveServerTestCase):
                 responses = [pool.submit(request) for request in requests_to_start]
                 return [response.result(timeout=80) for response in responses]
 
+
+class SelectionIntegrationTests(SelectionEmulatorFixture):
     def test_proposal_requires_a_confirmed_match_for_that_home(self):
         self.seed("other-home", "other_seller")
         self.candidate("buyer", "PENDING")

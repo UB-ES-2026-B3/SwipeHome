@@ -8,6 +8,7 @@ import { PropertyPublish } from './pages/PropertyPublish'
 import { NotificationsPage } from './pages/NotificationsPage'
 import { PublishPropertyPage } from './pages/PublishPropertyPage'
 import { ProfilePage } from './pages/ProfilePage'
+import { ProposalsPage } from './pages/ProposalsPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { RegisterChoicePage } from './pages/RegisterChoicePage'
 import { SellerHome } from './pages/SellerHome'
@@ -114,6 +115,11 @@ export default function App() {
             <MatchesPage />
           </PrivateRoute>
         }
+      />
+
+      <Route
+        path="/propuestas/:selectionId?"
+        element={<PrivateRoute><ProposalsPage /></PrivateRoute>}
       />
 
       {/* Cualquier ruta no definida → landing */}

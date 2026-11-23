@@ -1,6 +1,16 @@
 # Contexto frontend de SwipeHome
 
-## Integración y verificación vigente US5.9 — 23 noviembre 2026
+## Selección definitiva (US9.8)
+
+«Mis matches» permite al Vendedor proponer una vivienda a un Comprador con
+match confirmado. «Propuestas» muestra el historial de ambos roles y enlaza
+el detalle con las acciones correspondientes. El detalle vuelve a consultar
+su estado después de un conflicto. Los avisos privados pueden enlazar a la
+propuesta y el aviso de indisponibilidad de los demás candidatos muestra la
+vivienda. El [README frontend](../frontend/README.md) describe los recorridos
+y enlaza el comando E2E.
+
+## Integración y verificación US5.9 — 23 noviembre 2026
 
 La autenticación vigente sigue siendo Firebase Auth con ID token Bearer y
 revocación US6.

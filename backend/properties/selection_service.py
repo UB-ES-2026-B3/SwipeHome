@@ -21,6 +21,9 @@ def selection_item(selection):
 
 def selection_detail(user, selection_id):
     selection, listing = repository.get_selection(user.uid, user.role, selection_id)
+    seller = repository.get_user_profile(selection["seller_uid"])
+    if seller is not None:
+        selection["seller_name"] = seller["name"]
     return {
         **selection_item(selection),
         "listing": {

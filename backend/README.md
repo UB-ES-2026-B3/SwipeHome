@@ -840,3 +840,26 @@ npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project
 ```
 
 La [matriz de US9.7](../resultado.md) recoge la evidencia y sus límites.
+
+## US9.8 — Recorrido de selección en navegador
+
+`GET /api/matches` para el propietario incluye `proposal_pending` por
+vivienda. El detalle de propuesta devuelve las condiciones actuales del
+anuncio y el nombre vigente del Vendedor cuando su perfil está disponible.
+
+Los recorridos E2E requieren Node 24, las dependencias locales de frontend,
+Chrome o Chromium en modo headless y los emuladores del proyecto demo.
+Desde `backend`, ajusta la ruta al navegador instalado y ejecuta estos comandos.
+
+```powershell
+$env:SWIPEHOME_E2E_CHROME = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+Remove-Item Env:FIREBASE_TOKEN,Env:FIREBASE_SERVICE_ACCOUNT_JSON,Env:GOOGLE_APPLICATION_CREDENTIALS -ErrorAction SilentlyContinue
+npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test properties.selection_e2e --verbosity 2"
+```
+
+La prueba levanta Django y Vite en puertos de loopback, usa perfiles de
+navegador separados para cada cuenta e inspecciona los documentos escritos en
+Firestore Emulator. Los fixtures preparan matches confirmados y una foto
+local. El recorrido de fallos puede pausar una petición y cambiar la
+respuesta HTTP observada después de un commit real.
+La [matriz de US9.8](../resultado.md) recoge los resultados por criterio.

@@ -986,6 +986,7 @@ def get_confirmed_matches(uid, role, *, limit, position=None):
                 **listing_item(match["listing_id"], listing),
                 "available": listing_available(listing),
             },
+            **({"proposal_pending": bool(listing.get("pending_selection_id"))} if role == "SELLER" else {}),
             "created_at": match["created_at"],
         })
     return matches

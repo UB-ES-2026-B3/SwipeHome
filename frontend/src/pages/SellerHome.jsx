@@ -92,6 +92,9 @@ export function SellerHome() {
           <button type="button" className="uniform-action" onClick={() => navigate('/mis-matches')}>
             Mis matches
           </button>
+          <button type="button" className="uniform-action" onClick={() => navigate('/propuestas')}>
+            Propuestas
+          </button>
           <button type="button" className="uniform-action" onClick={() => navigate('/notificaciones')}>
             Notificaciones
           </button>

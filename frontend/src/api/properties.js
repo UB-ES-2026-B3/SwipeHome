@@ -76,6 +76,30 @@ export function getMatches(options) {
   return authenticatedRequest(pagedUrl('/api/matches', options))
 }
 
+export function getProposals(options) {
+  return authenticatedRequest(pagedUrl('/api/propuestas', options))
+}
+
+export function getProposal(id) {
+  return authenticatedRequest(`/api/propuestas/${encodeURIComponent(id)}`)
+}
+
+export function sendProposal(listingId, buyerUid, idempotencyKey) {
+  return authenticatedRequest(`/api/inmuebles/${encodeURIComponent(listingId)}/propuestas`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ buyer_uid: buyerUid, idempotency_key: idempotencyKey }),
+  })
+}
+
+export function respondToProposal(id, decision) {
+  return authenticatedRequest(`/api/propuestas/${encodeURIComponent(id)}/decision`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ decision }),
+  })
+}
+
 export function getPendingCandidates(options) {
   return authenticatedRequest(pagedUrl('/api/matches/candidatos', options))
 }

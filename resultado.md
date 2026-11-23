@@ -491,7 +491,7 @@ README. Azure Blob se simuló en la suite completa.
 **Frontend.** `npm test` pasó 29 pruebas. `npm run lint` y `npm run build`
 finalizaron correctamente. Las nueve advertencias de lint preceden al cambio.
 La etiqueta se compiló y el dato que la activa se probó mediante el cliente
-con una respuesta simulada. Su aspecto en navegador queda sin verificar.
+con una respuesta simulada. La verificación en navegador se registró en US9.8.
 
 **Decisiones y límites.** La clave de idempotencia se eligió para distinguir un
 nuevo envío de un reintento tardío. Los candidatos afectados son compradores
@@ -504,3 +504,51 @@ y servicios de producción quedan sin verificar.
 **Fuera de alcance.** El endpoint heredado `POST /api/inmuebles/decidir` usa
 la colección antigua `decisions` y conserva su contrato de autenticación
 separado. Se mantiene como trabajo independiente de las propuestas.
+
+## QA US9.8 — Recorrido completo de selección definitiva
+
+Se ejecutaron cuatro recorridos en Chrome headless 157 con React/Vite,
+Django por HTTP, Firebase Auth Emulator y Firestore Emulator. Cada caso usa
+cuentas de prueba separadas y colecciones aisladas. La vivienda y sus matches
+se preparan con fixtures y la API de candidaturas. El flujo de selección usa
+la interfaz y cada caso comprueba los documentos finales en Firestore.
+
+Los métodos están en [selection_e2e.py](backend/properties/selection_e2e.py).
+Los pasos del navegador y la alteración controlada del transporte están en
+[selection.mjs](frontend/e2e/selection.mjs).
+
+| CA | Caso y evidencia | Tipo | Resultado y límite |
+|---|---|---|---|
+| CA-01 | `test_acceptance_availability_privacy_and_new_session`. El Vendedor elige el match confirmado y envía. El destinatario abre la propuesta con el mismo ID desde el aviso. | E2E | Pasa. Los matches se preparan antes del recorrido. |
+| CA-02 | Caso de aceptación y `test_rejection_keeps_home_open_and_allows_another_buyer`. Después del envío cambian precio, descripción y nombre del Vendedor en los emuladores. El Comprador ve los datos vigentes y acciona aceptar o rechazar con Tab y Enter. | E2E | Pasa. Los cambios de datos se preparan en los emuladores. |
+| CA-03 | Caso de aceptación. Comprador y Vendedor ven «Aceptada». Firestore confirma una selección definitiva, el comprador elegido y el anuncio cerrado. | E2E | Pasa. |
+| CA-04 | Caso de rechazo y `test_cancellation_invalidates_stale_buyer_and_allows_another_proposal`. Cada acción se prueba por separado. Una cuenta exploradora sigue viendo la vivienda y el Vendedor envía otra propuesta. | E2E | Pasa. Los recorridos usan datos independientes. |
+| CA-05 | Caso de aceptación. La interfaz bloquea otro envío sobre el anuncio. Una segunda sesión del Vendedor con datos desactualizados recibe 409. Solo queda una selección aceptada. Se reutiliza `test_concurrent_incompatible_proposals_and_repeated_acceptance_have_one_winner` de US9.7 para las escrituras simultáneas. | E2E e integración previa | Pasa. La carrera simultánea se verificó en US9.7. |
+| CA-06 | Caso de aceptación. Otra cuenta deja de ver la vivienda en exploración. Los matches del Vendedor y de otro Comprador indican indisponibilidad. El Comprador no elegido recarga y conserva el estado. | E2E | Pasa en Chrome. El detalle se comprobó también con viewport móvil. |
+| CA-07 | Los cuatro casos comprueban los avisos de envío, aceptación, rechazo, cancelación e indisponibilidad. El candidato confirmado ve el aviso con la vivienda, sin enlace ni identidad del elegido. El candidato pendiente recibe el aviso persistido. | E2E | Pasa. La entrega verificada es dentro de la aplicación. |
+| CA-08 | Los casos de aceptación y rechazo consultan historial propio y abren por URL una propuesta ajena. Reciben 404 sin acciones. Las regresiones `test_only_the_owner_and_recipient_can_access_or_update_the_proposal` y `test_candidates_and_matches_are_scoped_by_verified_owner_and_role` comprueban roles y permisos. Cada caso compara candidaturas y matches antes y después. | E2E e integración | Pasa. La regresión de candidaturas usa Auth simulado y Firestore Emulator. |
+| CA-09 | El caso de aceptación recupera el mismo ID tras cerrar e iniciar sesión. `test_browser_retries_network_failure_and_committed_responses_without_duplicates` recarga el envío fallido, reutiliza la misma clave y comprueba un solo registro y aviso por evento. | E2E con fallo controlado | Pasa. La recuperación del envío se prueba en la misma pestaña. |
+| CA-10 | El caso de fallos comprueba carga, bloqueo de doble clic, desconexión antes del POST y 503 después de commits reales. Los reintentos reciben 200 y Firestore conserva un solo resultado. El caso de cancelación verifica que el 409 actualiza la pantalla y retira las acciones. Se reutiliza el rollback de commit inválido de US9.7. | E2E con fallos controlados e integración previa | Pasa con mocks de transporte para los 503. Backend, Auth y persistencia usan los emuladores. |
+
+**Ejecución del 23 de noviembre de 2026.** Los tres recorridos principales
+pasaron juntos. El recorrido de fallos y las dos regresiones de integración
+afectadas pasaron en la ejecución anterior. Se corrigió cómo DevTools envía
+Enter y se repitieron los tres recorridos afectados. Chrome headless
+requirió ejecución local fuera del sandbox para iniciar el renderizador.
+Firebase Tools 15.34.1 se invocó desde la caché con la configuración demo
+del README.
+
+**Frontend y accesibilidad.** `npm test` pasó 30 pruebas. `npm run lint` y
+`npm run build` terminaron correctamente. Lint mantiene nueve advertencias
+preexistentes. El detalle se verificó a 1280×900 y 390×844 sin desplazamiento
+horizontal. Se alcanzaron y activaron las acciones con Tab y Enter. La
+cobertura móvil corresponde al viewport emulado de Chrome.
+
+**Decisiones y límites.** El envío parte de la tarjeta del match. El detalle
+se abre desde el historial privado y desde los avisos autorizados. Una
+respuesta ambigua conserva la clave de envío en esa pestaña. La foto es un
+fixture local. El recorrido comienza con el anuncio publicado. Quedan fuera
+el hardware móvil, los índices remotos y los servicios de producción.
+
+**Fuera de alcance.** Se conservaron las advertencias de lint existentes.
+La ruta heredada de decisiones sigue documentada en US9.7.

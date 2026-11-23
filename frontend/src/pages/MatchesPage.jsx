@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
-import { getMatches } from '../api/properties'
+import { Link, useNavigate } from 'react-router-dom'
+import { getMatches, sendProposal } from '../api/properties'
 import { Logo } from '../components/Logo'
 import { useAuth } from '../hooks/useAuth'
 
@@ -20,8 +20,11 @@ export function MatchesPage() {
   const [status, setStatus] = useState('loading')
   const [error, setError] = useState('')
   const [nextCursor, setNextCursor] = useState(null)
+  const [sending, setSending] = useState(null)
+  const [notice, setNotice] = useState(null)
   const cursorRef = useRef(null)
   const loadingRef = useRef(false)
+  const sendingRef = useRef(false)
 
   const loadMatches = useCallback(async (reset = true) => {
     if (loadingRef.current) return
@@ -60,6 +63,53 @@ export function MatchesPage() {
   }, [loadMatches])
 
   const homePath = user?.role === 'SELLER' ? '/vendedor/inicio' : '/comprador/inicio'
+  const seller = user?.role === 'SELLER'
+
+  function storageKey(match) {
+    return `swipehome:proposal:${user.uid}:${match.id}`
+  }
+
+  async function propose(match) {
+    if (sendingRef.current || loadingRef.current) return
+    const key = storageKey(match)
+    const saved = sessionStorage.getItem(key)
+    if (!saved && (match.proposal_pending || match.listing.available === false)) return
+
+    sendingRef.current = true
+    setSending(match.id)
+    setNotice(null)
+    try {
+      const intention = saved ?? crypto.randomUUID()
+      sessionStorage.setItem(key, intention)
+      const result = await sendProposal(match.listing.id, match.buyer.id, intention)
+      if (result.status < 500) sessionStorage.removeItem(key)
+      if (result.status === 401 && await logout()) {
+        navigate('/login', { replace: true })
+        return
+      }
+      if (!result.ok) {
+        setNotice({ error: result.data?.error || 'No se pudo enviar la propuesta. Inténtalo de nuevo.' })
+        if (result.status === 409 || result.status === 404) await loadMatches()
+        return
+      }
+      setNotice({
+        id: result.data.id,
+        message: result.data.status === 'PENDING' ? 'Propuesta enviada.' : 'El envío ya se había registrado.',
+      })
+      if (result.data.status === 'PENDING') {
+        setMatches((current) => current.map((row) => row.listing.id === match.listing.id
+          ? { ...row, proposal_pending: true }
+          : row))
+      } else {
+        await loadMatches()
+      }
+    } catch {
+      setNotice({ error: 'No hay conexión con el servidor. Puedes reintentar el envío.' })
+    } finally {
+      sendingRef.current = false
+      setSending(null)
+    }
+  }
 
   return (
     <main className="matches-page">
@@ -69,6 +119,7 @@ export function MatchesPage() {
           <button type="button" className="uniform-action" onClick={() => navigate(homePath)}>
             Volver al inicio
           </button>
+          <Link className="uniform-action" to="/propuestas">Propuestas</Link>
           <button type="button" className="home-page__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
             Mi perfil
           </button>
@@ -93,11 +144,17 @@ export function MatchesPage() {
               setError('')
               loadMatches()
             }}
-            disabled={status === 'loading'}
+            disabled={status === 'loading' || sending !== null}
           >
             Actualizar
           </button>
         </div>
+        {notice?.error && <p role="alert" className="matches-page__message matches-page__message--error">{notice.error}</p>}
+        {notice?.id && (
+          <p role="status" className="matches-page__message">
+            {notice.message} <Link to={`/propuestas/${notice.id}`}>Ver propuesta</Link>
+          </p>
+        )}
         {status === 'loading' && (
           <p className="matches-page__message" role="status">Cargando matches…</p>
         )}
@@ -128,25 +185,36 @@ export function MatchesPage() {
         {status === 'ready' && matches.length > 0 && (
           <>
             <ul className="matches-page__list">
-              {matches.map((match) => (
-                <li className="matches-page__item" key={match.id}>
-                  <article>
-                    <h2>{match.listing.title}</h2>
-                    <p className="matches-page__location">
-                      {[match.listing.street, match.listing.city].filter(Boolean).join(' · ')}
-                    </p>
-                    {match.listing.available === false && <p>Vivienda no disponible</p>}
-                    <p>
-                      {user?.role === 'BUYER'
-                        ? `Vendedor y tú habéis confirmado el interés en esta vivienda.`
-                        : `Comprador/a: ${match.buyer.name}`}
-                    </p>
-                    <time dateTime={match.created_at}>
-                      Confirmado el {formatDate(match.created_at)}
-                    </time>
-                  </article>
-                </li>
-              ))}
+              {matches.map((match) => {
+                const retry = seller && sessionStorage.getItem(storageKey(match))
+                const canPropose = seller && (retry || (!match.proposal_pending && match.listing.available !== false))
+                return (
+                  <li className="matches-page__item" key={match.id}>
+                    <article>
+                      <h2>{match.listing.title}</h2>
+                      <p className="matches-page__location">
+                        {[match.listing.street, match.listing.city].filter(Boolean).join(' · ')}
+                      </p>
+                      {match.listing.available === false && <p>Vivienda no disponible</p>}
+                      <p>
+                        {seller
+                          ? `Comprador/a: ${match.buyer.name}`
+                          : 'Vendedor y tú habéis confirmado el interés en esta vivienda.'}
+                      </p>
+                      <time dateTime={match.created_at}>
+                        Confirmado el {formatDate(match.created_at)}
+                      </time>
+                      {seller && match.proposal_pending && <p>Hay una propuesta pendiente para esta vivienda.</p>}
+                      {canPropose && (
+                        <button type="button" className="btn btn--ghost" onClick={() => propose(match)}
+                          disabled={sending !== null}>
+                          {sending === match.id ? 'Enviando propuesta…' : retry ? 'Reintentar envío' : 'Enviar propuesta'}
+                        </button>
+                      )}
+                    </article>
+                  </li>
+                )
+              })}
             </ul>
             {nextCursor && (
               <button
@@ -156,7 +224,7 @@ export function MatchesPage() {
                   setStatus('loading')
                   loadMatches(false)
                 }}
-                disabled={status === 'loading'}
+                disabled={status === 'loading' || sending !== null}
               >
                 Cargar más matches
               </button>

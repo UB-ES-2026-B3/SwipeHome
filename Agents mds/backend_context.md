@@ -1,6 +1,6 @@
 # Contexto backend de SwipeHome
 
-## Estado vigente — US4, US5.8–US5.9, US6, US7.4, US8.6 y US9.7
+## Estado vigente — US4, US5.8–US5.9, US6, US7.4, US8.6 y US9.7–US9.8
 
 El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
 cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
@@ -104,6 +104,12 @@ la vivienda. Los matches conservan su historial y exponen la disponibilidad.
 Los dos índices de `selections` están declarados en el repositorio.
 El contrato está en el [README backend](../backend/README.md) y la evidencia
 por criterio en [resultado.md](../resultado.md).
+
+US9.8 conecta esa API al recorrido de selección en navegador. Los matches
+del propietario incluyen si ya hay una propuesta pendiente y el detalle
+lee las condiciones actuales y el nombre vigente del Vendedor. El comando
+del [README backend](../backend/README.md) ejecuta los recorridos con
+Chrome/Chromium, Django y los emuladores demo.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

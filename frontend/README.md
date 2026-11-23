@@ -241,5 +241,23 @@ fecha de confirmación del match.
 `npm test` pasó 29 pruebas, incluida una respuesta simulada con un anuncio
 disponible y otro cerrado. `npm run lint` terminó con advertencias
 preexistentes y `npm run build` pasó. La verificación de este cambio de
-interfaz se limita al contrato del cliente y la compilación. El cierre y
-la disponibilidad persistentes se comprueban por API con los emuladores.
+interfaz en US9.7 se limitó al contrato del cliente y la compilación.
+
+## Recorrido de selección definitiva (US9.8)
+
+El Vendedor envía la propuesta desde un match confirmado en «Mis matches».
+Puede revisarla o cancelarla en «Propuestas». El Comprador destinatario
+abre el detalle desde «Propuestas» o desde el enlace del aviso, consulta los
+datos vigentes y acepta o rechaza. Las propuestas resueltas quedan visibles
+en el historial. Los avisos de indisponibilidad de otros candidatos contienen
+los datos públicos de la vivienda.
+
+Los controles se bloquean mientras se guarda. Si se pierde la respuesta de
+un envío, «Reintentar envío» recupera la misma intención incluso después
+de recargar esa pestaña. Una respuesta sobre una propuesta ya resuelta
+actualiza el estado visible.
+
+El comando para ejecutar los recorridos en Chrome o Chromium y los
+emuladores está en el [README de backend](../backend/README.md). Los
+controles locales del cliente son `npm test`, `npm run lint` y
+`npm run build`.

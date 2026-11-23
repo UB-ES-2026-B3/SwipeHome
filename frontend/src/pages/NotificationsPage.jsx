@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { Logo } from '../components/Logo'
 import { useAuth } from '../hooks/useAuth'
 import { getNotifications } from '../api/notifications'
@@ -230,6 +230,9 @@ export function NotificationsPage() {
                           </div>
                         )}
                       </div>
+                    )}
+                    {notification.selection_id && (
+                      <Link to={`/propuestas/${notification.selection_id}`}>Ver propuesta</Link>
                     )}
                   </article>
                 </li>

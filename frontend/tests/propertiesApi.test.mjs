@@ -21,7 +21,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
       return { ok: response.ok, status: response.status, json: async () => response.data }
     },
   })
-  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, getBuyerFilters, saveBuyerFilters, decideProperty, getMatches, getPendingCandidates, decideCandidate };', context)
+  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, getBuyerFilters, saveBuyerFilters, decideProperty, getMatches, getPendingCandidates, decideCandidate, getProposals, getProposal, sendProposal, respondToProposal };', context)
   return { api: context.api, calls, auth }
 }
 
@@ -174,4 +174,23 @@ test('preserves listing availability in existing matches', async () => {
   const result = await api.getMatches()
 
   assert.deepEqual(result.data.items.map(({ listing }) => listing.available), [false, true])
+})
+
+test('uses the private proposal paths and keeps the idempotency key supplied by the caller', async () => {
+  const { api, calls } = harness()
+
+  await api.getProposals({ cursor: 'proposal cursor' })
+  await api.getProposal('proposal/id')
+  await api.sendProposal('listing/id', 'buyer-uid', 'existing-intent-key')
+  await api.respondToProposal('proposal/id', 'CANCEL')
+
+  assert.deepEqual(calls.map(([path]) => path), [
+    '/api/propuestas?limit=20&cursor=proposal+cursor',
+    '/api/propuestas/proposal%2Fid',
+    '/api/inmuebles/listing%2Fid/propuestas',
+    '/api/propuestas/proposal%2Fid/decision',
+  ])
+  for (const [, request] of calls) assert.equal(request.headers.Authorization, 'Bearer firebase-id-token')
+  assert.deepEqual(JSON.parse(calls[2][1].body), { buyer_uid: 'buyer-uid', idempotency_key: 'existing-intent-key' })
+  assert.deepEqual(JSON.parse(calls[3][1].body), { decision: 'CANCEL' })
 })

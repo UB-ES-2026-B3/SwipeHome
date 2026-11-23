@@ -1,6 +1,6 @@
 # Contexto del proyecto SwipeHome
 
-## Estado vigente — US4, US5.8–US5.9, US6 y US7.4
+## Estado vigente — US4, US5.8–US5.9, US6, US7.4, US8.6 y US9
 
 El stack vigente es Django con Firebase Auth y Firestore. La implementación
 de US 4.4–4.7 sobre ese stack fue autorizada explícitamente por el usuario.
@@ -25,6 +25,8 @@ Compradores pueden tener matches independientes con la misma vivienda.
 | US 6.8 | Verificación de perfil, cambio de contraseña y logout para BUYER/SELLER; concurrencia, integridad y continuidad probadas con emuladores. |
 | US 6.9 | Recorrido de perfil y logout para ambos roles verificado en navegador con Auth Emulator y API interceptada; cobertura de persistencia backend reutilizada de US6.8. |
 | US 8.6 | Filtros privados BUYER compartidos entre explorador y perfil; persistencia, validación, aplicación, restablecimiento y fallback documentados y probados. |
+| US 9.7 | API privada de propuestas desde matches confirmados y verificación del cierre, permisos, concurrencia y avisos en emuladores. |
+| US 9.8 | Envío y respuesta desde la interfaz. Aceptación, rechazo, cancelación y recuperación de fallos comprobados en Chrome con Django y los emuladores. |
 
 Verificación US 4.9: 166 pruebas correctas con Auth y Firestore Emulator, sin
 omisiones. Contra los CA oficiales, CA-03 a CA-06 pasan en la API/persistencia;
