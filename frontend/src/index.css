@@ -1104,7 +1104,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   display: flex;
   flex: 1 1 auto;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-end;
   flex-wrap: wrap;
   gap: var(--sp-2);
 }
@@ -1168,6 +1168,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 .seller-dashboard__publish:hover { background: var(--c-red-dark); }
 .seller-dashboard__list { margin-top: var(--sp-6); }
+.seller-dashboard__home-actions { margin-bottom: var(--sp-4); }
 .seller-dashboard__list h1 {
   margin-bottom: var(--sp-3);
   font-size: 2rem;
@@ -1689,8 +1690,8 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 @media (max-width: 600px) {
   .home-page__header { padding: var(--sp-2); }
   .dashboard-header { flex-wrap: wrap; }
-  .dashboard-header__navigation { order: 3; flex-basis: 100%; justify-content: center; }
-  .dashboard-header__link { flex: 1 1 auto; }
+  .dashboard-header__navigation { order: 3; flex-basis: 100%; justify-content: flex-end; }
+  .dashboard-header__link { flex: 0 1 auto; }
   .dashboard-header__account .buyer-dashboard__role,
   .dashboard-header__account .seller-dashboard__role { display: none; }
   .profile-page__header { padding: 12px var(--sp-2); }

@@ -153,7 +153,7 @@ export function ProfilePage() {
       <DashboardHeader />
 
       <div className="profile-page__content">
-        <h1>Mi perfil</h1>
+        <h1>¡Hola, {user.name}!</h1>
         <p className="profile-page__subtitle">Consulta y actualiza tus datos de cuenta.</p>
 
         <section className="profile-card" aria-labelledby="account-data-title">
