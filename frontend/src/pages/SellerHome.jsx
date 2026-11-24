@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { getNotifications } from '../api/notifications'
 import { getActiveProperties } from '../api/properties'
 import { DashboardHeader } from '../components/DashboardHeader'
@@ -87,6 +88,10 @@ export function SellerHome() {
 
       <div className="seller-dashboard__content">
         <section className="seller-dashboard__list" aria-labelledby="published-properties-title">
+          <nav className="seller-dashboard__home-actions seller-matches__actions" aria-label="Acciones de inmuebles">
+            <Link className="seller-dashboard__publish" to="/publicar">Publicaciones</Link>
+            <Link className="btn btn--ghost uniform-action" to="/vendedor/matches">Candidatos y Matches</Link>
+          </nav>
           <div className="seller-dashboard__section-header">
             <h1 id="published-properties-title">Mis inmuebles publicados</h1>
             <button

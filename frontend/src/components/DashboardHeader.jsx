@@ -9,8 +9,6 @@ const buyerLinks = [
 ]
 
 const sellerLinks = [
-  { to: '/publicar', label: 'Publicar' },
-  { to: '/vendedor/matches', label: 'Candidatos y matches' },
   { to: '/notificaciones', label: 'Notificaciones' },
   { to: '/mi-perfil', label: 'Mi perfil' },
 ]
