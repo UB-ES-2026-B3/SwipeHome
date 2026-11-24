@@ -1,8 +1,9 @@
 import { onAuthStateChanged, signOut } from 'firebase/auth'
-import { createContext, useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { fetchCurrentUser, logout as firebaseLogout } from '../api/auth'
 import { AuthErrorBanner } from '../components/AuthErrorBanner'
 import { auth } from '../firebase'
+import { AuthContext } from './authContext'
 
 /**
  * Contexto global de autenticación, sincronizado con Firebase Auth.
@@ -26,7 +27,6 @@ import { auth } from '../firebase'
  *  - 404 → signOut y aviso de cuenta incompleta.
  *  - 5xx, fallo de red o respuesta lenta → aviso con "Reintentar" y la sesión SE CONSERVA.
  */
-export const AuthContext = createContext(null)
 
 // El backend está en el plan gratuito de Render: tras 15 min sin tráfico se
 // duerme y tarda ~1 min en despertar. Si /me no responde en este tiempo se
@@ -113,6 +113,9 @@ export function AuthProvider({ children }) {
 
   const clearUser = useCallback(() => setUser(null), [])
   const dismissAuthError = useCallback(() => setAuthError(null), [])
+  const expireSession = useCallback(async () => {
+    await signOut(auth)
+  }, [])
   const logout = useCallback(async () => {
     if (logoutInProgress.current) return false
     logoutInProgress.current = true
@@ -131,7 +134,7 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ user, loading, authError, setUser, clearUser, logout, loggingOut, retry, dismissAuthError }}
+      value={{ user, loading, authError, setUser, clearUser, logout, expireSession, loggingOut, retry, dismissAuthError }}
     >
       {/* Solución temporal: el aviso vive aquí para no tocar los componentes existentes. */}
       <AuthErrorBanner />

@@ -1,3 +1,15 @@
+> US9 backend: [selección definitiva](us9_backend.md) incorpora propuestas privadas,
+> idempotencia, control transaccional por vivienda, cierre y avisos US7.
+> Las nuevas operaciones de gestión del anuncio deben respetar `listing_selections`
+> y no reabrir una selección aceptada. Los documentos antiguos siguen siendo válidos.
+
+> Actualización 15/11/2026: [US8 backend](us8_backend.md) documenta preferencias
+> propias BUYER en Firestore, filtros persistidos y cursores ligados a configuración.
+> Se conserva Firebase Bearer y US3/US4/US5. LIKE crea candidatura PENDING y aviso
+> INTEREST; confirmar por el vendedor produce CONFIRMED, sin aviso BUYER nuevo en
+> el código actual. Los apartados anteriores tienen valor histórico donde discrepen.
+> El soporte servidor de US8.2 está implementado; sus criterios de UI quedan pendientes.
+
 # Contexto backend de SwipeHome
 
 ## Estado vigente — US4, US6 y US7.4 (10 noviembre 2026)
@@ -11,7 +23,7 @@ para US 4.4–4.7 y la verificación US4.9. Los contratos vigentes están en el
 US4 reutiliza usuarios y anuncios actuales, fotografías ordenadas en
 `listings.photos`, autenticación con revocación y la colección `notifications`.
 LIKE crea directamente decisión, match y aviso; PASS solo crea decisión.
-No hay aceptación posterior del Vendedor ni reserva del inmueble.
+US5 incorpora aceptación posterior del Vendedor; no hay reserva del inmueble.
 
 `accounts/repository.py` centraliza Firestore y Azure Blob Storage, incluida la
 transacción y las claves canónicas `swipes/{key}`, `matches/{key}` y
@@ -70,8 +82,8 @@ SELLER. Azure Blob se simula. La UI pasó 25 tests Node, lint/build y pruebas
 de navegador con Auth Emulator/API interceptada y viewports 1280×900/390×844
 emulados. No se usaron servicios reales ni hardware móvil.
 
-El repositorio no contiene un productor ni endpoint de confirmación US5 que
-genere avisos para BUYER. La consulta de un aviso BUYER previamente persistido
+US5 contiene el endpoint de confirmación del vendedor, pero no un productor
+de avisos de confirmación para BUYER. La consulta de un aviso BUYER previamente persistido
 sí está cubierta con Firestore Emulator; su creación desde US5 no está verificada.
 
 <details>

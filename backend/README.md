@@ -225,6 +225,45 @@ antes de los 30 s de gunicorn; no se cambia `--timeout` (ver
 inyecta `RENDER_EXTERNAL_HOSTNAME`, y `settings.py` lo añade a `ALLOWED_HOSTS` y
 activa `SECURE_PROXY_SSL_HEADER`. Ver `infra_context.md` §3.
 
+## Docker (Azure Container Apps, en migración)
+
+`Dockerfile` crea la imagen que ejecutará Azure Container Apps; Render no la usa
+y sigue desplegando como en el apartado anterior. Se construye en la nube o en
+local, siempre con `backend/` como contexto:
+
+```powershell
+az acr build --registry <registro> --image swipehome-backend:<etiqueta> backend
+docker build -t swipehome-backend backend
+```
+
+`.dockerignore` es una lista blanca (solo entran `requirements.txt`,
+`manage.py`, `config/`, `accounts/` y `properties/`): el JSON de la cuenta de
+servicio o un `.env` dentro de `backend/` no llegan a la imagen. Si se añade
+un paquete Python nuevo, hay que incluirlo ahí.
+
+El contenedor escucha en el puerto 8000 (o `PORT`) con gunicorn, 2 workers ×
+4 hilos y `--timeout 30`. No lleva secretos: necesita las mismas variables que
+Render (`DJANGO_SECRET_KEY`, `FIREBASE_SERVICE_ACCOUNT_JSON`,
+`FIREBASE_PROJECT_ID`, `FIREBASE_WEB_API_KEY`, `AZURE_STORAGE_CONNECTION_STRING`,
+`AZURE_STORAGE_CONTAINER`) más `ALLOWED_HOSTS` con el dominio del servicio
+(fuera de Render no existe `RENDER_EXTERNAL_HOSTNAME`) y las dos nuevas:
+
+- `DJANGO_BEHIND_TLS_PROXY=1`: confía en `X-Forwarded-Proto` del ingress de
+  Azure, que termina el TLS. Solo detrás de un proxy así.
+- `CORS_ALLOWED_ORIGINS`: origen del frontend en Azure Static Web Apps (p. ej.
+  `https://<app>.azurestaticapps.net`), separados por comas. Vacío no permite
+  ningún origen, que es lo correcto en local y en Render.
+
+Prueba rápida en local:
+
+```powershell
+docker run --rm -p 8000:8000 -e DJANGO_SECRET_KEY=solo-local -e ALLOWED_HOSTS=localhost swipehome-backend
+curl.exe http://localhost:8000/api/health   # {"status": "ok"}
+```
+
+El job «Docker (backend)» del CI hace esta misma comprobación en cada PR. Ver
+`infra_context.md`, apartado «Azure (en migración)».
+
 ## US6: perfil, contraseña y logout
 
 Contrato, decisiones de atomicidad, configuración y comandos del emulador:
@@ -293,8 +332,9 @@ Django ni migraciones ORM; no se añade `csrf_exempt`. Cookies por sí solas no
 autentican estos endpoints. La identidad procede de `request.user`, construido
 por el servidor con el token verificado, su revocación y el perfil actual.
 
-**LIKE crea directamente el match y un aviso al propietario.** No hay
-aceptación del Vendedor, segundo swipe ni reserva o retirada automática del anuncio.
+**LIKE crea un match en estado PENDING y un aviso INTEREST al propietario.**
+El match queda pendiente de la decisión posterior del Vendedor (US5). No hay
+segundo swipe ni reserva o retirada automática del anuncio.
 
 | Método | Ruta exacta | Rol |
 |---|---|---|
@@ -398,6 +438,7 @@ Respuesta LIKE 201, o 200 en un reintento idéntico:
     "id": "clave-canonica",
     "decision_id": "clave-canonica",
     "listing_id": "listing-123",
+    "status": "PENDING",
     "created_at": "2026-11-08T10:01:00Z"
   }
 }
@@ -427,8 +468,8 @@ Respuesta 200 para avisos nuevos de match:
   "items": [
     {
       "id": "match-clave-canonica",
-      "type": "MATCH",
-      "message": "Tienes un nuevo match.",
+      "type": "INTEREST",
+      "message": "Tienes un nuevo candidato interesado en tu vivienda.",
       "match_id": "clave-canonica",
       "created_at": "2026-11-08T10:01:00Z",
       "buyer": {"id": "buyer-uid", "name": "Ana"},
@@ -445,19 +486,101 @@ previos sin match siguen devolviendo solo `id/type/message/created_at`; no se
 les inventan identidades ni matches. Los avisos US4 tienen siempre las relaciones
 completas. No se marca lectura ni se cambia ningún registro al consultar.
 
+### GET /api/matches
+
+Consulta paginada de matches mutuos confirmados (`status == "CONFIRMED"`).
+- Para **BUYER**: devuelve exclusivamente sus viviendas confirmadas con datos completos del inmueble (`listing_item`).
+- Para **SELLER**: devuelve exclusivamente matches confirmados de sus viviendas con datos del Comprador y vivienda.
+- Admite parámetro opcional `inmueble`: solo permite consultar viviendas relacionadas con el usuario autenticado (403 si pertenece a otro o no hay relación).
+- Ordenación: `confirmed_at DESC, __name__ DESC`.
+
+Ejemplo respuesta Comprador (200):
+```json
+{
+  "items": [
+    {
+      "id": "clave-canonica",
+      "status": "CONFIRMED",
+      "confirmed_at": "2026-11-10T12:00:00Z",
+      "created_at": "2026-11-10T11:00:00Z",
+      "seller": {
+        "id": "seller-uid",
+        "name": "Joan Propietario"
+      },
+      "listing": {
+        "id": "listing-123",
+        "title": "Ático en Gràcia",
+        "price": "950.00",
+        "surface": "65.00",
+        "photos": ["https://..."],
+        "created_at": "2026-11-08T10:00:00Z"
+      }
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### GET /api/candidatos
+
+Consulta paginada de candidaturas pendientes (`status == "PENDING"`) para el Vendedor autenticado (`SELLER`).
+Un rol `BUYER` recibe 403.
+- Admite parámetro opcional `inmueble`: solo permite consultar viviendas del Vendedor (403 si no le pertenece).
+- Ordenación: `created_at DESC, __name__ DESC` (por fecha del interés inicial).
+- Paginación estable por cursor que previene saltos al confirmar o rechazar candidatos entre páginas.
+
+Ejemplo respuesta Vendedor (200):
+```json
+{
+  "items": [
+    {
+      "id": "clave-canonica",
+      "status": "PENDING",
+      "created_at": "2026-11-10T11:00:00Z",
+      "buyer": {"id": "buyer-uid", "name": "Ana"},
+      "listing": {"id": "listing-123", "title": "Ático en Gràcia"}
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+### POST /api/matches/{id}/decision-vendedor
+
+Decisión del propietario sobre una candidatura (`SELLER`).
+`Content-Type: application/json`. Cuerpo admitido: `{"decision": "LIKE"}` o `{"decision": "PASS"}`.
+- Solo el propietario del inmueble asociado puede decidir (404 si no existe o es ajeno).
+- Comprueba que la candidatura procede de un interés positivo previo del Comprador.
+- `LIKE`: transforma `PENDING` en `CONFIRMED` y guarda `confirmed_at` y `decided_at`.
+- `PASS`: transforma `PENDING` en `REJECTED` y guarda `decided_at`.
+- No crea un segundo registro de match; actualiza el existente de forma atómica.
+- Idempotente: repetir la misma decisión devuelve 200 con el estado actual.
+- Conflicto: intentar contradecir una decisión ya tomada (`CONFIRMED` a `PASS` o `REJECTED` a `LIKE`) devuelve 409.
+
+Respuesta 200:
+```json
+{
+  "id": "clave-canonica",
+  "status": "CONFIRMED",
+  "decided_at": "2026-11-10T12:00:00Z",
+  "confirmed_at": "2026-11-10T12:00:00Z"
+}
+```
+
 ### Modelos Firestore, unicidad y transacciones
 
 Se reutilizan `users`, `listings` y `notifications`. La clave canónica es
 SHA-256 del JSON ASCII de `[buyer_uid, listing_id]`. Se añaden:
 
 - `swipes/{key}`: `buyer_uid, listing_id, value, created_at`.
-- `matches/{key}`: `buyer_uid, listing_id, decision_id, created_at`.
+- `matches/{key}`: `buyer_uid, listing_id, decision_id, seller_uid, buyer_name, listing_title, status, created_at` (y opcionalmente `decided_at, confirmed_at`).
 - `notifications/match-{key}`: destinatario propietario, match, Comprador,
-  nombre, vivienda, título, tipo, mensaje y fecha.
+  nombre, vivienda, título, tipo (INTEREST), mensaje y fecha.
 
-El propietario se resuelve desde `listings.seller_uid`. Un match no almacena
-otro propietario, reserva ni retira la vivienda. Un LIKE completo tiene un
-match y un aviso; PASS no los crea.
+El propietario se resuelve inicialmente desde `listings.seller_uid`. El match
+representa el interés mutuo pendiente o confirmado sin reservar ni retirar la vivienda.
+Un LIKE inicial del Comprador crea un match PENDING y un aviso de interés; la decisión
+favorable del Vendedor lo confirma.
 
 Firestore garantiza unicidad de documento y precondición de `create()`.
 El servicio central `repository.record_decision` garantiza valores permitidos,
@@ -515,53 +638,24 @@ Desde `backend/`:
 .\.venv\Scripts\python.exe manage.py test accounts properties --verbosity 2
 ```
 
-Este comando inicia/detiene Auth y Firestore Emulator en loopback (9099 y 8080),
-sin usar credenciales ni producción:
+Sin emuladores: **170 pruebas descubiertas, 138 correctas y 32 integraciones
+omitidas**. Para la verificación completa hacen falta Node 24 y Java 21.
+Este comando inicia/detiene Auth y Firestore Emulator en loopback
+(9099 y 8080), sin usar credenciales ni producción:
 
 ```powershell
 npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test accounts properties --verbosity 2"
 ```
 
-Resultado de US 4.9, ejecutado el 10 de noviembre de 2026: **166 pruebas
-correctas, sin omisiones**, con Auth y Firestore Emulator. Incluye solicitudes
-realmente simultáneas mediante barreras, hilos y clientes HTTP separados;
-comprobación del estado Firestore después de cada operación/rollback; una prueba
-de rol integrada para los tres endpoints; Azure Blob permanece simulado donde
-lo necesita el recorrido de publicación. La ejecución no utilizó Firebase ni
-Azure de producción. El emulador no demuestra el despliegue de índices ni el
-funcionamiento en producción.
-
-#### US 4.9: evidencia por criterio de aceptación
-
-| CA | Prueba y método | Resultado y límite |
-|---|---|---|
-| CA-01 — Acceso al explorador | `test_all_three_endpoints_enforce_roles_without_persisting_changes`, `test_authentication_and_buyer_permissions_for_both_endpoints` y `test_private_notices_include_match_buyer_home_and_stable_pagination`: BUYER consulta y decide; vendedor/BUYER en endpoint no permitido reciben 403 y sin token 401. | **Parcial (solo API):** autenticación/autorización y exploración están verificadas; inicio/ruta de interfaz no pertenece a esta US. La prueba integrada de roles usa verifier/perfil mockeados; Firestore es emulado. |
-| CA-02 — Información y fotografías | `test_explore_excludes_only_own_decisions_and_preserves_all_photos` y `ListingContractTests.test_all_public_fields_and_ordered_photos_without_internal_data`: respuesta con datos del anuncio y todas las URLs de foto en el orden persistido. | **Parcial (solo API):** contrato, datos y orden pasan con Firestore Emulator; no se verifica mostrar tarjeta ni recorrer fotos en UI, ni recuperar los blobs de Azure. |
-| CA-03 — Creación del match | `test_like_has_exactly_one_consistent_decision_match_and_notice` y `test_same_decision_retries_return_identical_records`: un POST LIKE guarda decisión y match asociados al comprador/anuncio; repetición devuelve mismo match y no duplica. | **Pasa en API/persistencia local:** Firestore Emulator; interacción swipe/botón no verificada en esta US. |
-| CA-04 — Aviso al Vendedor | `test_private_notices_include_match_buyer_home_and_stable_pagination`: notificación contiene identidad del comprador, vivienda y match; consulta filtrada por vendedor. | **Pasa con Firestore Emulator:** no verifica presentación visual del aviso. |
-| CA-05 — Descarte persistente | `test_pass_creates_only_decision_and_no_notice`, `test_explore_excludes_only_own_decisions_and_preserves_all_photos` y `test_empty_and_exact_limit_pages_have_no_next_cursor`: PASS persiste sin match/aviso y deja de aparecer al mismo comprador. | **Pasa en API/persistencia local:** UI de «No me interesa» no verificada en esta US. |
-| CA-06 — Independencia entre Compradores | `test_two_buyers_match_same_home_without_reserving_or_hiding_it`: dos compradores guardan matches separados para la misma vivienda; sus decisiones no se comparten. | **Pasa con Firestore Emulator.** |
-| CA-07 — Continuidad y fin de la exploración | `test_pagination_ties_previous_page_decisions_and_last_page`, `test_scan_multiple_batches_of_decided_homes_without_skip_or_n_plus_one` y `test_empty_and_exact_limit_pages_have_no_next_cursor`: se decide en página previa, se obtiene la siguiente pendiente y la API devuelve lista vacía al terminar. | **Parcial (solo API):** cursor y fin de resultados pasan; mostrar la siguiente tarjeta y el mensaje de fin en interfaz no se verificó en esta US. |
-| CA-08 — Fallos y reintentos | `test_each_staged_write_failure_rolls_back_entire_operation`, `test_rejected_commit_does_not_persist_any_staged_document`, `test_same_decision_retries_return_identical_records`, `test_simultaneous_identical_likes_converge_to_same_match_and_notice` y `test_internal_failures_are_safe_for_both_endpoints`: se inspeccionan errores, rollback, respuesta idempotente y conteos finales. | **Parcial (solo backend):** errores y reintento sin duplicados pasan en emulador; aviso visual del problema y control para reintentar en UI no se verificaron en esta US. |
-
-La suite confirma la persistencia local emulada y usa fallos de escritura
-inyectados para algunos escenarios. No prueba Firebase/Azure de producción.
-
-#### US 4.10: recorrido integrado publicación-exploración-match
-
-En la ejecución conjunta de US4.10, la suite pasó **167 tests** con el comando
-anterior. `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`
-registra un Vendedor y dos Compradores mediante Auth Emulator, publica dos
-anuncios válidos con dos fotografías ordenadas cada uno, y consulta el
-explorador con datos persistidos en Firestore Emulator. Después comprueba que
-LIKE crea match/aviso al propietario, PASS no crea ninguno, el mismo Comprador
-continúa excluyendo los inmuebles tras cerrar y volver a iniciar sesión, un
-reintento devuelve el match existente, y otro Comprador crea su propio match
-para la misma vivienda. Azure Blob se simula y sus URLs se conservan ordenadas.
-
-La parte de navegador se verificó aparte con Auth Emulator y respuestas de API
-interceptadas: esto cubre presentación e interacción, no persistencia del
-navegador en Firestore. No se usaron Firestore ni Azure de producción.
+Resultado comprobado: **170 pruebas correctas, sin omisiones**, incluidos
+concurrencia con barreras/hilos y Firestore real emulado, rollback de los tres
+guardados y rechazo de commit, unicidad, privacidad, paginación tras decidir,
+persistencia y registro/login/publicación. El recorrido de Auth real simula
+únicamente Azure Blob Storage. `check`, `makemigrations --check --dry-run`, `pip check`
+y `git diff --check` también pasan. No hay lint/formatter Python configurado.
+CI está preparado para ejecutar esta misma suite con Java 21.
+El emulador no demuestra el despliegue de índices ni el funcionamiento de
+Storage o Firestore en producción.
 
 ### Ejemplo desde un consumidor Firebase existente
 
@@ -628,7 +722,109 @@ prueba visual usa Auth Emulator y respuestas API interceptadas; el navegador
 no consulta Firestore directamente. Se contrastaron viewports 1280×900 y
 390×844 emulados, no dispositivos físicos.
 
-**Límite US5:** este árbol no contiene endpoint ni productor de la confirmación
-US5 que cree un aviso para BUYER. La API puede consultar avisos BUYER si ya
+**Límite de avisos US5:** existe el endpoint de confirmación del vendedor, pero
+no produce un aviso de confirmación para BUYER. La API puede consultar avisos BUYER si ya
 están persistidos, pero no se afirma que la confirmación los genere. Esa parte
 queda sin verificar y fuera de esta implementación de consulta.
+
+
+## US8: preferencias de búsqueda (backend)
+
+Contrato completo, campos/mapeo US3, errores, persistencia, precisión, localidades,
+cursores y flujo de integración: [US8 backend](<../Agents mds/us8_backend.md>).
+Todas estas operaciones requieren Firebase Bearer y rol **BUYER**:
+
+| Método | Ruta | Respuesta |
+|---|---|---|
+| GET | `/api/exploracion/filtros` | 200, configuración completa propia, nulls si no existe. |
+| PUT | `/api/exploracion/filtros` | JSON de sustitución completa; 200 con configuración canónica persistida. |
+| DELETE | `/api/exploracion/filtros` | 200 con configuración sin restricciones; idempotente. |
+| GET | `/api/inmuebles/opciones-filtro` | 200 `{"cities":["Barcelona","Madrid"]}`, publicadas completas, únicas y ordenadas. |
+| GET | `/api/inmuebles/explorar` | Contrato US4, ahora aplica preferencias persistidas y exclusiones LIKE/PASS propias. |
+
+PUT de ejemplo: `{"city":" Barcelona ","min_price":"0","max_price":"950.50","is_shared":false}`.
+Devuelve `{"city":"Barcelona","postal_code":null,"min_price":"0.00","max_price":"950.50","min_area":null,"max_area":null,"bedrooms":null,"min_bathrooms":null,"people_offered":null,"is_shared":false}`.
+GET inicial, PUT `{}` y DELETE devuelven las diez claves con null.
+Los omitidos en PUT borran restricciones anteriores; no es PATCH.
+
+400 validación `{"errors":{"max_price":"..."}}` o parámetros/cursores
+`{"error":"..."}`; 401 credenciales inválidas/ausentes/revocadas; 403 rol no
+permitido; 405 método no admitido; 500 fallo interno seguro. No hay cookies ni
+CSRF de sesiones Django; se reutiliza la verificación Bearer existente.
+Las preferencias residen en `search_preferences/{uid}` mediante una escritura
+atómica sin borrado previo; errores no se presentan como éxito. Restablecer
+conserva decisiones, matches y exclusiones. Cursores firmados ligados a UID,
+propósito y configuración canónica; cambios incompatibles reciben 400.
+
+Para US8.2: GET preferencias -> PUT/DELETE y esperar confirmación -> descartar
+cursor -> GET explorar sin cursor. Si falla solo explorar, reintentarlo sin
+revertir ni presentar como fallido el guardado. UI pendiente: bloqueo de envíos y
+swipes antiguos, descarte de respuestas tardías, filtros activos, errores y acciones.
+Estado vacío de UI: «No hay viviendas pendientes que coincidan con tus filtros.
+Prueba a ampliar tus criterios de búsqueda.» La API mantiene lista vacía y cursor null.
+
+Pruebas afectadas desde backend (Auth/Firestore Emulator demo, Azure simulado):
+
+```powershell
+npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test properties.test_preferences properties.test_firestore_preferences properties.test_discovery properties.test_firestore properties.test_firestore_matches --verbosity 1"
+```
+
+La suite completa usa el comando CI ya documentado `manage.py test accounts properties`;
+incluye automáticamente los nuevos módulos. Resultados de esta entrega en
+[resultado.md](../resultado.md). No hay lint/formatter Python configurado ni índices
+nuevos. No se han ejecutado despliegues.
+
+
+Validación de esta entrega (15/11/2026): **211 tests OK, sin omisiones**, con Auth
+Emulator y Firestore Emulator (suite completa accounts/properties); 66 pruebas
+afectadas pasaron antes de la regresión completa. `manage.py check`,
+`makemigrations --check --dry-run`, `pip check` y `git diff --check` también pasan.
+Ejecución local Windows/Python 3.13; no es un resultado remoto de CI ni un despliegue.
+
+
+## US9.4–9.6: selección definitiva
+
+Contrato y garantías: [US9 backend](<../Agents mds/us9_backend.md>).
+La selección se hace por candidatura para una vivienda; no modifica `people` ni
+candidaturas en otras viviendas. Firebase Bearer y roles verificados del perfil.
+
+- `GET/POST /api/propuestas`: historial propio paginado / creación SELLER con
+  `{"listing_id":"...","match_id":"...","request_id":"clave-nueva"}`.
+- `GET /api/propuestas/{id}`: detalle privado, condiciones actuales y vendedor.
+- `POST /api/propuestas/{id}/aceptar`, `/rechazar` (BUYER), `/cancelar` (SELLER): `{}`.
+- `PATCH /api/inmuebles/{id}`: edición de todos los campos canónicos US3 sin fotos.
+- `PUT /api/inmuebles/{id}/disponibilidad`: `{"availability":"ACTIVE"}` o PAUSED.
+
+PENDING pasa a ACCEPTED/REJECTED/CANCELLED; ACCEPTED es definitivo y cierra la
+vivienda con motivo «Alquiler acordado». PENDING bloquea edición/disponibilidad.
+Crear admite ACTIVE y PAUSED sin cambiarlos. Rechazar/cancelar libera el bloqueo.
+201 en creación nueva; 200 en reintento idéntico y resoluciones. Una clave usada
+con contenido distinto o una transición incompatible devuelve 409. Datos inválidos
+400, autenticación 401, rol 403, recurso ajeno/inexistente 404, fallo interno 500.
+
+El repositorio central transacciona propuesta, control privado por vivienda,
+idempotencia, cierre y avisos US7 deduplicados. Para más de 100 destinatarios de
+cierre, guarda eventos duraderos y los procesa en lotes reintentables; la API
+intenta diez lotes y el comando `manage.py process_selection_notifications --limit 100`
+recupera los restantes. Debe programarse periódicamente en producción.
+Todos usan timestamps del servidor.
+Se añaden `selection_proposals`, `selection_requests`, `listing_selections`,
+`selection_notification_events` y dos
+índices versionados. No hace falta backfill: disponibilidad ausente equivale a
+ACTIVE para anuncios publicados. Los matches mantienen su estado y muestran
+`listing.availability`/`closure_reason`. Las referencias al seleccionado no salen
+en anuncios ni avisos de otros candidatos. No se han desplegado índices ni reglas.
+
+
+Verificación US9 (16/11/2026): **228 tests correctos, sin omisiones**, suite
+completa `accounts properties` con Auth Emulator y Firestore Emulator Standard
+en loopback (`demo-swipehome-us4`), Python 3.13 y Java 21. Incluye 17 pruebas US9
+nuevas: permisos y contratos, estados y bloqueos, idempotencia, concurrencia,
+rollback de avisos/eventos, recuperación tras fallo entre lotes, privacidad,
+historial, otras viviendas, autenticación real emulada y denegación REST por Rules.
+Azure se mantiene simulado por las pruebas existentes. `manage.py check`,
+`makemigrations --check --dry-run`, `pip check`, sintaxis Python/JSON y
+`git diff --check` correctos. No se han usado servicios de producción ni se han
+realizado despliegues, commits o push. Los índices compuestos deben publicarse y
+comprobarse en producción: el emulador no certifica su disponibilidad. También
+queda por configurar allí la ejecución periódica del comando de recuperación.

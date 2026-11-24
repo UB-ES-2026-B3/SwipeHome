@@ -354,7 +354,8 @@ class FirestoreDecisionTests(SimpleTestCase):
         self.assertEqual({row["listing"]["id"] for row in items}, {"home", "second"})
         self.assertEqual({row["buyer"]["name"] for row in items}, {"Name buyer", "Name buyer2"})
         for row in items:
-            self.assertEqual(row["message"], "Tienes un nuevo match.")
+            self.assertEqual(row["message"], "Tienes un nuevo candidato interesado en tu vivienda.")
+            self.assertEqual(self.collection("matches").document(row["match_id"]).get().to_dict()["status"], "PENDING")
             self.assertTrue(row["created_at"].startswith("2026-11-08T00:00:00"))
             self.assertTrue(row["created_at"].endswith("Z"))
             self.assertEqual(row["listing"]["title"], listing()["title"])
@@ -419,6 +420,13 @@ class FirebaseFlowTests(SimpleTestCase):
             users[role] = registered.json()
             self.addCleanup(auth.delete_user, users[role]["uid"], app=app)
             tokens[role] = self.login(payload["email"], payload["password"], requests)
+        preference_response = client.put(
+            "/api/exploracion/filtros", json.dumps({"min_price": "0", "city": " Barcelona "}),
+            content_type="application/json", HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"],
+        )
+        self.assertEqual(preference_response.status_code, 200)
+        saved_preferences = preference_response.json()
+        self.addCleanup(db.collection(repository.PREFERENCES_COLLECTION).document(users["BUYER"]["uid"]).delete)
         published = client.post("/api/inmuebles", {**VALID, "photos": [jpeg()]},
                                 HTTP_AUTHORIZATION="Bearer " + tokens["SELLER"])
         self.assertEqual(published.status_code, 201, published.content)
@@ -433,6 +441,8 @@ class FirebaseFlowTests(SimpleTestCase):
             HTTP_AUTHORIZATION="Bearer " + tokens["BUYER"]).status_code, 401)
         time.sleep(1.05)  # auth_time tiene precisión de segundos; evita la revocación compartida US6.
         token = self.login(users["BUYER"]["email"], "Test password value 123!", requests)
+        self.assertEqual(Client().get("/api/exploracion/filtros",
+            HTTP_AUTHORIZATION="Bearer " + token).json(), saved_preferences)
         repeated = Client(enforce_csrf_checks=True).post(
             url, '{"decision":"LIKE"}', content_type="application/json", HTTP_AUTHORIZATION="Bearer " + token,
         )
@@ -442,7 +452,8 @@ class FirebaseFlowTests(SimpleTestCase):
         self.assertEqual(notices.status_code, 200, notices.content)
         self.assertEqual(len([row for row in notices.json()["items"] if row.get("match_id") == liked.json()["match"]["id"]]), 1)
         seller_notice = notices.json()["items"][0]
-        self.assertEqual(seller_notice["message"], "Tienes un nuevo match.")
+        self.assertEqual(seller_notice["message"], "Tienes un nuevo candidato interesado en tu vivienda.")
+        self.assertEqual(liked.json()["match"]["status"], "PENDING")
         self.assertTrue(seller_notice["created_at"].endswith("Z"))
 
         self.assertEqual(client.post(

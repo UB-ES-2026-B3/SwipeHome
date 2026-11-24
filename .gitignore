@@ -13,3 +13,6 @@
 # Certificados TLS generados solo para desarrollo local
 /backend/.local-tls/
 /backend/media/
+
+# Local browser and emulator test artifacts
+/.qa/

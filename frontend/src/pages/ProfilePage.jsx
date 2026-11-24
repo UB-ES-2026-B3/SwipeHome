@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { changePassword, updateProfile } from '../api/auth'
 import { FormField } from '../components/FormField'
-import { Logo } from '../components/Logo'
+import { DashboardHeader } from '../components/DashboardHeader'
+import { SearchPreferencesForm } from '../components/SearchPreferencesForm'
 import { useAuth } from '../hooks/useAuth'
 
 const ROLE_LABELS = { BUYER: 'Comprador', SELLER: 'Vendedor' }
@@ -48,8 +48,7 @@ function apiError(data, fallback) {
 }
 
 export function ProfilePage() {
-  const { user, loading, setUser, logout, loggingOut } = useAuth()
-  const navigate = useNavigate()
+  const { user, loading, setUser, loggingOut } = useAuth()
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '' })
   const [profileErrors, setProfileErrors] = useState({})
   const [profileMessage, setProfileMessage] = useState(null)
@@ -67,6 +66,7 @@ export function ProfilePage() {
     new: false,
     confirmation: false,
   })
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
 
   if (loading) {
     return <div className="page-loading" aria-label="Cargando perfil"><div className="page-loading__spinner" /></div>
@@ -148,31 +148,12 @@ export function ProfilePage() {
     }
   }
 
-  async function handleLogout() {
-    const success = await logout()
-    if (success) {
-      setPasswords({ currentPassword: '', newPassword: '', confirmation: '' })
-      setVisiblePasswords({ current: false, new: false, confirmation: false })
-      navigate('/', { replace: true })
-    }
-  }
-
   return (
     <main className="profile-page">
-      <header className="profile-page__header">
-        <Logo size="sm" to={user.role === 'SELLER' ? '/vendedor/inicio' : '/comprador/inicio'} />
-        <div className="profile-page__header-actions">
-          <button type="button" className="profile-page__back" onClick={() => navigate(-1)}>
-            Volver
-          </button>
-          <button type="button" className="profile-page__logout uniform-action" onClick={handleLogout} disabled={loggingOut}>
-            {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
-          </button>
-        </div>
-      </header>
+      <DashboardHeader />
 
       <div className="profile-page__content">
-        <h1>Mi perfil</h1>
+        <h1>¡Hola, {user.name}!</h1>
         <p className="profile-page__subtitle">Consulta y actualiza tus datos de cuenta.</p>
 
         <section className="profile-card" aria-labelledby="account-data-title">
@@ -199,6 +180,16 @@ export function ProfilePage() {
             </div>
           </form>
         </section>
+
+        {user.role === 'BUYER' && (
+          <section className="profile-card" aria-labelledby="preferences-link-title">
+            <h2 id="preferences-link-title">Preferencias de búsqueda</h2>
+            <p>Configura los criterios que utilizará el explorador.</p>
+            <button type="button" className="btn btn--red" onClick={() => setPreferencesOpen(true)}>
+              Editar preferencias
+            </button>
+          </section>
+        )}
 
         <section className="profile-card" aria-labelledby="password-title">
           <h2 id="password-title">Cambiar contraseña</h2>
@@ -244,6 +235,14 @@ export function ProfilePage() {
           </form>
         </section>
       </div>
+      {preferencesOpen && (
+        <div className="preferences-modal" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setPreferencesOpen(false)
+        }}>
+          <SearchPreferencesForm inModal onCancel={() => setPreferencesOpen(false)}
+            onSaved={() => setPreferencesOpen(false)} onReset={() => {}} />
+        </div>
+      )}
     </main>
   )
 }

@@ -40,6 +40,7 @@ class DiscoveryApiTests(SimpleTestCase):
         self.profile = self.enterContext(patch(
             "accounts.repository.get_user_profile", return_value={"role": "BUYER", "name": "Ana"},
         ))
+        self.preferences = self.enterContext(patch("accounts.repository.get_search_preferences", return_value={}))
         self.pending = self.enterContext(patch("accounts.repository.get_pending_listings", return_value=[]))
         self.record = self.enterContext(patch("accounts.repository.record_decision", return_value=(
             {"id": "key", "buyer_uid": "buyer", "listing_id": "home", "value": "LIKE", "created_at": STAMP},
@@ -138,9 +139,9 @@ class DiscoveryApiTests(SimpleTestCase):
         response = self.get()
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.json(), {"items": [], "next_cursor": None})
-        self.pending.assert_called_with("buyer", limit=21, position=None)
+        self.pending.assert_called_with("buyer", limit=21, position=None, preferences={})
         self.get({"limit": "50"})
-        self.pending.assert_called_with("buyer", limit=51, position=None)
+        self.pending.assert_called_with("buyer", limit=51, position=None, preferences={})
         stamp = DatetimeWithNanoseconds.from_rfc3339("2026-11-08T00:00:00.123456789Z")
         self.pending.return_value = [listing_item(i, listing(created_at=stamp)) for i in ("z", "y", "x")]
         response = self.get({"limit": "2"}).json()

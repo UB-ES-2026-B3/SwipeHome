@@ -1,3 +1,10 @@
+> Actualización 15/11/2026: [US8 backend](us8_backend.md) documenta preferencias
+> propias BUYER en Firestore, filtros persistidos y cursores ligados a configuración.
+> Se conserva Firebase Bearer y US3/US4/US5. LIKE crea candidatura PENDING y aviso
+> INTEREST; confirmar por el vendedor produce CONFIRMED, sin aviso BUYER nuevo en
+> el código actual. Los apartados anteriores tienen valor histórico donde discrepen.
+> El soporte servidor de US8.2 está implementado; sus criterios de UI quedan pendientes.
+
 # Contexto del proyecto SwipeHome
 
 ## Estado vigente — US4, US6 y US7.4 (10 noviembre 2026)
@@ -7,7 +14,7 @@ de US 4.4–4.7 sobre ese stack fue autorizada explícitamente por el usuario.
 Las descripciones anteriores de sesiones Django/SQLite son historial.
 
 **Regla vigente:** el Comprador da LIKE y crea directamente match y aviso
-al propietario. No hay aceptación del Vendedor ni segundo swipe. PASS no
+al propietario. US5 incorpora aceptación del Vendedor; no hay segundo swipe del comprador. PASS no
 crea match ni aviso. Un match no reserva el anuncio y varios Compradores
 pueden tener match con la misma vivienda.
 
