@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { Logo } from '../components/Logo'
+import { DashboardHeader } from '../components/DashboardHeader'
 import { useAuth } from '../hooks/useAuth'
 import { getNotifications } from '../api/notifications'
 
@@ -131,20 +131,10 @@ export function NotificationsPage() {
 
   return (
     <main className="notifications-page">
-      <header className="home-page__header">
-        <Logo size="sm" to={homePath} />
-        <div className="home-page__account">
-          <button type="button" className="home-page__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
-            Mi perfil
-          </button>
-          <button type="button" className="home-page__logout uniform-action" onClick={logout}>
-            Salir
-          </button>
-        </div>
-      </header>
+      <DashboardHeader />
 
       <div className="notifications-page__content">
-        <Link className="btn btn--ghost notifications-page__back" to={homePath}>
+        <Link className="btn btn--ghost uniform-action dashboard-back-link" to={homePath}>
           <span aria-hidden="true">&larr;</span> Volver al inicio
         </Link>
         <div className="notifications-page__top">
