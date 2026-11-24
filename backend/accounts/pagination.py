@@ -25,8 +25,11 @@ def valid_document_id(value):
     )
 
 
-def parse_query(params, uid, *, salt):
-    if set(params) - {"limit", "cursor"} or any(len(params.getlist(k)) != 1 for k in params):
+def parse_query(params, uid, *, salt, allowed_fields=None, timestamp_field="created_at"):
+    allowed = {"limit", "cursor"}
+    if allowed_fields:
+        allowed = allowed | set(allowed_fields)
+    if set(params) - allowed or any(len(params.getlist(k)) != 1 for k in params):
         raise InvalidQuery()
     raw_limit = params.get("limit", "20")
     if not re.fullmatch(r"[0-9]{1,2}", raw_limit) or not 1 <= int(raw_limit) <= 50:
@@ -38,25 +41,25 @@ def parse_query(params, uid, *, salt):
             raise InvalidQuery()
         try:
             data = signing.loads(raw_cursor, salt=salt)
-            if not isinstance(data, dict) or set(data) != {"uid", "id", "created_at"}:
+            if not isinstance(data, dict) or set(data) != {"uid", "id", timestamp_field}:
                 raise ValueError()
             if data["uid"] != uid or not valid_document_id(data["id"]):
                 raise ValueError()
-            if not isinstance(data["created_at"], str):
+            if not isinstance(data[timestamp_field], str):
                 raise ValueError()
-            position = (DatetimeWithNanoseconds.from_rfc3339(data["created_at"]), data["id"])
+            position = (DatetimeWithNanoseconds.from_rfc3339(data[timestamp_field]), data["id"])
         except (signing.BadSignature, ValueError, TypeError, KeyError, OverflowError):
             raise InvalidQuery() from None
     return int(raw_limit), position
 
 
-def page_result(records, limit, uid, *, salt):
+def page_result(records, limit, uid, *, salt, timestamp_field="created_at"):
     page = records[:limit]
     cursor = None
     if len(records) > limit:
         last = page[-1]
         cursor = signing.dumps(
-            {"uid": uid, "id": last["id"], "created_at": last["created_at"]},
+            {"uid": uid, "id": last["id"], timestamp_field: last[timestamp_field]},
             salt=salt,
         )
     return {"items": page, "next_cursor": cursor}

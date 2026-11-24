@@ -68,6 +68,11 @@ export async function startChromium(executable) {
         recent.push(exception?.description || text)
         if (recent.length > 10) recent.shift()
       }
+      if (method === 'Page.javascriptDialogOpening' && params.type === 'confirm') {
+        call('Page.handleJavaScriptDialog', { accept: true }, sessionId).catch((failure) => {
+          exceptions.get(sessionId)?.push(failure.message)
+        })
+      }
       const request = pending.get(id)
       if (!request) return
       pending.delete(id)
@@ -103,6 +108,7 @@ export async function startChromium(executable) {
       const errors = []
       exceptions.set(sessionId, errors)
       await send('Runtime.enable')
+      await send('Page.enable')
       await send('Network.enable')
       await send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile })
 

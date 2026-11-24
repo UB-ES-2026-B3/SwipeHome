@@ -13,11 +13,10 @@ class WorkflowBrowserTests(BrowserFixture):
         self.browser("workflows", "matches")
         accepted_key = repository.decision_key(self.uids["buyer"], accepted)
         rejected_key = repository.decision_key(self.uids["other"], rejected)
-        swipes = self.rows("swipes")
-        self.assertEqual(swipes[accepted_key]["seller_decision"], "ACCEPT")
-        self.assertEqual(swipes[rejected_key]["seller_decision"], "REJECT")
-        self.assertEqual(set(self.rows("matches")), {accepted_key})
-        self.assertEqual(len(self.rows("notifications")), 1)
+        self.assertEqual(self.rows("matches")[accepted_key]["status"], "CONFIRMED")
+        self.assertEqual(self.rows("matches")[rejected_key]["status"], "REJECTED")
+        self.assertEqual(set(self.rows("matches")), {accepted_key, rejected_key})
+        self.assertEqual(len(self.rows("notifications")), 2)
 
     def test_preferences_profile_explorer_and_private_reset(self):
         self.seed("affordable", "seller", title="Piso asequible", price_cents=45000)
@@ -25,8 +24,8 @@ class WorkflowBrowserTests(BrowserFixture):
         self.browser("workflows", "preferences")
         key = repository.decision_key(self.uids["buyer"], "discarded")
         self.assertEqual({key: "PASS"}, {doc: row["value"] for doc, row in self.rows("swipes").items()})
-        self.assertTrue(all(value is None for value in repository.get_buyer_preferences(self.uids["buyer"]).values()))
-        self.assertTrue(all(value is None for value in repository.get_buyer_preferences(self.uids["other"]).values()))
+        self.assertTrue(all(value is None for value in repository.get_search_preferences(self.uids["buyer"]).values()))
+        self.assertTrue(all(value is None for value in repository.get_search_preferences(self.uids["other"]).values()))
 
     def test_two_homes_keep_independent_proposal_status(self):
         self.seed("second", "seller", title="Piso todavía disponible")
@@ -35,11 +34,11 @@ class WorkflowBrowserTests(BrowserFixture):
         self.candidate("other", identifier="second")
         matches = self.rows("matches")
         self.browser("workflows", "independent-proposals")
-        proposals = {record["listing_id"]: record for record in self.rows("selections").values()}
+        proposals = {record["listing_id"]: record for record in self.rows("proposals").values()}
         self.assertEqual(proposals["home"]["status"], "ACCEPTED")
         self.assertEqual(proposals["second"]["status"], "REJECTED")
         homes = self.rows("listings")
-        self.assertIs(homes["home"]["published"], False)
-        self.assertIs(homes["second"]["published"], True)
-        self.assertNotIn("pending_selection_id", homes["second"])
+        self.assertEqual(repository.listing_availability(homes["home"]), "CLOSED")
+        self.assertEqual(repository.listing_availability(homes["second"]), "ACTIVE")
+        self.assertIsNone(self.rows("selections")["second"].get("pending_proposal_id"))
         self.assertEqual(matches, self.rows("matches"))

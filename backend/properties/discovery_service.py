@@ -1,29 +1,19 @@
 """Consultas y decisiones de US4, siempre con identidad verificada."""
 from accounts import repository
 from accounts.pagination import page_result, parse_query, timestamp
-from .preferences import filter_salt, filters_to_api, validate_filters
 
 CURSOR_SALT = "properties.explore.v1"
 
 
 def explore(user, params):
-    filters = repository.get_buyer_preferences(user.uid)
-    salt = filter_salt(filters)
+    from .preferences import fingerprint
+    preferences = repository.get_search_preferences(user.uid)
+    salt = CURSOR_SALT + "." + fingerprint(preferences)
     limit, position = parse_query(params, user.uid, salt=salt)
     records = repository.get_pending_listings(
-        user.uid, limit=limit + 1, position=position, filters=filters,
+        user.uid, limit=limit + 1, position=position, preferences=preferences,
     )
     return page_result(records, limit, user.uid, salt=salt)
-
-
-def get_filters(user):
-    return filters_to_api(repository.get_buyer_preferences(user.uid))
-
-
-def save_filters(user, payload):
-    filters = validate_filters(payload)
-    repository.update_buyer_preferences(user.uid, filters)
-    return filters_to_api(filters)
 
 
 def decide(user, listing_id, value):
@@ -36,10 +26,10 @@ def decide(user, listing_id, value):
         "decision": {
             "id": decision["id"], "listing_id": decision["listing_id"],
             "value": decision["value"], "created_at": timestamp(decision["created_at"]),
-            "seller_decision": decision.get("seller_decision"),
         },
         "match": None if match is None else {
             "id": match["id"], "decision_id": match["decision_id"],
-            "listing_id": match["listing_id"], "created_at": timestamp(match["created_at"]),
+            "listing_id": match["listing_id"], "status": match.get("status", "PENDING"),
+            "created_at": timestamp(match["created_at"]),
         },
     }, 201 if created else 200

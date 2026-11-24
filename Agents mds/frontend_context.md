@@ -1,20 +1,6 @@
 # Contexto frontend de SwipeHome
 
-La [guía de testing](../docs/TESTING.md) explica los componentes montados en
-Chrome con dependencias controladas y los E2E con React, Django y emuladores.
-El ejecutor comparte DevTools y separa los contextos de cada cuenta.
-
-## Selección definitiva (US9.8)
-
-«Mis matches» permite al Vendedor proponer una vivienda a un Comprador con
-match confirmado. «Propuestas» muestra el historial de ambos roles y enlaza
-el detalle con las acciones correspondientes. El detalle vuelve a consultar
-su estado después de un conflicto. Los avisos privados pueden enlazar a la
-propuesta y el aviso de indisponibilidad de los demás candidatos muestra la
-vivienda. El [README frontend](../frontend/README.md) describe los recorridos
-y enlaza el comando E2E.
-
-## Integración y verificación US5.9 — 23 noviembre 2026
+## Integración y verificación vigente US7.4 — 10 noviembre 2026
 
 La autenticación vigente sigue siendo Firebase Auth con ID token Bearer y
 revocación US6.
@@ -23,18 +9,17 @@ Los consumidores pueden usar los contratos documentados en el
 
 BUYER: GET `/api/inmuebles/explorar` y POST
 `/api/inmuebles/{id}/decision` con `{"decision":"LIKE"}` o PASS.
-LIKE crea una candidatura pendiente, no un match confirmado. BuyerHome acepta
-PENDING sin match y comunica que se avisará al confirmar; una respuesta de retry
-puede incluir ACCEPT y el match. US5.9 añade `SellerCandidates` al inicio del
-Vendedor para revisar/aceptar/rechazar solicitudes y la ruta protegida
-`/mis-matches` para consultar la lista propia de ambos roles. BUYER y SELLER:
-GET `/api/matches` devuelve matches confirmados propios; GET `/api/matches/candidatos`
-es exclusivo del Vendedor y filtra sus viviendas. Los GET usan
-`items/next_cursor`, límite 20 por defecto y máximo 50.
+LIKE crea directamente match y aviso; no requiere aceptación del Vendedor ni
+redirige a una pantalla US5.
+BUYER y SELLER: GET `/api/notificaciones` devuelve sus propios avisos.
+Ambos GET usan `items/next_cursor`, `limit` 20 por defecto, máximo 50.
+Conservar el cursor al decidir sobre páginas previas para continuar sin saltos.
+401 requiere recuperar el acceso; 500 permite reintentar sin cerrar la sesión.
+Los avisos nuevos incluyen match, Comprador y vivienda; los históricos sin
+match mantienen sus cuatro campos previos.
 
 US4.10 corrigió la integración frontend: exploración con cursor, decisión por ID
-y cuerpo `{decision}`; confirma solo respuestas coherentes con el estado de
-candidatura/match.
+y cuerpo `{decision}`; confirma solo respuestas coherentes con decisión/match.
 Los controles soportan galería, gestos horizontales, teclado, retry y mensaje
 vacío. `npm test` pasa 20 tests; lint y build terminan correctamente.
 
@@ -72,30 +57,9 @@ se comprobó ruta protegida sin sesión, datos/fecha, carga, vacío, fallo inici
 y retry, fallo de actualización conservando avisos y retry, paginación con
 solapamiento sin duplicados y refresco con nuevos resultados. Viewports 1280×900
 y 390×844 en navegador de escritorio emulado; no certifica hardware físico ni
-persistencia Firestore de la UI. US5.8 verificó aparte la persistencia backend
-del aviso de confirmación al Comprador con Auth/Firestore Emulator; no se
-verificó la presentación visual de ese nuevo evento.
-
-US5.8 ajustó BuyerHome para distinguir PENDING, ACCEPT y REJECT y para tolerar
-un retry que recupera una decisión SELLER ya persistida. US5.9 añadió funciones
-de API autenticadas para candidatos/matches y la decisión SELLER; la interfaz
-elimina una candidatura solo tras confirmar una respuesta coherente, bloquea
-dobles envíos y permite reintentar errores. `npm test` pasa 27 pruebas; lint y
-build finalizan. El navegador usó Auth Emulator real y un mock HTTP local en
-memoria: se verificaron interés pendiente, ACCEPT por teclado, REJECT con
-doble clic, lista vacía, retry tras 503, expiración 401 y aislamiento visual.
-Viewports 390×844 y 1280×900 no tuvieron overflow horizontal. No es persistencia
-Firestore del navegador ni prueba en hardware físico; backend y persistencia se
-verifican aparte con Auth/Firestore Emulator.
-
-US8.6 añade `PreferenceFilters` compartido por explorador y perfil. Consulta y
-sustituye preferencias privadas, valida valores en cliente, bloquea swipes
-mientras aplica o restablece y refresca el explorador. Cancelar vuelve al último
-mapa válido; restablecer conserva swipes/matches. `npm test` pasa 28 pruebas;
-lint/build terminan. El navegador con Auth Emulator/API interceptada confirmó
-aplicación, cancelación, validación, restablecimiento y ausencia de overflow en
-390×844/1280×900. Persistencia e aislamiento reales se comprobaban aparte con
-Firestore Emulator. No se certifica hardware físico ni se verificaron servicios remotos.
+persistencia Firestore de la UI. Persistencia backend del aviso SELLER tras
+re-login sí se probó aparte en Auth/Firestore Emulator. En este árbol no existe
+el productor de confirmación US5 para aviso BUYER; ese evento queda no verificado.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

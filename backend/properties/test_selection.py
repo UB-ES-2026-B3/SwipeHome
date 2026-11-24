@@ -34,16 +34,16 @@ class SelectionIntegrationTests(EmulatorFixture):
         self.candidate("declined", "PASS")
         self.candidate("outsider", identifier="other-home", seller="other_seller")
         before = self.snapshot()
-        for user in ("buyer", "other", "pending", "declined", "outsider"):
+        for user, expected in (("buyer", 409), ("other", 409), ("pending", 404), ("declined", 404), ("outsider", 404)):
             with self.subTest(user=user):
-                self.assert_status(self.propose(user), 404)
+                self.assert_status(self.propose(user), expected)
         self.assertEqual(self.snapshot(), before)
 
         self.seed("same-seller", "seller")
         decision_id = self.candidate("buyer", identifier="same-seller")
         proposal = self.assert_status(self.propose(identifier="same-seller"), 201)
         self.assertEqual((proposal["status"], proposal["match_id"]), ("PENDING", decision_id))
-        self.assertEqual(self.rows("listings")["same-seller"]["pending_selection_id"], proposal["id"])
+        self.assertEqual(self.rows("selections")["same-seller"]["pending_proposal_id"], proposal["id"])
         self.assertEqual(self.rows("listings")["home"], before["listings"]["home"])
 
     def test_only_the_owner_and_recipient_can_access_or_update_the_proposal(self):
@@ -69,13 +69,13 @@ class SelectionIntegrationTests(EmulatorFixture):
         self.assert_status(self.decide(proposal_id, "REJECT", "seller"), 403)
         self.assert_status(self.decide(proposal_id, "CANCEL"), 403)
         self.assert_status(self.request("GET", "/api/propuestas", "other", params={"uid": self.uids["buyer"]}), 400)
-        self.assert_status(self.request("POST", detail_url + "/decision", body={"decision": "ACCEPT"}), 401)
+        self.assert_status(self.request("POST", detail_url + "/aceptar", body={"decision": "ACCEPT"}), 401)
         self.assert_status(self.request(
-            "POST", detail_url + "/decision", "other", body={"decision": "ACCEPT", "uid": self.uids["buyer"]},
+            "POST", detail_url + "/aceptar", "other", body={"uid": self.uids["buyer"]},
         ), 400)
         self.assert_status(self.request(
-            "POST", "/api/inmuebles/home/propuestas", "seller",
-            body={"buyer_uid": self.uids["buyer"], "idempotency_key": "corta"},
+            "POST", "/api/propuestas", "seller",
+            body={"listing_id": "home", "match_id": "../invalid", "request_id": "intent"},
         ), 400)
         self.assertEqual(self.snapshot(), before)
 
@@ -88,7 +88,7 @@ class SelectionIntegrationTests(EmulatorFixture):
             self.assertEqual(detail["listing"]["photos"], listing()["photos"])
             self.assertEqual(detail["listing"]["people"], 3)
             self.assertIs(detail["listing"]["shared_accommodation"], False)
-            self.assertIs(detail["listing"]["available"], True)
+            self.assertEqual(detail["listing"]["availability"], "ACTIVE")
             items = self.assert_status(self.request("GET", "/api/propuestas", user), 200)["items"]
             self.assertEqual(items, [proposal])
 
@@ -110,46 +110,46 @@ class SelectionIntegrationTests(EmulatorFixture):
             return {row["id"] for row in result["items"]}
 
         self.assertEqual(explore(), {"home", "another", "open"})
-        accepted = self.assert_status(self.decide(proposal_id, "ACCEPT"), 201)
+        accepted = self.assert_status(self.decide(proposal_id, "ACCEPT"), 200)
         self.assertEqual(accepted["status"], "ACCEPTED")
         after = self.snapshot()
         selected = after["listings"]["home"]
-        self.assertIs(selected["published"], False)
-        self.assertIs(selected["available"], False)
-        self.assertEqual(selected["selected_buyer_uid"], self.uids["buyer"])
-        self.assertEqual(selected["selected_selection_id"], proposal_id)
-        self.assertEqual(selected["selected_at"], after["selections"][proposal_id]["updated_at"])
-        self.assertNotIn("pending_selection_id", selected)
+        self.assertEqual(repository.listing_availability(selected), "CLOSED")
+        self.assertEqual(after["proposals"][proposal_id]["buyer_uid"], self.uids["buyer"])
+        self.assertEqual(after["selections"]["home"]["accepted_proposal_id"], proposal_id)
+        self.assertEqual(selected["closed_at"], after["proposals"][proposal_id]["resolved_at"])
+        self.assertIsNone(after["selections"]["home"].get("pending_proposal_id"))
         self.assertEqual(explore(), {"another", "open"})
-        self.assertEqual(after["selections"][unrelated["id"]], before["selections"][unrelated["id"]])
+        self.assertEqual(after["proposals"][unrelated["id"]], before["proposals"][unrelated["id"]])
         for name in ("another", "open"):
             self.assertEqual(after["listings"][name], before["listings"][name])
         for collection in ("swipes", "matches"):
             self.assertEqual(after[collection], before[collection])
 
         candidates = self.assert_status(
-            self.request("GET", "/api/matches/candidatos", "seller", params={"limit": 1}), 200,
+            self.request("GET", "/api/candidatos", "seller", params={"limit": 1}), 200,
         )
-        self.assertEqual([row["listing"]["id"] for row in candidates["items"]], ["open"])
-        self.assertIsNone(candidates["next_cursor"])
+        with self.subTest("las candidaturas de una vivienda cerrada no ocupan la primera página"):
+            self.assertEqual([row["listing"]["id"] for row in candidates["items"]], ["open"])
+            self.assertIsNone(candidates["next_cursor"])
         for user in ("buyer", "other", "seller"):
             matches = self.assert_status(self.request("GET", "/api/matches", user), 200)["items"]
             for item in matches:
-                self.assertIs(item["listing"]["available"], item["listing"]["id"] != "home")
+                self.assertEqual(item["listing"]["availability"], "CLOSED" if item["listing"]["id"] == "home" else "ACTIVE")
         self.assertNotIn(self.uids["buyer"], self.request("GET", "/api/matches", "other").text)
         self.assertEqual(
-            [row["type"] for row in self.notices("buyer")], ["SELECTION_ACCEPTED", "SELECTION_PROPOSAL"],
+            [row["type"] for row in self.notices("buyer")], ["PROPOSAL"],
         )
-        self.assertEqual([row["type"] for row in self.notices("seller")], ["SELECTION_ACCEPTED"])
+        self.assertEqual([row["type"] for row in self.notices("seller")], ["ACCEPTED"])
         for user in ("other", "pending"):
-            unavailable = [row for row in self.notices(user) if row["type"] == "SELECTION_UNAVAILABLE"]
+            unavailable = [row for row in self.notices(user) if row["type"] == "LISTING_CLOSED"]
             self.assertEqual(len(unavailable), 1)
             notice = unavailable[0]
-            self.assertEqual(set(notice), {"id", "type", "listing", "message", "created_at"})
+            self.assertNotIn("proposal_id", notice)
             self.assertEqual(notice["listing"]["id"], "home")
             self.assertNotIn(proposal_id, notice["id"])
             for persisted in after["notifications"].values():
-                if persisted["recipient_uid"] == self.uids[user] and persisted["type"] == "SELECTION_UNAVAILABLE":
+                if persisted["recipient_uid"] == self.uids[user] and persisted["type"] == "LISTING_CLOSED":
                     self.assertEqual(set(persisted), set(notice) - {"id", "listing"} | {
                         "recipient_uid", "listing_id", "listing_title",
                     })
@@ -167,7 +167,7 @@ class SelectionIntegrationTests(EmulatorFixture):
         first_id = first["id"]
         self.assertEqual(self.assert_status(self.propose(key=key), 200), first)
         self.assert_status(self.propose("other", key=key), 409)
-        rejected = self.assert_status(self.decide(first_id, "REJECT"), 201)
+        rejected = self.assert_status(self.decide(first_id, "REJECT"), 200)
         self.assertEqual(rejected["status"], "REJECTED")
         self.assertEqual(self.rows("listings")["home"], initial)
 
@@ -178,23 +178,23 @@ class SelectionIntegrationTests(EmulatorFixture):
         self.assertEqual(self.assert_status(self.propose(key=key), 200), rejected)
         self.assertEqual(self.assert_status(self.decide(first_id, "REJECT"), 200), rejected)
         self.assert_status(self.decide(first_id, "ACCEPT"), 409)
-        self.assertEqual(self.rows("listings")["home"]["pending_selection_id"], second_id)
-        cancelled = self.assert_status(self.decide(second_id, "CANCEL", "seller"), 201)
+        self.assertEqual(self.rows("selections")["home"]["pending_proposal_id"], second_id)
+        cancelled = self.assert_status(self.decide(second_id, "CANCEL", "seller"), 200)
         self.assertEqual(cancelled["status"], "CANCELLED")
         self.assertEqual(self.assert_status(self.decide(second_id, "CANCEL", "seller"), 200), cancelled)
         self.assertEqual(self.rows("listings")["home"], initial)
         third = self.assert_status(self.propose("other"), 201)
 
         self.assertEqual(
-            {key: row["status"] for key, row in self.rows("selections").items()},
+            {key: row["status"] for key, row in self.rows("proposals").items()},
             {first_id: "REJECTED", second_id: "CANCELLED", third["id"]: "PENDING"},
         )
         self.assertCountEqual(
-            [(notice["type"], notice["selection_id"]) for notice in self.notices("buyer")],
-            [("SELECTION_PROPOSAL", first_id), ("SELECTION_PROPOSAL", second_id), ("SELECTION_CANCELLED", second_id)],
+            [notice["type"] for notice in self.notices("buyer")],
+            ["PROPOSAL", "PROPOSAL", "CANCELLED"],
         )
-        self.assertEqual([(row["type"], row["selection_id"]) for row in self.notices("seller")], [
-            ("SELECTION_REJECTED", first_id),
+        self.assertEqual([row["type"] for row in self.notices("seller")], [
+            "REJECTED",
         ])
         page = self.assert_status(self.request("GET", "/api/propuestas", "buyer", params={"limit": 1}), 200)
         self.assertEqual(page["items"], [cancelled])
@@ -210,50 +210,50 @@ class SelectionIntegrationTests(EmulatorFixture):
         self.candidate("other")
         expected_matches = self.rows("matches")
         expected_swipes = self.rows("swipes")
-        responses = self.race("create_selection", lambda: self.propose("buyer"), lambda: self.propose("other"))
+        responses = self.race("create_proposal", lambda: self.propose("buyer"), lambda: self.propose("other"))
         self.assertCountEqual([response.status_code for response in responses], [201, 409])
         proposal = next(response.json() for response in responses if response.status_code == 201)
-        winner = next(user for user in ("buyer", "other") if self.uids[user] == proposal["buyer_uid"])
+        winner = next(user for user in ("buyer", "other") if self.uids[user] == self.rows("proposals")[proposal["id"]]["buyer_uid"])
         proposal_id = proposal["id"]
-        self.assertEqual(set(self.rows("selections")), {proposal_id})
-        self.assertEqual(self.rows("listings")["home"]["pending_selection_id"], proposal_id)
+        self.assertEqual(set(self.rows("proposals")), {proposal_id})
+        self.assertEqual(self.rows("selections")["home"]["pending_proposal_id"], proposal_id)
         self.assertEqual(len(self.notices(winner)), 1)
 
         def accept():
             return self.decide(proposal_id, "ACCEPT", winner)
 
-        responses = self.race("transition_selection", accept, accept)
-        self.assertCountEqual([response.status_code for response in responses], [201, 200])
+        responses = self.race("resolve_proposal", accept, accept)
+        self.assertCountEqual([response.status_code for response in responses], [200, 200])
         self.assertEqual(responses[0].json(), responses[1].json())
-        self.assertEqual(self.rows("selections")[proposal_id]["status"], "ACCEPTED")
-        self.assertEqual(self.rows("listings")["home"]["selected_selection_id"], proposal_id)
-        self.assertEqual(self.rows("listings")["home"]["selected_buyer_uid"], self.uids[winner])
+        self.assertEqual(self.rows("proposals")[proposal_id]["status"], "ACCEPTED")
+        self.assertEqual(self.rows("selections")["home"]["accepted_proposal_id"], proposal_id)
+        self.assertEqual(self.rows("proposals")[proposal_id]["buyer_uid"], self.uids[winner])
         self.assertEqual(self.rows("matches"), expected_matches)
         self.assertEqual(self.rows("swipes"), expected_swipes)
-        events = [row["type"] for row in self.rows("notifications").values() if row["type"].startswith("SELECTION_")]
-        self.assertCountEqual(events, ["SELECTION_PROPOSAL", "SELECTION_ACCEPTED", "SELECTION_ACCEPTED", "SELECTION_UNAVAILABLE"])
+        events = [row["type"] for row in self.rows("notifications").values() if row["type"] != "INTEREST"]
+        self.assertCountEqual(events, ["PROPOSAL", "ACCEPTED", "LISTING_CLOSED"])
 
     def test_concurrent_accept_and_cancel_leave_one_atomic_terminal_state(self):
         self.candidate("buyer")
         proposal_id = self.assert_status(self.propose(), 201)["id"]
         responses = self.race(
-            "transition_selection",
+            "resolve_proposal",
             lambda: self.decide(proposal_id, "ACCEPT"),
             lambda: self.decide(proposal_id, "CANCEL", "seller"),
         )
-        self.assertCountEqual([response.status_code for response in responses], [201, 409])
-        winner = next(response.json()["status"] for response in responses if response.status_code == 201)
-        selection = self.rows("selections")[proposal_id]
+        self.assertCountEqual([response.status_code for response in responses], [200, 409])
+        winner = next(response.json()["status"] for response in responses if response.status_code == 200)
+        selection = self.rows("proposals")[proposal_id]
         home = self.rows("listings")["home"]
         self.assertEqual(selection["status"], winner)
-        self.assertNotIn("pending_selection_id", home)
-        self.assertIs(home["published"], winner == "CANCELLED")
-        self.assertEqual(home.get("selected_selection_id"), proposal_id if winner == "ACCEPTED" else None)
+        self.assertIsNone(self.rows("selections")["home"].get("pending_proposal_id"))
+        self.assertEqual(repository.listing_availability(home), "ACTIVE" if winner == "CANCELLED" else "CLOSED")
+        self.assertEqual(self.rows("selections")["home"].get("accepted_proposal_id"), proposal_id if winner == "ACCEPTED" else None)
         self.assertEqual([row["type"] for row in self.notices("buyer")], [
-            "SELECTION_" + winner, "SELECTION_PROPOSAL",
+            *(["CANCELLED"] if winner == "CANCELLED" else []), "PROPOSAL",
         ])
         self.assertEqual([row["type"] for row in self.notices("seller")], (
-            ["SELECTION_ACCEPTED"] if winner == "ACCEPTED" else []
+            ["ACCEPTED"] if winner == "ACCEPTED" else []
         ))
 
     def test_firestore_rejects_commits_without_partial_proposals_or_closures(self):
@@ -271,42 +271,40 @@ class SelectionIntegrationTests(EmulatorFixture):
             self.assert_status(self.propose(key=key), 500)
         self.assertEqual(self.snapshot(), before)
         proposal = self.assert_status(self.propose(key=key), 201)
-        self.assertEqual(self.rows("listings")["home"]["pending_selection_id"], proposal["id"])
-        self.assertEqual([(row["type"], row["selection_id"]) for row in self.notices("buyer")], [
-            ("SELECTION_PROPOSAL", proposal["id"]),
+        self.assertEqual(self.rows("selections")["home"]["pending_proposal_id"], proposal["id"])
+        self.assertEqual([row["type"] for row in self.notices("buyer")], [
+            "PROPOSAL",
         ])
         pending = self.snapshot()
         with patch.object(Transaction, "_commit", commit_with_failed_precondition):
             self.assert_status(self.decide(proposal["id"], "ACCEPT"), 500)
         self.assertEqual(self.snapshot(), pending)
-        self.assert_status(self.decide(proposal["id"], "ACCEPT"), 201)
-        self.assertEqual(self.rows("selections")[proposal["id"]]["status"], "ACCEPTED")
-        self.assertIs(self.rows("listings")["home"]["available"], False)
+        self.assert_status(self.decide(proposal["id"], "ACCEPT"), 200)
+        self.assertEqual(self.rows("proposals")[proposal["id"]]["status"], "ACCEPTED")
+        self.assertEqual(repository.listing_availability(self.rows("listings")["home"]), "CLOSED")
 
     def test_notification_failure_rolls_back_acceptance_and_retry_writes_each_notice_once(self):
         self.candidate("buyer")
         self.candidate("other")
         proposal_id = self.assert_status(self.propose(), 201)["id"]
         before = self.snapshot()
-        write_notice = repository._write_selection_notice
 
-        def fail_unavailable(transaction, client, selection_id, selection, recipient, event, message):
-            if event == "UNAVAILABLE":
-                raise ServiceUnavailable("Fallo controlado al preparar el aviso")
-            return write_notice(transaction, client, selection_id, selection, recipient, event, message)
+        def fail_unavailable(transaction, client, listing_id, title, recipients):
+            self.assertEqual(recipients, {self.uids["other"]})
+            raise ServiceUnavailable("Fallo controlado al preparar el aviso")
 
-        with patch.object(repository, "_write_selection_notice", side_effect=fail_unavailable) as send:
+        with patch.object(repository, "_closure_notices", side_effect=fail_unavailable) as send:
             self.assert_status(self.decide(proposal_id, "ACCEPT"), 500)
-            self.assertEqual([call.args[5] for call in send.call_args_list], ["ACCEPTED", "ACCEPTED", "UNAVAILABLE"])
+            send.assert_called_once()
         self.assertEqual(self.snapshot(), before)
-        accepted = self.assert_status(self.decide(proposal_id, "ACCEPT"), 201)
+        accepted = self.assert_status(self.decide(proposal_id, "ACCEPT"), 200)
         after = self.snapshot()
         self.assertEqual(self.assert_status(self.decide(proposal_id, "ACCEPT"), 200), accepted)
         self.assertEqual(self.snapshot(), after)
-        self.assertIs(after["listings"]["home"]["available"], False)
-        self.assertEqual(after["selections"][proposal_id]["status"], "ACCEPTED")
-        self.assertEqual([row["type"] for row in self.notices("other")], ["SELECTION_UNAVAILABLE"])
-        self.assertEqual([row["type"] for row in self.notices("seller")], ["SELECTION_ACCEPTED"])
+        self.assertEqual(repository.listing_availability(after["listings"]["home"]), "CLOSED")
+        self.assertEqual(after["proposals"][proposal_id]["status"], "ACCEPTED")
+        self.assertEqual([row["type"] for row in self.notices("other")], ["LISTING_CLOSED"])
+        self.assertEqual([row["type"] for row in self.notices("seller")], ["ACCEPTED"])
 
     def test_response_loss_after_real_commit_is_recoverable_for_creation_and_acceptance(self):
         self.candidate("buyer")
@@ -320,20 +318,20 @@ class SelectionIntegrationTests(EmulatorFixture):
         with patch.object(Transaction, "_commit", lose_response):
             self.assert_status(self.propose(key=key), 500)
         persisted = self.snapshot()
-        self.assertEqual(len(persisted["selections"]), 1)
-        proposal_id, proposal = next(iter(persisted["selections"].items()))
+        self.assertEqual(len(persisted["proposals"]), 1)
+        proposal_id, proposal = next(iter(persisted["proposals"].items()))
         self.assertEqual(proposal["status"], "PENDING")
-        self.assertEqual(persisted["listings"]["home"]["pending_selection_id"], proposal_id)
+        self.assertEqual(persisted["selections"]["home"]["pending_proposal_id"], proposal_id)
         self.assertEqual(self.assert_status(self.propose(key=key), 200)["id"], proposal_id)
         self.assertEqual(self.snapshot(), persisted)
 
         with patch.object(Transaction, "_commit", lose_response):
             self.assert_status(self.decide(proposal_id, "ACCEPT"), 500)
         persisted = self.snapshot()
-        self.assertEqual(persisted["selections"][proposal_id]["status"], "ACCEPTED")
-        self.assertEqual(persisted["listings"]["home"]["selected_selection_id"], proposal_id)
+        self.assertEqual(persisted["proposals"][proposal_id]["status"], "ACCEPTED")
+        self.assertEqual(persisted["selections"]["home"]["accepted_proposal_id"], proposal_id)
         self.assertEqual(self.assert_status(self.decide(proposal_id, "ACCEPT"), 200)["status"], "ACCEPTED")
         self.assertEqual(self.assert_status(self.propose(key=key), 200)["status"], "ACCEPTED")
         self.assertEqual(self.snapshot(), persisted)
-        self.assertEqual(len(self.notices("buyer")), 2)
+        self.assertEqual([row["type"] for row in self.notices("buyer")], ["PROPOSAL"])
         self.assertEqual(len(self.notices("seller")), 1)

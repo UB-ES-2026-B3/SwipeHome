@@ -26,54 +26,54 @@ class SelectionBrowserTests(BrowserFixture):
 
     def assert_notices(self, expected):
         events = [
-            (row["type"].removeprefix("SELECTION_"), row["recipient_uid"])
-            for row in self.rows("notifications").values() if row["type"].startswith("SELECTION_")
+            (row["type"], row["recipient_uid"])
+            for row in self.rows("notifications").values() if row["type"] != "INTEREST"
         ]
         self.assertEqual(Counter(events), Counter((event, self.uids[person]) for event, person in expected))
 
     def assert_accepted(self):
-        records = self.rows("selections")
+        records = self.rows("proposals")
         self.assertEqual(len(records), 1)
         selection_id, record = next(iter(records.items()))
         self.assertEqual(record["status"], "ACCEPTED")
         home = self.home.get().to_dict()
-        self.assertEqual(home["selected_selection_id"], selection_id)
-        self.assertEqual(home["selected_buyer_uid"], self.uids["buyer"])
-        self.assertIs(home["published"], False)
-        self.assertIs(home["available"], False)
-        self.assertNotIn("pending_selection_id", home)
+        self.assertEqual(self.rows("selections")["home"]["accepted_proposal_id"], selection_id)
+        self.assertEqual(self.rows("selections")["home"]["selected_buyer_uid"], self.uids["buyer"])
+        self.assertEqual(repository.listing_availability(home), "CLOSED")
+        self.assertIsNone(self.rows("selections")["home"]["pending_proposal_id"])
 
     def assert_open_with_new_proposal(self, state, new_buyer):
-        records = self.rows("selections")
+        records = self.rows("proposals")
         self.assertCountEqual([record["status"] for record in records.values()], [state, "PENDING"])
         home = self.home.get().to_dict()
         self.assertIs(home["published"], True)
-        self.assertNotIn("selected_selection_id", home)
-        self.assertEqual(records[home["pending_selection_id"]]["buyer_uid"], self.uids[new_buyer])
+        self.assertNotIn("accepted_proposal_id", self.rows("selections")["home"])
+        self.assertEqual(records[self.rows("selections")["home"]["pending_proposal_id"]]["buyer_uid"], self.uids[new_buyer])
 
     def test_acceptance_availability_privacy_and_new_session(self):
         self.candidate("pending", "PENDING")
         self.swipes_before = self.rows("swipes")
+        self.matches_before = self.rows("matches")
         app = repository.get_app()
-        original = repository.create_selection
+        original = repository.create_proposal
 
-        def update_terms_after_send(*args):
-            record, created = original(*args)
+        def update_terms_after_send(*args, **kwargs):
+            record, created = original(*args, **kwargs)
             if created:
                 self.home.update({"price_cents": 99999, "description": "Condiciones actualizadas"})
                 auth.update_user(self.uids["seller"], display_name="Cuenta seller actualizada", app=app)
             return record, created
 
         self.addCleanup(auth.update_user, self.uids["seller"], display_name="Cuenta seller", app=app)
-        with patch.object(repository, "create_selection", side_effect=update_terms_after_send):
+        with patch.object(repository, "create_proposal", side_effect=update_terms_after_send):
             self.run_browser("acceptance")
         self.assert_accepted()
         self.assert_notices([
-            ("PROPOSAL", "buyer"), ("ACCEPTED", "seller"), ("ACCEPTED", "buyer"),
-            ("UNAVAILABLE", "other"), ("UNAVAILABLE", "pending"),
+            ("PROPOSAL", "buyer"), ("ACCEPTED", "seller"),
+            ("LISTING_CLOSED", "other"), ("LISTING_CLOSED", "pending"),
         ])
         for row in self.rows("notifications").values():
-            if row["type"] == "SELECTION_UNAVAILABLE":
+            if row["type"] == "LISTING_CLOSED":
                 self.assertNotIn("selection_id", row)
                 self.assertNotIn(self.uids["buyer"], json.dumps(row, default=str))
 
@@ -91,5 +91,5 @@ class SelectionBrowserTests(BrowserFixture):
         self.run_browser("errors")
         self.assert_accepted()
         self.assert_notices([
-            ("PROPOSAL", "buyer"), ("ACCEPTED", "seller"), ("ACCEPTED", "buyer"), ("UNAVAILABLE", "other"),
+            ("PROPOSAL", "buyer"), ("ACCEPTED", "seller"), ("LISTING_CLOSED", "other"),
         ])

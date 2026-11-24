@@ -21,14 +21,34 @@ ALLOWED_HOSTS += [h.strip() for h in os.environ.get("ALLOWED_HOSTS", "").split("
 
 # Render termina el TLS en su proxy y reenvia a Django por HTTP. Sin esto
 # Django cree que la peticion es insegura (request.is_secure() es falso).
-if _RENDER_HOST:
+# DJANGO_BEHIND_TLS_PROXY=1 hace lo mismo en cualquier otro host cuyo proxy
+# termine el TLS y envie X-Forwarded-Proto (p. ej. Azure Container Apps).
+# Solo debe activarse detras de un proxy asi: si no, el cliente podria
+# falsificar la cabecera.
+_BEHIND_TLS_PROXY = os.environ.get("DJANGO_BEHIND_TLS_PROXY", "").strip() == "1"
+if _RENDER_HOST or _BEHIND_TLS_PROXY:
     SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
-INSTALLED_APPS = ["accounts"]
+INSTALLED_APPS = ["corsheaders", "accounts"]
 MIDDLEWARE = [
+    # CorsMiddleware va lo mas arriba posible: debe responder a los preflight
+    # OPTIONS y anadir las cabeceras CORS antes que CommonMiddleware.
+    "corsheaders.middleware.CorsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "django.middleware.common.CommonMiddleware",
 ]
+
+# Origenes del frontend que pueden llamar a la API desde otro dominio,
+# separados por comas (p. ej. el de Azure Static Web Apps). Vacio en local y
+# en Render: alli el frontend usa rutas relativas (proxy de Vite / rewrite) y
+# no hay peticiones entre origenes.
+CORS_ALLOWED_ORIGINS = [
+    o.strip() for o in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if o.strip()
+]
+# La API se autentica con Authorization: Bearer, sin cookies: no se envian
+# credenciales entre origenes. Las cabeceras por defecto de django-cors-headers
+# ya incluyen authorization y content-type.
+CORS_ALLOW_CREDENTIALS = False
 ROOT_URLCONF = "config.urls"
 WSGI_APPLICATION = "config.wsgi.application"
 # Sin modelos ni sesiones, Django no necesita base de datos: los usuarios viven en

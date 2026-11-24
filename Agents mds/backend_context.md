@@ -1,10 +1,18 @@
+> US9 backend: [selección definitiva](us9_backend.md) incorpora propuestas privadas,
+> idempotencia, control transaccional por vivienda, cierre y avisos US7.
+> Las nuevas operaciones de gestión del anuncio deben respetar `listing_selections`
+> y no reabrir una selección aceptada. Los documentos antiguos siguen siendo válidos.
+
+> Actualización 15/11/2026: [US8 backend](us8_backend.md) documenta preferencias
+> propias BUYER en Firestore, filtros persistidos y cursores ligados a configuración.
+> Se conserva Firebase Bearer y US3/US4/US5. LIKE crea candidatura PENDING y aviso
+> INTEREST; confirmar por el vendedor produce CONFIRMED, sin aviso BUYER nuevo en
+> el código actual. Los apartados anteriores tienen valor histórico donde discrepen.
+> El soporte servidor de US8.2 está implementado; sus criterios de UI quedan pendientes.
+
 # Contexto backend de SwipeHome
 
-La [guía de testing](../docs/TESTING.md) documenta la verificación de
-aislamiento, los fixtures de Auth/Firestore/Azurite y los comandos de
-integración. Los criterios están en la [matriz de cobertura](../docs/TEST-COVERAGE.md).
-
-## Estado vigente — US4, US5.8–US5.9, US6, US7.4, US8.6 y US9.7–US9.8
+## Estado vigente — US4, US6 y US7.4 (10 noviembre 2026)
 
 El backend usa Django 5.2, Firebase Auth y Firestore. No hay ORM, sesiones por
 cookies ni CSRF Django. El usuario confirmó expresamente mantener este stack
@@ -14,22 +22,19 @@ para US 4.4–4.7 y la verificación US4.9. Los contratos vigentes están en el
 
 US4 reutiliza usuarios y anuncios actuales, fotografías ordenadas en
 `listings.photos`, autenticación con revocación y la colección `notifications`.
-Desde US5.8, LIKE crea una candidatura pendiente; el propietario puede aceptarla
-o rechazarla. Solo ACCEPT crea match y aviso privado para el Comprador. PASS
-solo guarda la decisión. No hay reserva del inmueble.
+LIKE crea directamente decisión, match y aviso; PASS solo crea decisión.
+US5 incorpora aceptación posterior del Vendedor; no hay reserva del inmueble.
 
-`accounts/repository.py` centraliza Firestore y Azure Blob Storage, incluidas
-las transacciones y las claves canónicas `swipes/{key}`, `matches/{key}` y
-`notifications/buyer-match-{key}`. Firestore garantiza unicidad de path; valores,
+`accounts/repository.py` centraliza Firestore y Azure Blob Storage, incluida la
+transacción y las claves canónicas `swipes/{key}`, `matches/{key}` y
+`notifications/match-{key}`. Firestore garantiza unicidad de path; valores,
 referencias y conjunto completo son garantías del servicio, no CHECK/FK.
 Los reintentos equivalentes son 200, nuevos 201 y contrarios 409.
 Abortos de lectura/commit y colisiones usan transacciones nuevas acotadas.
 
 GET `/api/inmuebles/explorar` y POST `/api/inmuebles/{id}/decision` son BUYER;
-GET `/api/matches` admite ambos roles; GET de candidatos y POST de transición
-son solo SELLER y comprueban propiedad. GET `/api/notificaciones` permite BUYER
-y SELLER para consultar solo avisos de la cuenta autenticada.
-`request.user` se construye desde el token verificado y
+GET `/api/notificaciones` permite BUYER y SELLER para consultar solo avisos de
+la cuenta autenticada. `request.user` se construye desde el token verificado y
 el perfil, sin aceptar selectores de identidad del cliente.
 Los GET comparten `limit/cursor` 20/50, orden fecha/ID descendentes y cursor
 firmado. Exploración carga decisiones en batch, sin OFFSET ni consultas por foto.
@@ -46,10 +51,12 @@ presentación, continuación visible y reintento de interfaz no son pruebas de
 esta US de backend. Evidencia y límites por CA en [US4 backend](us4_backend.md).
 Azure Blob se mockea y no se probó producción.
 
-US4.10 verificó publicación multipart US3, exploración, fotos, LIKE/PASS,
-exclusión al re-login y aislamiento entre Compradores. El match inmediato de
-esa prueba es histórico y queda sustituido por la aceptación explícita de
-US5.8; su test integrado actual comprueba candidatura, aceptación y listas.
+US4.10 añade `test_published_multi_photo_listings_survive_full_buyer_flow`:
+publicación multipart US3 con dos fotos, exploración, LIKE/PASS, aviso privado,
+re-login, exclusión persistente y segundo Comprador con match independiente.
+La suite completa pasó 167 tests con Auth/Firestore Emulator y mocks de Azure
+Blob. La interfaz se comprobó aparte en navegador con Auth Emulator y respuestas
+de API interceptadas; no se afirmó integración de navegador con Firestore real.
 
 US6.8: la suite actual pasó 171 tests con ambos emuladores. `ProfileSessionIntegrationTests`
 comprueba consultas/actualizaciones como BUYER y SELLER, normalización, carrera
@@ -67,53 +74,17 @@ en las pruebas US6.8 con Auth/Firestore Emulator; UI no representa persistencia
 real de Firestore.
 
 US7.4 amplía la lectura privada de notificaciones a ambos roles. La suite
-indicada en README backend verificó paginación,
+indicada en README backend pasó **172 tests** con Auth/Firestore Emulator;
+incluye aviso de interés del US4 al propietario, exclusión de PASS, paginación,
 fecha/mensaje/orden, aislamiento BUYER/SELLER/tercero, rechazo de selectores,
 consulta sin escrituras y persistencia del aviso tras logout y re-login del
 SELLER. Azure Blob se simula. La UI pasó 25 tests Node, lint/build y pruebas
 de navegador con Auth Emulator/API interceptada y viewports 1280×900/390×844
 emulados. No se usaron servicios reales ni hardware móvil.
 
-US5.8 añade el productor de aviso de confirmación al Comprador y la consulta
-de matches/candidaturas para ambos roles. La evidencia actual y los límites
-están en el [README backend](../backend/README.md). La suite completa de backend
-pasó 182 tests con Auth/Firestore Emulator; Azure Blob usa mocks. La carrera
-SELLER ACCEPT/REJECT usa solicitudes simultáneas reales y las pruebas de fallo
-comprueban el estado final de los documentos.
-
-US5.9 amplía `FirebaseFlowTests.test_published_multi_photo_listings_survive_full_buyer_flow`
-para dos viviendas del mismo Vendedor y dos Compradores: LIKE sigue pendiente,
-ACCEPT aparece en las dos listas, REJECT no aparece en ninguna y un retry de
-ACCEPT conserva el mismo match. La suite completa del comando documentado pasó
-184 tests con Auth y Firestore Emulator; Azure Blob permanece mockeado. No se
-usaron servicios reales. La interfaz se probó separadamente con Auth Emulator
-y un mock HTTP local, no contra Firestore; los resultados/límites están en el
-[README backend](../backend/README.md) y [resultado.md](../resultado.md).
-
-US8.6 añade `users/{uid}.preferences` y la API privada
-`GET/PUT /api/auth/preferences` para BUYER. El mapa almacena límites numéricos
-en unidades enteras de Firestore (centésimas de euro/m²), mínimos enteros y
-alojamiento compartido. `get_pending_listings` aplica los filtros además de
-excluir decisiones propias. El cursor incorpora una huella de la configuración.
-La suite completa pasó 190 tests con Auth/Firestore Emulator; 29 tests de
-`FirestoreDecisionTests` incluyen aislamiento y rollback de filtros. Las reglas
-remotas no se desplegaron y Azure Blob sigue mockeado.
-
-US9.7 verifica las propuestas y la selección definitiva a partir de matches
-confirmados. Cada intención de envío conserva su identificador, su historial
-y sus avisos. El documento del anuncio arbitra propuestas pendientes rivales.
-Al aceptar, la misma transacción cierra el anuncio, guarda la selección y
-emite los avisos privados. Otros candidatos reciben la indisponibilidad de
-la vivienda. Los matches conservan su historial y exponen la disponibilidad.
-Los dos índices de `selections` están declarados en el repositorio.
-El contrato está en el [README backend](../backend/README.md) y la evidencia
-por criterio en [resultado.md](../resultado.md).
-
-US9.8 conecta esa API al recorrido de selección en navegador. Los matches
-del propietario incluyen si ya hay una propuesta pendiente y el detalle
-lee las condiciones actuales y el nombre vigente del Vendedor. El comando
-del [README backend](../backend/README.md) ejecuta los recorridos con
-Chrome/Chromium, Django y los emuladores demo.
+US5 contiene el endpoint de confirmación del vendedor, pero no un productor
+de avisos de confirmación para BUYER. La consulta de un aviso BUYER previamente persistido
+sí está cubierta con Firestore Emulator; su creación desde US5 no está verificada.
 
 <details>
 <summary>Historial anterior a US4 (conservado como referencia)</summary>

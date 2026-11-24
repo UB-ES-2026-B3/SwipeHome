@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import { changePassword, updateProfile } from '../api/auth'
 import { FormField } from '../components/FormField'
 import { Logo } from '../components/Logo'
-import { PreferenceFilters } from '../components/PreferenceFilters'
+import { SearchPreferencesForm } from '../components/SearchPreferencesForm'
 import { useAuth } from '../hooks/useAuth'
 
 const ROLE_LABELS = { BUYER: 'Comprador', SELLER: 'Vendedor' }
@@ -68,6 +68,7 @@ export function ProfilePage() {
     new: false,
     confirmation: false,
   })
+  const [preferencesOpen, setPreferencesOpen] = useState(false)
 
   if (loading) {
     return <div className="page-loading" aria-label="Cargando perfil"><div className="page-loading__spinner" /></div>
@@ -201,7 +202,15 @@ export function ProfilePage() {
           </form>
         </section>
 
-        {user.role === 'BUYER' && <PreferenceFilters />}
+        {user.role === 'BUYER' && (
+          <section className="profile-card" aria-labelledby="preferences-link-title">
+            <h2 id="preferences-link-title">Preferencias de búsqueda</h2>
+            <p>Configura los criterios que utilizará el explorador.</p>
+            <button type="button" className="btn btn--red" onClick={() => setPreferencesOpen(true)}>
+              Editar preferencias
+            </button>
+          </section>
+        )}
 
         <section className="profile-card" aria-labelledby="password-title">
           <h2 id="password-title">Cambiar contraseña</h2>
@@ -247,6 +256,14 @@ export function ProfilePage() {
           </form>
         </section>
       </div>
+      {preferencesOpen && (
+        <div className="preferences-modal" role="presentation" onMouseDown={(event) => {
+          if (event.target === event.currentTarget) setPreferencesOpen(false)
+        }}>
+          <SearchPreferencesForm inModal onCancel={() => setPreferencesOpen(false)}
+            onSaved={() => setPreferencesOpen(false)} onReset={() => {}} />
+        </div>
+      )}
     </main>
   )
 }

@@ -1,17 +1,17 @@
 import { Navigate, Route, Routes } from 'react-router-dom'
 import { useAuth } from './hooks/useAuth'
 import { BuyerHome } from './pages/BuyerHome'
+import { BuyerMatchesPage } from './pages/BuyerMatchesPage'
+import { BuyerProposalsPage } from './pages/BuyerProposalsPage'
 import { LandingPage } from './pages/LandingPage'
 import { LoginPage } from './pages/LoginPage'
-import { MatchesPage } from './pages/MatchesPage'
 import { PropertyPublish } from './pages/PropertyPublish'
 import { NotificationsPage } from './pages/NotificationsPage'
-import { PublishPropertyPage } from './pages/PublishPropertyPage'
 import { ProfilePage } from './pages/ProfilePage'
-import { ProposalsPage } from './pages/ProposalsPage'
 import { RegisterPage } from './pages/RegisterPage'
 import { RegisterChoicePage } from './pages/RegisterChoicePage'
 import { SellerHome } from './pages/SellerHome'
+import { SellerMatchesPage } from './pages/SellerMatchesPage'
 
 /**
  * Ruta protegida: redirige a '/' si no autenticado.
@@ -70,12 +70,39 @@ export default function App() {
         }
       />
 
+      <Route
+        path="/vendedor/matches"
+        element={
+          <PrivateRoute requiredRole="SELLER">
+            <SellerMatchesPage />
+          </PrivateRoute>
+        }
+      />
+
       {/* Inicio Comprador */}
       <Route
         path="/comprador/inicio"
         element={
           <PrivateRoute requiredRole="BUYER">
             <BuyerHome />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/comprador/matches"
+        element={
+          <PrivateRoute requiredRole="BUYER">
+            <BuyerMatchesPage />
+          </PrivateRoute>
+        }
+      />
+
+      <Route
+        path="/comprador/propuestas"
+        element={
+          <PrivateRoute requiredRole="BUYER">
+            <BuyerProposalsPage />
           </PrivateRoute>
         }
       />
@@ -106,20 +133,6 @@ export default function App() {
             <NotificationsPage />
           </PrivateRoute>
         }
-      />
-
-      <Route
-        path="/mis-matches"
-        element={
-          <PrivateRoute>
-            <MatchesPage />
-          </PrivateRoute>
-        }
-      />
-
-      <Route
-        path="/propuestas/:selectionId?"
-        element={<PrivateRoute><ProposalsPage /></PrivateRoute>}
       />
 
       {/* Cualquier ruta no definida → landing */}

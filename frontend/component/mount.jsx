@@ -1,16 +1,17 @@
 import { createRoot } from 'react-dom/client'
 import { MemoryRouter, Route, Routes } from 'react-router-dom'
-import { SellerCandidates } from '../src/components/SellerCandidates'
-import { PreferenceFilters } from '../src/components/PreferenceFilters'
+import { SellerMatchesPage } from '../src/pages/SellerMatchesPage'
+import { SearchPreferencesForm } from '../src/components/SearchPreferencesForm'
 import { BuyerHome } from '../src/pages/BuyerHome'
-import { MatchesPage } from '../src/pages/MatchesPage'
-import { ProposalsPage } from '../src/pages/ProposalsPage'
+import { BuyerMatchesPage } from '../src/pages/BuyerMatchesPage'
+import { BuyerProposalsPage } from '../src/pages/BuyerProposalsPage'
 import '../src/index.css'
 
-const components = { SellerCandidates, PreferenceFilters, BuyerHome, MatchesPage, ProposalsPage }
+const components = { SellerMatchesPage, SearchPreferencesForm, BuyerHome, BuyerMatchesPage, BuyerProposalsPage }
 const root = createRoot(document.getElementById('root'))
 const deferred = new Map()
 const logout = async () => true
+window.confirm = () => true
 
 window.qa = {
   calls: [],
@@ -21,14 +22,12 @@ window.qa = {
     this.replies = options.replies
     this.calls = []
     this.unexpected = []
-    this.auth = { user: { name: 'Cuenta de prueba', uid: 'fixture', role: options.role || 'BUYER' }, logout }
+    this.auth = { user: { name: 'Cuenta de prueba', uid: 'fixture', role: options.role || 'BUYER' }, logout, expireSession: logout }
     const Component = components[name]
-    const onApplied = options.refreshFailure ? async () => false : undefined
     root.render(
       <MemoryRouter initialEntries={[options.path || '/']}>
         <Routes>
-          <Route path="/propuestas/:selectionId?" element={<Component />} />
-          <Route path="*" element={<Component onApplied={onApplied} />} />
+          <Route path="*" element={<Component />} />
         </Routes>
       </MemoryRouter>,
     )

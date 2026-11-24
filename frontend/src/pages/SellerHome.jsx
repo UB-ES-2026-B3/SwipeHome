@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { Link, useNavigate } from 'react-router-dom'
 import { getNotifications } from '../api/notifications'
 import { getActiveProperties } from '../api/properties'
 import { Logo } from '../components/Logo'
-import { SellerCandidates } from '../components/SellerCandidates'
 import { useAuth } from '../hooks/useAuth'
 
 function formatNotificationDate(value) {
@@ -79,8 +78,11 @@ export function SellerHome() {
   }, [])
 
   useEffect(() => {
-    loadPublishedProperties()
-    loadNotifications()
+    const task = window.setTimeout(() => {
+      loadPublishedProperties()
+      loadNotifications()
+    }, 0)
+    return () => window.clearTimeout(task)
   }, [loadNotifications, loadPublishedProperties])
 
   return (
@@ -89,12 +91,6 @@ export function SellerHome() {
         <Logo size="sm" to="/vendedor/inicio" />
         <div className="seller-dashboard__account">
           <span className="seller-dashboard__role uniform-action">Vendedor</span>
-          <button type="button" className="uniform-action" onClick={() => navigate('/mis-matches')}>
-            Mis matches
-          </button>
-          <button type="button" className="uniform-action" onClick={() => navigate('/propuestas')}>
-            Propuestas
-          </button>
           <button type="button" className="uniform-action" onClick={() => navigate('/notificaciones')}>
             Notificaciones
           </button>
@@ -108,7 +104,7 @@ export function SellerHome() {
       </header>
 
       <div className="seller-dashboard__content">
-        <nav aria-label="Menú del vendedor">
+        <nav className="seller-matches__actions" aria-label="Menú del vendedor">
           <button
             type="button"
             className="seller-dashboard__publish"
@@ -116,6 +112,7 @@ export function SellerHome() {
           >
             Publicar
           </button>
+          <Link className="btn btn--ghost" to="/vendedor/matches">Candidatos y matches</Link>
         </nav>
 
         <section className="seller-dashboard__list" aria-labelledby="published-properties-title">
@@ -159,8 +156,6 @@ export function SellerHome() {
             </div>
           ) : null}
         </section>
-
-        <SellerCandidates />
 
         <section className="seller-dashboard__notifications" aria-labelledby="notifications-title">
           <div className="seller-dashboard__section-header">

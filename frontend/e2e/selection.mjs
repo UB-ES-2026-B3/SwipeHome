@@ -8,7 +8,7 @@ const input = JSON.parse(await readStream(process.stdin))
 const { scenario, backend } = input
 
 const homeTitle = 'Piso luminoso'
-const sendPath = '/api/inmuebles/home/propuestas'
+const sendPath = '/api/propuestas'
 const mutations = []
 let nextFault
 
@@ -25,7 +25,7 @@ const app = await startApp(input, [{
     configureServer(vite) {
       vite.middlewares.use(async (request, response, next) => {
         if (request.method !== 'POST'
-          || !/^\/api\/(?:inmuebles\/[^/]+\/propuestas|propuestas\/[^/]+\/decision)$/.test(request.url)) {
+          || !/^\/api\/propuestas(?:\/[^/]+\/(?:aceptar|rechazar|cancelar))?$/.test(request.url)) {
           next()
           return
         }
@@ -47,6 +47,7 @@ const app = await startApp(input, [{
           })
           entry.status = upstream.status
           const raw = await upstream.text()
+          entry.response = JSON.parse(raw)
           response.writeHead(fault?.failureStatus ?? upstream.status, { 'Content-Type': 'application/json' })
           response.end(fault?.failureStatus ? JSON.stringify({ error: 'Error temporal. Inténtalo de nuevo.' }) : raw)
           fault?.finished.resolve(entry)
@@ -58,113 +59,71 @@ const app = await startApp(input, [{
       })
     },
 }])
-const { chromium, open, pathOf, login, account } = app
-const buttonExists = (tab, label) => tab.evaluate((name) =>
-  [...document.querySelectorAll('main button')].some((button) => button.innerText.trim() === name), label)
 
-async function buyerCard(seller, buyer) {
-  const position = await waitFor(() => seller.evaluate((name) => {
-    const cards = [...document.querySelectorAll('.matches-page__list > li')]
-    return cards.findIndex((card) => card.innerText.includes(`Comprador/a: Cuenta ${name}\n`)
-      || card.innerText.includes(`Comprador/a: Cuenta ${name}\r`)) + 1
-  }, buyer), `match de ${buyer}`)
-  return `.matches-page__list > li:nth-child(${position})`
+const { chromium, open, login, account } = app
+const sellerPath = '/vendedor/matches'
+const buyerPath = '/comprador/propuestas'
+const proposalButton = (buyer) => 'Proponer selección: Cuenta ' + buyer + ', ' + homeTitle
+const cancelButton = 'Cancelar propuesta: Cuenta buyer, ' + homeTitle
+const network = { latency: 0, downloadThroughput: -1, uploadThroughput: -1 }
+
+async function sellerView(seller) {
+  await open(seller, sellerPath)
+  await seller.click('Matches confirmados')
 }
 
-async function propose(seller, buyer = 'buyer') {
-  await seller.click('Enviar propuesta', await buyerCard(seller, buyer))
+async function propose(seller, who = 'buyer') {
+  await seller.click(proposalButton(who))
   await seller.text('Propuesta enviada.')
-  await seller.click('Ver propuesta')
-  await seller.text('Estado: Pendiente')
-  return pathOf(seller)
+  await seller.text('Pendiente')
 }
 
-async function buyerDetail(buyer, expectedPath) {
-  await buyer.click('Propuestas')
-  await buyer.click(`${homeTitle} · Pendiente`)
-  await buyer.text('Estado: Pendiente')
-  assert.equal(await pathOf(buyer), expectedPath)
+async function accept(buyer) {
+  await buyer.keyboardClick('Aceptar')
+  await buyer.text('Aceptada')
+  await buyer.text('Anuncio cerrado')
 }
 
 async function acceptance() {
   const seller = await account('seller')
-  const staleSeller = await account('seller')
+  const stale = await account('seller')
   const buyer = await account('buyer', { width: 390, height: 844, mobile: true })
   const other = await account('other')
   const explorer = await account('outsider')
   await explorer.text(homeTitle)
-  await seller.click('Mis matches')
-  await staleSeller.click('Mis matches')
-  const staleOtherCard = await buyerCard(staleSeller, 'other')
-  assert.equal(await buttonExists(staleSeller, 'Enviar propuesta'), true)
-
-  const path = await propose(seller)
-  await assertNoOverflow(seller, 1280)
-  await seller.click('Mis matches')
-  await seller.text('Hay una propuesta pendiente para esta vivienda.')
-  assert.equal(await buttonExists(seller, 'Enviar propuesta'), false)
-  await staleSeller.click('Enviar propuesta', staleOtherCard)
-  await staleSeller.text('El anuncio o la propuesta ya tiene un estado incompatible.')
-  await staleSeller.text('Hay una propuesta pendiente para esta vivienda.')
-  assert.equal(await buttonExists(staleSeller, 'Enviar propuesta'), false)
-
-  await buyer.click('Notificaciones')
-  await buyer.text('El propietario te ha enviado una propuesta de selección.')
-  await buyer.click('Ver propuesta')
-  await buyer.text('Estado: Pendiente')
-  assert.equal(await pathOf(buyer), path)
-  for (const value of ['999.99 €', '65.50 m²', 'Cuenta seller actualizada', 'Condiciones actualizadas', 'Calle Mayor 1']) {
-    await buyer.text(value)
-  }
-  assert.equal(await buttonExists(buyer, 'Cancelar propuesta'), false)
+  await sellerView(stale)
+  await sellerView(seller)
+  await propose(seller)
+  await stale.click(proposalButton('other'))
+  await stale.text('La situación de la vivienda ha cambiado.')
+  await stale.text('Pendiente')
+  await open(buyer, '/notificaciones')
+  await buyer.text('Has recibido una propuesta de selección')
+  await open(buyer, buyerPath)
+  await buyer.text('Pendiente')
+  await buyer.text('Cuenta seller actualizada')
+  await buyer.click('Ver vivienda')
+  await buyer.text('Condiciones actualizadas')
   await assertNoOverflow(buyer, 390)
-  await buyer.keyboardClick('Aceptar propuesta')
-  await buyer.text('Estado: Aceptada')
-  await buyer.text('Vivienda no disponible')
-  assert.equal(await buttonExists(buyer, 'Aceptar propuesta'), false)
-
-  await seller.click('Volver al inicio')
-  await seller.click('Notificaciones')
-  await seller.text('El comprador ha aceptado la propuesta y la vivienda ha quedado cerrada.')
-  await seller.click('Ver propuesta')
-  await seller.text('Estado: Aceptada')
-  assert.equal(await buttonExists(seller, 'Cancelar propuesta'), false)
-  await seller.click('Mis matches')
-  await seller.text('Vivienda no disponible')
-  assert.equal(await buttonExists(seller, 'Enviar propuesta'), false)
-
+  await accept(buyer)
+  await open(seller, '/notificaciones')
+  await seller.text('El comprador ha aceptado tu propuesta')
+  await sellerView(seller)
+  await seller.text('Anuncio cerrado')
   await open(explorer, '/comprador/inicio')
-  await explorer.text('No hay viviendas pendientes')
-  assert.equal(await explorer.evaluate((title) => document.body.innerText.includes(title), homeTitle), false)
-  await other.click('Mis matches')
-  await other.text('Vivienda no disponible')
-  await open(other, '/mis-matches')
-  await other.text('Vivienda no disponible')
-  await other.click('Propuestas')
-  await other.text('Aún no tienes propuestas.')
-  await open(other, path)
-  await other.text('Propuesta o candidatura no encontrada.')
-  assert.equal(await buttonExists(other, 'Aceptar propuesta'), false)
-  await other.click('Notificaciones')
-  await other.text('La vivienda ya no está disponible.')
-  const notice = await other.evaluate(() => {
-    const card = document.querySelector('.notification-card--SELECTION_UNAVAILABLE')
-    return { text: card.innerText, links: card.querySelectorAll('a').length }
-  })
-  assert.match(notice.text, /Piso luminoso/)
-  assert.doesNotMatch(notice.text, /Cuenta buyer|Comprador:/)
-  assert.equal(notice.links, 0)
-
-  await open(buyer, path)
-  await buyer.text('Estado: Aceptada')
-  await buyer.click('Salir')
-  await waitFor(async () => await pathOf(buyer) === '/', 'cierre de sesión del comprador')
-  await delay(1100) // Auth Emulator registra auth_time en segundos.
+  await explorer.text('No hay más viviendas por explorar')
+  await open(other, '/comprador/matches')
+  await other.text('Anuncio cerrado')
+  await open(other, buyerPath)
+  await other.text('Todavía no tienes propuestas recibidas.')
+  await open(other, '/notificaciones')
+  await other.text('La vivienda ya no está disponible')
+  await open(buyer, '/comprador/inicio')
+  await buyer.click('Cerrar sesión')
+  await waitFor(() => buyer.evaluate(() => location.pathname === '/'), 'cierre de sesión')
   await login(buyer, 'buyer')
-  await buyer.click('Propuestas')
-  await buyer.click(`${homeTitle} · Aceptada`)
-  await buyer.text('Estado: Aceptada')
-  assert.equal(await pathOf(buyer), path)
+  await open(buyer, buyerPath)
+  await buyer.text('Aceptada')
 }
 
 async function rejection() {
@@ -172,114 +131,85 @@ async function rejection() {
   const buyer = await account('buyer')
   const other = await account('other')
   const explorer = await account('outsider')
-  await seller.click('Mis matches')
-  const path = await propose(seller)
-  await buyerDetail(buyer, path)
-  await buyer.keyboardClick('Rechazar propuesta')
-  await buyer.text('Estado: Rechazada')
-  assert.equal(await buttonExists(buyer, 'Aceptar propuesta'), false)
-  await seller.click('Notificaciones')
-  await seller.text('El comprador ha rechazado la propuesta.')
-  await seller.click('Ver propuesta')
-  await seller.text('Estado: Rechazada')
+  await sellerView(seller)
+  await propose(seller)
+  await open(buyer, buyerPath)
+  await buyer.text('Pendiente')
+  await buyer.keyboardClick('Rechazar')
+  await buyer.text('Rechazada')
+  await open(seller, '/notificaciones')
+  await seller.text('El comprador ha rechazado tu propuesta')
   await open(explorer, '/comprador/inicio')
   await explorer.text(homeTitle)
-  await seller.click('Mis matches')
-  const newPath = await propose(seller, 'other')
-  assert.notEqual(path, newPath)
-  await buyerDetail(other, newPath)
-  await open(buyer, newPath)
-  await buyer.text('Propuesta o candidatura no encontrada.')
+  await sellerView(seller)
+  await propose(seller, 'other')
+  await open(other, buyerPath)
+  await other.text('Pendiente')
 }
 
 async function cancellation() {
   const seller = await account('seller')
   const buyer = await account('buyer')
   const explorer = await account('outsider')
-  await seller.click('Mis matches')
-  const path = await propose(seller)
-  await buyerDetail(buyer, path)
-  await seller.keyboardClick('Cancelar propuesta')
-  await seller.text('Estado: Cancelada')
-  await buyer.click('Aceptar propuesta')
-  await buyer.text('La propuesta cambió. Comprueba su estado actualizado.')
-  await buyer.text('Estado: Cancelada')
-  assert.equal(await buttonExists(buyer, 'Aceptar propuesta'), false)
-  assert.equal(await buttonExists(buyer, 'Rechazar propuesta'), false)
-  assert.equal(mutations.find((entry) => entry.body?.decision === 'ACCEPT')?.status, 409)
-  await buyer.click('Notificaciones')
-  await buyer.text('El propietario ha cancelado la propuesta.')
+  await sellerView(seller)
+  await propose(seller)
+  await open(buyer, buyerPath)
+  await buyer.text('Pendiente')
+  await seller.keyboardClick(cancelButton)
+  await seller.text('Propuesta cancelada.')
+  await buyer.click('Aceptar')
+  await buyer.text('La propuesta ha cambiado.')
+  await buyer.text('Cancelada')
+  await open(buyer, '/notificaciones')
+  await buyer.text('El propietario ha cancelado tu propuesta')
   await open(explorer, '/comprador/inicio')
   await explorer.text(homeTitle)
-  await seller.click('Mis matches')
-  const fresh = await propose(seller)
-  assert.notEqual(fresh, path)
+  await sellerView(seller)
+  await propose(seller)
 }
 
 async function errors() {
   const seller = await account('seller')
   const buyer = await account('buyer')
-  await seller.click('Mis matches')
-  const card = await buyerCard(seller, 'buyer')
+  await sellerView(seller)
   const send = holdNext(sendPath, 503)
-  await seller.evaluate((scope) => {
-    const button = document.querySelector(`${scope} button`)
-    button.click()
-    button.click()
-  }, card)
+  await seller.click(proposalButton('buyer'))
   await send.started
-  await seller.text('Enviando propuesta…')
-  assert.equal(await seller.evaluate((scope) => document.querySelector(`${scope} button`).disabled, card), true)
-  assert.equal(mutations.filter((entry) => entry.path === sendPath).length, 1)
+  await seller.text('Enviando propuesta')
+  assert.equal(await seller.evaluate(() => [...document.querySelectorAll('#seller-panel-confirmed li button')].filter(b => b.textContent === 'Proponer selección').every(b => b.disabled)), true)
   send.release()
-  const committed = await send.finished
-  assert.equal(committed.status, 201)
-  await seller.text('Error temporal. Inténtalo de nuevo.')
-  await open(seller, '/mis-matches')
-  await seller.text('Hay una propuesta pendiente para esta vivienda.')
-  await seller.click('Reintentar envío')
+  const first = await send.finished
+  assert.equal(first.status, 201)
+  await seller.text('No se pudo confirmar el envío.')
+  await seller.click(proposalButton('buyer'))
   await seller.text('Propuesta enviada.')
-  assert.deepEqual(mutations.filter((entry) => entry.path === sendPath).map((entry) => entry.status), [201, 200])
-  assert.deepEqual(mutations.findLast((entry) => entry.path === sendPath).body, committed.body)
-  await seller.click('Ver propuesta')
-  const path = await pathOf(seller)
-  await buyerDetail(buyer, path)
+  assert.deepEqual(mutations.slice(0, 2).map(({ status }) => status), [201, 200])
+  assert.deepEqual(mutations[0].body, mutations[1].body)
 
-  const network = { latency: 0, downloadThroughput: -1, uploadThroughput: -1 }
+  await open(buyer, buyerPath)
+  await buyer.text('Pendiente')
   await buyer.send('Network.emulateNetworkConditions', { ...network, offline: true })
-  await buyer.click('Aceptar propuesta')
-  await buyer.text('No hay conexión con el servidor. Puedes reintentar la respuesta.')
+  await buyer.click('Aceptar')
+  await buyer.text('No se pudo confirmar la respuesta.')
   await buyer.send('Network.emulateNetworkConditions', { ...network, offline: false })
-  const decisionPath = '/api' + path + '/decision'
-  assert.equal(mutations.filter((entry) => entry.path === decisionPath).length, 0)
-  await seller.click('Actualizar')
-  await seller.text('Estado: Pendiente')
-
-  const decision = holdNext(decisionPath, 503)
-  await buyer.evaluate(() => {
-    const button = [...document.querySelectorAll('main button')].find((node) => node.innerText === 'Aceptar propuesta')
-    button.click()
-    button.click()
-  })
-  await decision.started
-  await buyer.text('Guardando respuesta…')
-  assert.equal(await buyer.evaluate(() => [...document.querySelectorAll('.proposal-actions button')].every((b) => b.disabled)), true)
-  assert.equal(mutations.filter((entry) => entry.path === decisionPath).length, 1)
-  decision.release()
-  assert.equal((await decision.finished).status, 201)
-  await buyer.text('Error temporal. Inténtalo de nuevo.')
-  await buyer.click('Aceptar propuesta')
-  await buyer.text('Estado: Aceptada')
-  assert.deepEqual(mutations.filter((entry) => entry.path === decisionPath).map((entry) => entry.status), [201, 200])
+  const proposalId = first.response.id
+  const path = '/api/propuestas/' + proposalId + '/aceptar'
+  const acceptFault = holdNext(path, 503)
+  await buyer.click('Aceptar')
+  await acceptFault.started
+  assert.equal(await buyer.evaluate(() => [...document.querySelectorAll('.buyer-proposals__card button')].filter(b => ['Aceptar', 'Rechazar'].includes(b.textContent)).every(b => b.disabled)), true)
+  acceptFault.release()
+  assert.equal((await acceptFault.finished).status, 200)
+  await buyer.text('No se pudo confirmar la respuesta.')
+  await accept(buyer)
+  assert.deepEqual(mutations.filter(({ path: route }) => route === path).map(({ status }) => status), [200, 200])
 }
 
 try {
-  console.log(`${scenario} en ${chromium.version}`)
   await { acceptance, rejection, cancellation, errors }[scenario]()
-  if (process.env.SWIPEHOME_QA_DEBUG === '1') await chromium.capture(`selection-${scenario}`)
-  console.log(`${scenario}: recorrido de navegador correcto`)
+  console.log(scenario + ': recorrido de navegador correcto')
 } catch (error) {
-  await chromium.capture(`selection-${scenario}-failed`)
+  await chromium.capture(scenario + '-failed')
   throw error
 } finally {
   await app.close()

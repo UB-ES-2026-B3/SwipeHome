@@ -55,9 +55,10 @@ class EmulatorFixture(LiveServerTestCase):
         cls.addClassCleanup(delete_app, app)
         cls.addClassCleanup(cls.db.close)
         super().setUpClass()
-        for target in ("accounts.repository.get_app", "accounts.authentication.get_app", "accounts.views.get_app"):
+        for target in ("accounts.repository.get_app", "accounts.authentication.get_app", "accounts.views.get_app", "properties.match_service.get_app"):
             cls.enterClassContext(patch(target, return_value=app))
-        scoped_collections(cls, cls.db, ("users", "revocations"), class_scope=True)
+        cls.enterClassContext(patch.object(repository.firestore, "client", return_value=cls.db))
+        scoped_collections(cls, cls.db, ("users",), class_scope=True)
         cls.uids, cls.emails, cls.tokens = {}, {}, {}
         suffix = uuid4().hex
         for user, role in ROLES.items():
@@ -84,7 +85,8 @@ class EmulatorFixture(LiveServerTestCase):
         return response.json()["idToken"]
 
     def setUp(self):
-        self.collections = scoped_collections(self, self.db, ("listings", "swipes", "matches", "selections", "notifications"))
+        self.collections = scoped_collections(self, self.db, ("listings", "swipes", "matches", "selections", "notifications",
+                                                                   "preferences", "proposals", "proposal_requests", "selection_events"))
         self.seed("home", "seller")
 
     def seed(self, identifier, seller, **attributes):
@@ -112,25 +114,27 @@ class EmulatorFixture(LiveServerTestCase):
         decision_id = self.assert_status(response, 201)["decision"]["id"]
         if state in {"ACCEPT", "REJECT"}:
             response = self.request(
-                "POST", f"/api/matches/candidaturas/{decision_id}/decision", seller,
-                body={"decision": state},
+                "POST", f"/api/matches/{decision_id}/decision-vendedor", seller,
+                body={"decision": {"ACCEPT": "LIKE", "REJECT": "PASS"}[state]},
             )
-            self.assert_status(response, 201)
+            self.assert_status(response, 200)
         return decision_id
 
     def propose(self, buyer="buyer", *, seller="seller", identifier="home", key=None):
         return self.request(
-            "POST", f"/api/inmuebles/{identifier}/propuestas", seller,
-            body={"buyer_uid": self.uids[buyer], "idempotency_key": key or uuid4().hex},
+            "POST", "/api/propuestas", seller,
+            body={"listing_id": identifier, "match_id": repository.decision_key(self.uids[buyer], identifier),
+                  "request_id": key or uuid4().hex},
         )
 
     def decide(self, proposal_id, decision, user="buyer"):
-        return self.request("POST", f"/api/propuestas/{proposal_id}/decision", user, body={"decision": decision})
+        action = {"ACCEPT": "aceptar", "REJECT": "rechazar", "CANCEL": "cancelar"}[decision]
+        return self.request("POST", f"/api/propuestas/{proposal_id}/{action}", user, body={})
 
     def notices(self, user):
         return [
             row for row in self.assert_status(self.request("GET", "/api/notificaciones", user), 200)["items"]
-            if row["type"].startswith("SELECTION_")
+            if row["type"] != "INTEREST"
         ]
 
     def rows(self, collection):

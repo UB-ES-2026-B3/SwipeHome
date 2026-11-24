@@ -19,8 +19,8 @@ FRONTEND = ROOT / "frontend"
 ARTIFACTS = ROOT / ".qa"
 BASE = ["accounts", "properties", "qa.test_environment"]
 WORKFLOW = "properties.workflow_integration.WorkflowIntegrationTests"
-MATCH_API = "properties.test_discovery.MatchApiTests"
-PREFERENCES_API = "properties.test_discovery.BuyerPreferencesApiTests"
+MATCH_API = "properties.test_matches"
+PREFERENCES_API = "properties.test_preferences"
 FIRESTORE = "properties.test_firestore.FirestoreDecisionTests"
 SELECTION = "properties.test_selection.SelectionIntegrationTests"
 BROWSER = "properties.workflow_e2e.WorkflowBrowserTests"
@@ -32,7 +32,7 @@ STORIES = {
     "5.9": ([MATCH_API], ["properties.test_firestore.FirebaseFlowTests",
                          WORKFLOW + ".test_publication_azurite_photos_survive_confirmed_match"],
             [BROWSER + ".test_interest_confirmation_and_rejection"]),
-    "8.6": ([PREFERENCES_API], [FIRESTORE + ".test_buyer_preferences_filter_isolation_reset_and_failed_write_are_persistent",
+    "8.6": ([PREFERENCES_API], ["properties.test_firestore_preferences",
                                WORKFLOW + ".test_preferences_invalidate_cursor_and_survive_new_auth_session"],
             [BROWSER + ".test_preferences_profile_explorer_and_private_reset"]),
     "9.7": ([], [SELECTION, WORKFLOW + ".test_pending_proposal_on_another_home_stays_private_after_acceptance"],
@@ -125,12 +125,16 @@ def configure_browser():
     raise RuntimeError("Define SWIPEHOME_E2E_CHROME con la ruta a Chrome, Chromium o Edge.")
 
 
-def run(command, cwd):
-    subprocess.run(command, cwd=cwd, check=True)
+def run(command, cwd, *, env=None):
+    subprocess.run(command, cwd=cwd, check=True, env=env)
 
 
-def django(labels, *options):
-    run([sys.executable, "-B", "manage.py", "test", *labels, *options, "--verbosity", "2"], BACKEND)
+def django(labels, *, offline=False):
+    env = None
+    if offline:
+        env = {name: value for name, value in os.environ.items()
+               if name not in {"FIREBASE_AUTH_EMULATOR_HOST", "FIRESTORE_EMULATOR_HOST"}}
+    run([sys.executable, "-B", "manage.py", "test", *labels, "--verbosity", "2"], BACKEND, env=env)
 
 
 def main():
@@ -175,7 +179,7 @@ def main():
                 run(["node", "--test", "tests/*.test.mjs"], FRONTEND)
             labels = focused[0] if focused else BASE
             if labels:
-                django(labels, "--exclude-tag", "integration")
+                django(labels, offline=True)
             else:
                 print(f"US {args.story}: la cobertura automatizada está en componentes, integración y E2E.", flush=True)
         if args.suite in {"components", "all"}:
@@ -184,7 +188,7 @@ def main():
             run(["node", "--test", *options, "component/flows.spec.mjs"], FRONTEND)
         if args.suite in {"integration", "all"}:
             labels = [args.test] if args.test else focused[1] if focused else [*BASE, WORKFLOW]
-            django(labels, "--tag", "integration")
+            django(labels)
         if args.suite in {"e2e", "all"}:
             labels = [args.test] if args.test else focused[2] if focused else [BROWSER, SELECTION_BROWSER]
             django(labels)

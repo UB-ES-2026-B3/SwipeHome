@@ -18,13 +18,13 @@ const stamp = '2026-11-08T00:00:00Z'
 const home = {
   id: 'home', title: 'Piso de prueba', street: 'Calle Mayor 1', city: 'Barcelona', postal_code: '08001',
   description: 'Descripción del inmueble', price: '950.50', surface: '65.50', bedrooms: 2, bathrooms: 1,
-  people: 3, shared_accommodation: false, available: true, photos: [], created_at: stamp,
+  people: 3, shared_accommodation: false, availability: 'ACTIVE', photos: [], created_at: stamp,
 }
-const candidate = (id, name) => ({ id, buyer: { id, name }, listing: home, created_at: stamp })
-const proposal = (status) => ({ id: 'proposal', status, listing: home, seller: { name: 'Vendedora' } })
+const candidate = (id, name) => ({ id, status: 'CONFIRMED', buyer: { id, name }, seller: { id: 'seller', name: 'Vendedora' }, listing: home, confirmed_at: stamp, created_at: stamp })
+const proposal = (status) => ({ id: 'proposal', created_at: stamp, status, listing: home, seller: { name: 'Vendedora' } })
 const defaults = Object.fromEntries([
-  'price_min', 'price_max', 'surface_min', 'surface_max', 'bedrooms_min', 'bathrooms_min',
-  'people_min', 'shared_accommodation',
+  'min_price', 'max_price', 'min_area', 'max_area', 'bedrooms', 'min_bathrooms',
+  'people_offered', 'is_shared', 'city', 'postal_code',
 ].map((field) => [field, null]))
 
 before(async () => {
@@ -76,7 +76,7 @@ component('US 5.8 interés pendiente y confirmación incoherente reintentable', 
     exploreProperties: [success(page([home]))],
     decideProperty: [
       success({ decision: { listing_id: 'ajena', value: 'LIKE', seller_decision: 'PENDING' }, match: null }, 'interest'),
-      success({ decision: { listing_id: 'home', value: 'LIKE', seller_decision: 'PENDING' }, match: null }),
+      success({ decision: { listing_id: 'home', value: 'LIKE' }, match: { id: 'pending', listing_id: 'home', status: 'PENDING' } }),
     ],
   },
 }, async (tab) => {
@@ -92,82 +92,92 @@ component('US 5.8 interés pendiente y confirmación incoherente reintentable', 
   await tab.text('El servidor no confirmó la decisión.')
   await tab.text(home.title)
   await tab.keyboardClick('Reintentar')
-  await tab.text('Interés enviado al vendedor.')
+  await tab.text('Interés enviado')
   assert.equal(await tab.evaluate(() => document.body.innerText.includes('¡Match confirmado!')), false)
 })
 
-component('US 5.9 candidaturas paginadas y conflicto con actualización fallida', 'SellerCandidates', {
+component('US 5.9 candidaturas paginadas y conflicto con actualización fallida', 'SellerMatchesPage', {
   role: 'SELLER',
   replies: {
+    getActiveProperties: Array.from({ length: 2 }, () => success({ properties: [home] })),
+    getConfirmedMatches: Array.from({ length: 4 }, () => success(page([]))),
+    getProposals: Array.from({ length: 2 }, () => success(page([]))),
     getPendingCandidates: [
-      success(page([candidate('first', 'Ana')], 'next'), 'load'),
-      success(page([candidate('second', 'Bea')])),
+      success(page([{ ...candidate('first', 'Ana'), status: 'PENDING' }], 'next'), 'load'),
+      success(page([{ ...candidate('second', 'Bea'), status: 'PENDING' }])),
       error(503, 'No se pudo actualizar la lista.'),
       success(page([])),
     ],
     decideCandidate: [error(409, 'Candidatura resuelta.')],
   },
 }, async (tab) => {
-  await tab.text('Cargando candidaturas…')
+  await tab.text('Cargando pendientes…')
   await release(tab, 'load')
   await tab.text('Ana')
-  await tab.click('Cargar más candidaturas')
+  await tab.click('Cargar más')
   await tab.text('Bea')
   await tab.text('Ana')
-  assert.deepEqual(await calls(tab, 'getPendingCandidates'), [[{}], [{ cursor: 'next' }]])
-  await tab.click('Rechazar', '.seller-dashboard__candidate:nth-child(2)')
+  assert.deepEqual(await calls(tab, 'getPendingCandidates'), [[null, {}, 'home'], ['next', {}, 'home']])
+  await tab.click('No me interesa: Bea, Piso de prueba')
   await tab.text('No se pudo actualizar la lista.')
-  assert.equal(await tab.evaluate(() => document.body.innerText.includes('Se actualizó la lista.')), false)
-  await tab.click('Reintentar')
+  const claimedRefresh = await tab.evaluate(() => document.body.innerText.includes('Hemos actualizado las listas.'))
+  await tab.click('Reintentar', '#seller-panel-pending')
   await tab.text('No tienes candidaturas pendientes.')
-  assert.deepEqual(await calls(tab, 'decideCandidate'), [['second', 'REJECT']])
+  assert.deepEqual(await calls(tab, 'decideCandidate'), [['second', 'PASS']])
+  assert.equal(claimedRefresh, false, 'No se debe anunciar una actualización que respondió 503')
 })
 
-component('US 5.9 matches privados de comprador con paginación y disponibilidad', 'MatchesPage', {
-  replies: { getMatches: [
+component('US 5.9 matches privados de comprador con paginación y disponibilidad', 'BuyerMatchesPage', {
+  replies: { getConfirmedMatches: [
     success(page([candidate('first', 'Ana')], 'cursor')),
-    success(page([{ ...candidate('second', 'Bea'), listing: { ...home, title: 'Piso cerrado', available: false } }])),
+    success(page([{ ...candidate('second', 'Bea'), listing: { ...home, title: 'Piso cerrado', availability: 'CLOSED' } }])),
   ] },
 }, async (tab) => {
   await tab.text(home.title)
-  assert.equal(await hasButton(tab, 'Enviar propuesta'), false)
-  await tab.keyboardClick('Cargar más matches')
+  assert.equal(await hasButton(tab, 'Proponer selección'), false)
+  await tab.keyboardClick('Cargar más')
   await tab.text('Piso cerrado')
-  await tab.text('Vivienda no disponible')
+  await tab.text('Anuncio cerrado')
   await tab.text(home.title)
-  assert.deepEqual(await calls(tab, 'getMatches'), [[{}], [{ cursor: 'cursor' }]])
+  assert.deepEqual(await calls(tab, 'getConfirmedMatches'), [[null, {}], ['cursor', {}]])
 })
 
-component('US 8.6 validación accesible y restablecimiento fallido conservan los filtros', 'PreferenceFilters', {
-  refreshFailure: true,
+component('US 8.6 validación accesible y restablecimiento fallido conservan los filtros', 'SearchPreferencesForm', {
   replies: {
-    getBuyerFilters: [success({ filters: { ...defaults, price_max: '650.00' } })],
-    saveBuyerFilters: [
-      error(503, 'Error temporal al restablecer.'),
-      success({ filters: { ...defaults, price_max: '700.00' } }, 'save'),
+    getSearchPreferences: [success({ ...defaults, max_price: '650.00' })],
+    getFilterOptions: [success({ cities: [] })],
+    resetSearchPreferences: [error(503, 'Error temporal al restablecer.')],
+    saveSearchPreferences: [
+      success({ ...defaults, max_price: '700.00' }, 'save'),
+      success({ ...defaults, max_price: '700.00' }, 'duplicate'),
     ],
   },
 }, async (tab) => {
-  await tab.fill('#filter-price_min', '800')
+  await tab.fill('#pref-min-price', '800')
   await tab.click('Aplicar filtros')
-  await tab.text('El mínimo no puede superar el máximo.')
-  assert.equal(await tab.evaluate(() => document.querySelector('#filter-price_min').getAttribute('aria-describedby')),
-    'filter-price_min-error')
-  assert.equal((await calls(tab, 'saveBuyerFilters')).length, 0)
-  await tab.click('Cancelar cambios')
+  await tab.text('Debe ser mayor o igual al precio mínimo.')
+  const describedBy = await tab.evaluate(() => document.querySelector('#pref-max-price').getAttribute('aria-describedby'))
+  assert.equal(await tab.evaluate(() => document.getElementById('pref-max-price-error').getAttribute('role')), 'alert')
+  assert.equal((await calls(tab, 'saveSearchPreferences')).length, 0)
+  await tab.click('Cancelar')
   await tab.click('Restablecer filtros')
   await tab.text('Error temporal al restablecer.')
-  assert.equal(await tab.evaluate(() => Number(document.querySelector('#filter-price_max').value)), 650)
-  await tab.fill('#filter-price_max', '700')
+  assert.equal(await tab.evaluate(() => Number(document.querySelector('#pref-max-price').value)), 650)
+  await tab.fill('#pref-max-price', '700')
   await tab.evaluate(() => {
     document.querySelector('form').requestSubmit()
     document.querySelector('form').requestSubmit()
   })
-  await tab.text('Aplicando…')
-  assert.equal(await disabled(tab, '#filter-price_max'), true)
-  assert.deepEqual(await calls(tab, 'saveBuyerFilters'), [[defaults], [{ ...defaults, price_max: '700' }]])
+  await tab.text('Aplicar filtros')
+  assert.equal(await disabled(tab, 'button[type=submit]'), true)
+  const requests = await calls(tab, 'saveSearchPreferences')
   await release(tab, 'save')
-  await tab.text('Filtros guardados, pero no se pudieron cargar las viviendas.')
+  if (requests.length > 1) await release(tab, 'duplicate')
+  await tab.text('Preferencias aplicadas.')
+  assert.deepEqual({ describedBy, requests }, {
+    describedBy: 'pref-max-price-error',
+    requests: [[{ ...defaults, max_price: '700' }]],
+  })
 })
 
 component('US 8.6 integración de filtros con el explorador durante guardado y refresco', 'BuyerHome', {
@@ -176,66 +186,66 @@ component('US 8.6 integración de filtros con el explorador durante guardado y r
       success(page([home])),
       success(page([{ ...home, id: 'filtered', title: 'Piso filtrado' }]), 'refresh'),
     ],
-    getBuyerFilters: [success({ filters: defaults })],
-    saveBuyerFilters: [success({ filters: { ...defaults, price_max: '600.00' } }, 'save')],
+    getSearchPreferences: [success(defaults)],
+    getFilterOptions: [success({ cities: [] })],
+    saveSearchPreferences: [success({ ...defaults, max_price: '600.00' }, 'save')],
   },
 }, async (tab) => {
   await tab.text(home.title)
   await tab.click('Filtros')
-  await tab.fill('#filter-price_max', '600')
+  await tab.fill('#pref-max-price', '600')
   await tab.click('Aplicar filtros')
-  await tab.text('Aplicando…')
-  assert.equal(await disabled(tab, 'button[aria-label="Me interesa"]'), true)
+  await tab.text('Aplicar filtros')
+  assert.equal(await disabled(tab, 'button[type=submit]'), true)
   await release(tab, 'save')
   await tab.text('Cargando viviendas…')
   await release(tab, 'refresh')
   await tab.text('Piso filtrado')
-  await tab.text('Filtros guardados y aplicados.')
   assert.deepEqual(await calls(tab, 'decideProperty'), [])
   assert.equal(await disabled(tab, 'button[aria-label="Me interesa"]'), false)
 })
 
-component('US 9.7 conflicto de exclusividad bloquea todos los matches de la vivienda', 'MatchesPage', {
+component('US 9.7 conflicto de exclusividad bloquea todos los matches de la vivienda', 'SellerMatchesPage', {
   role: 'SELLER',
   replies: {
-    getMatches: [
-      success(page([candidate('first', 'Ana'), candidate('second', 'Bea')])),
-      success(page([candidate('first', 'Ana'), candidate('second', 'Bea')].map((row) => ({ ...row, proposal_pending: true })))),
-    ],
-    sendProposal: [{ ...error(409, 'Ya existe una propuesta pendiente.'), hold: 'send' }],
+    getActiveProperties: [success({ properties: [home] }), success({ properties: [home] })],
+    getPendingCandidates: [success(page([])), success(page([]))],
+    getConfirmedMatches: Array.from({ length: 4 }, () => success(page([candidate('first', 'Ana'), candidate('second', 'Bea')]))),
+    getProposals: [success(page([])), success(page([{ ...proposal('PENDING'), listing_id: 'home', match_id: 'first' }]))],
+    createProposal: [{ ...error(409, 'Ya existe una propuesta pendiente.'), hold: 'send' }],
   },
 }, async (tab) => {
-  await tab.text('Comprador/a: Ana')
-  await tab.click('Enviar propuesta', '.matches-page__item:nth-child(1)')
+  await tab.click('Matches confirmados')
+  await tab.click('Proponer selección: Ana, Piso de prueba')
   await tab.text('Enviando propuesta…')
-  assert.equal(await disabled(tab, '.matches-page__item:nth-child(2) button'), true)
-  const [[listingId, buyerId, key]] = await calls(tab, 'sendProposal')
+  assert.equal(await disabled(tab, '#seller-panel-confirmed li:nth-child(2) button'), true)
+  const [[listingId, buyerId, key]] = await calls(tab, 'createProposal')
   assert.equal(listingId, 'home')
   assert.equal(buyerId, 'first')
   assert.match(key, /^[0-9a-f-]{36}$/)
   await release(tab, 'send')
-  await tab.text('Ya existe una propuesta pendiente.')
-  await tab.text('Hay una propuesta pendiente para esta vivienda.')
-  assert.equal(await hasButton(tab, 'Enviar propuesta'), false)
+  await tab.text('La situación de la vivienda ha cambiado.')
+  await tab.text('Pendiente')
+  assert.equal(await hasButton(tab, 'Proponer selección'), false)
 })
 
-component('US 9.8 una propuesta obsoleta queda sin acciones hasta recuperar el estado', 'ProposalsPage', {
+component('US 9.8 una propuesta obsoleta queda sin acciones hasta recuperar el estado', 'BuyerProposalsPage', {
   path: '/propuestas/proposal',
   replies: {
+    getProposals: [success(page([{ id: 'proposal' }]))],
     getProposal: [success(proposal('PENDING')), error(503, 'Fallo al consultar el estado.'), success(proposal('CANCELLED'))],
-    respondToProposal: [{ ...error(409, 'Propuesta resuelta.'), hold: 'decision' }],
+    resolveProposal: [{ ...error(409, 'Propuesta resuelta.'), hold: 'decision' }],
   },
 }, async (tab) => {
-  await tab.text('Estado: Pendiente')
+  await tab.text('Pendiente')
   assert.equal(await hasButton(tab, 'Cancelar propuesta'), false)
-  await tab.keyboardClick('Aceptar propuesta')
-  await tab.text('Guardando respuesta…')
-  assert.equal(await tab.evaluate(() => [...document.querySelectorAll('.proposal-actions button')].every((button) => button.disabled)), true)
+  await tab.keyboardClick('Aceptar')
+  assert.equal(await tab.evaluate(() => [...document.querySelectorAll('.seller-matches__actions button.btn--dark')].every((button) => button.disabled)), true)
   await release(tab, 'decision')
-  await tab.text('Fallo al consultar el estado.')
-  assert.equal(await hasButton(tab, 'Aceptar propuesta'), false)
+  await tab.text('No se pudo cargar esta propuesta.')
+  assert.equal(await tab.evaluate(() => [...document.querySelectorAll('.seller-matches__actions button')].find(button => button.textContent === 'Aceptar').disabled), true)
   await tab.click('Reintentar')
-  await tab.text('Estado: Cancelada')
-  assert.equal(await hasButton(tab, 'Rechazar propuesta'), false)
-  assert.deepEqual(await calls(tab, 'respondToProposal'), [['proposal', 'ACCEPT']])
+  await tab.text('Cancelada')
+  assert.equal(await hasButton(tab, 'Rechazar'), false)
+  assert.deepEqual(await calls(tab, 'resolveProposal'), [['proposal', 'aceptar']])
 })

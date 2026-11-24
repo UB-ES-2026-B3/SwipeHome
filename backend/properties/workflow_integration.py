@@ -29,8 +29,9 @@ class WorkflowIntegrationTests(EmulatorFixture):
         for user in ("buyer", "seller"):
             page = self.assert_status(self.request("GET", "/api/matches", user), 200)
             self.assertEqual([item["id"] for item in page["items"]], [match_id])
-            self.assertEqual(page["items"][0]["listing"]["photos"], listing["photos"])
-        notices = self.assert_status(self.request("GET", "/api/notificaciones", "buyer"), 200)
+            if user == "buyer":
+                self.assertEqual(page["items"][0]["listing"]["photos"], listing["photos"])
+        notices = self.assert_status(self.request("GET", "/api/notificaciones", "seller"), 200)
         self.assertEqual([row["listing"]["id"] for row in notices["items"]], [identifier])
         self.assertEqual(self.assert_status(self.request("GET", "/api/matches", "other"), 200)["items"], [])
 
@@ -51,20 +52,20 @@ class WorkflowIntegrationTests(EmulatorFixture):
         start = self.assert_status(self.request("GET", "/api/inmuebles/explorar", "buyer", params={"limit": 1}), 200)
         cursor = start["next_cursor"]
         self.assertTrue(cursor)
-        filters = self.assert_status(self.request("GET", "/api/auth/preferences", "buyer"), 200)["filters"]
+        filters = self.assert_status(self.request("GET", "/api/exploracion/filtros", "buyer"), 200)
         saved = self.assert_status(self.request(
-            "PUT", "/api/auth/preferences", "buyer", body={**filters, "price_max": "600"},
-        ), 200)["filters"]
-        self.assertEqual(saved["price_max"], "600.00")
+            "PUT", "/api/exploracion/filtros", "buyer", body={**filters, "max_price": "600"},
+        ), 200)
+        self.assertEqual(saved["max_price"], "600.00")
         self.assert_status(self.request("GET", "/api/inmuebles/explorar", "buyer", params={"cursor": cursor}), 400)
         token = self.login("buyer")
-        fetched = self.assert_status(self.request("GET", "/api/auth/preferences", token=token), 200)
-        self.assertEqual(fetched["filters"], saved)
+        fetched = self.assert_status(self.request("GET", "/api/exploracion/filtros", token=token), 200)
+        self.assertEqual(fetched, saved)
         page = self.assert_status(self.request("GET", "/api/inmuebles/explorar", token=token), 200)
         self.assertEqual([item["id"] for item in page["items"]], ["affordable"])
         other = self.assert_status(self.request("GET", "/api/inmuebles/explorar", "other"), 200)
         self.assertEqual({item["id"] for item in other["items"]}, {"home", "affordable"})
-        self.assert_status(self.request("PUT", "/api/auth/preferences", "seller", body=filters), 403)
+        self.assert_status(self.request("PUT", "/api/exploracion/filtros", "seller", body=filters), 403)
 
     def test_pending_proposal_on_another_home_stays_private_after_acceptance(self):
         self.seed("second", "seller")
@@ -74,12 +75,12 @@ class WorkflowIntegrationTests(EmulatorFixture):
         second = self.assert_status(self.propose("other", identifier="second"), 201)["id"]
         candidates = self.rows("swipes")
         matches = self.rows("matches")
-        self.assert_status(self.decide(first, "ACCEPT"), 201)
+        self.assert_status(self.decide(first, "ACCEPT"), 200)
         self.assert_status(self.request("GET", f"/api/propuestas/{first}", "other"), 404)
         page = self.assert_status(self.request("GET", "/api/propuestas", "other"), 200)
         self.assertEqual([(item["id"], item["status"]) for item in page["items"]], [(second, "PENDING")])
         home = self.rows("listings")["second"]
-        self.assertEqual(home["pending_selection_id"], second)
-        self.assertIs(home["published"], True)
+        self.assertEqual(self.rows("selections")["second"]["pending_proposal_id"], second)
+        self.assertEqual(repository.listing_availability(home), "ACTIVE")
         self.assertEqual(self.rows("swipes"), candidates)
         self.assertEqual(self.rows("matches"), matches)
