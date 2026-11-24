@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getConfirmedMatches } from '../api/properties'
-import { Logo } from '../components/Logo'
+import { DashboardHeader } from '../components/DashboardHeader'
 import { PropertyDetails, PropertyPrice } from '../components/PropertyDetails'
 import { useAuth } from '../hooks/useAuth'
 
@@ -111,17 +111,17 @@ export function BuyerMatchesPage() {
 
   return (
     <main className="home-page home-page--buyer">
-      <header className="home-page__header">
-        <Logo size="sm" to="/comprador/inicio" />
-      </header>
+      <DashboardHeader />
       <div className="home-page__content buyer-matches">
-        <Link className="btn btn--ghost notifications-page__back" to="/comprador/inicio">
+        <Link className="btn btn--ghost uniform-action dashboard-back-link" to="/comprador/inicio">
           <span aria-hidden="true">&larr;</span> Volver al inicio
         </Link>
         <div className="buyer-matches__heading">
           <h1 className="home-page__title">Mis matches</h1>
-          <Link className="btn btn--ghost" to="/comprador/propuestas">Propuestas recibidas</Link>
-          <button type="button" className="btn btn--ghost" disabled={loading} onClick={refreshMatches}>Actualizar</button>
+          <div className="buyer-matches__actions">
+            <Link className="btn btn--ghost" to="/comprador/propuestas">Propuestas recibidas</Link>
+            <button type="button" className="btn btn--ghost" disabled={loading} onClick={refreshMatches}>Actualizar</button>
+          </div>
         </div>
         {matches.length > 0 && (
           <ul className="buyer-matches__list" role="list">

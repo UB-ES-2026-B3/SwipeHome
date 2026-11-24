@@ -73,10 +73,11 @@ const hasButton = (tab, title) => tab.evaluate((label) =>
 
 component('US 5.8 interés pendiente y confirmación incoherente reintentable', 'BuyerHome', {
   replies: {
-    exploreProperties: [success(page([home]))],
+    exploreProperties: [success(page([home, { ...home, id: 'home-two', title: 'Segundo piso' }]))],
     decideProperty: [
       success({ decision: { listing_id: 'ajena', value: 'LIKE', seller_decision: 'PENDING' }, match: null }, 'interest'),
       success({ decision: { listing_id: 'home', value: 'LIKE' }, match: { id: 'pending', listing_id: 'home', status: 'PENDING' } }),
+      success({ decision: { listing_id: 'home-two', value: 'PASS' }, match: null }),
     ],
   },
 }, async (tab) => {
@@ -90,13 +91,18 @@ component('US 5.8 interés pendiente y confirmación incoherente reintentable', 
   assert.equal(await disabled(tab, 'button[aria-label="Me interesa"]'), true)
   await release(tab, 'interest')
   await tab.text('El servidor no confirmó la decisión.')
-  await tab.text(home.title)
   await tab.keyboardClick('Reintentar')
-  await tab.text('Interés enviado')
+  await tab.text('Segundo piso')
+  assert.equal(await tab.evaluate(() => document.body.innerText.includes('Interés enviado')), false)
+  await tab.evaluate(() => document.querySelector('button[aria-label="No me interesa"]').click())
+  await tab.text('No hay más viviendas por explorar.')
+  assert.equal(await tab.evaluate(() => document.body.innerText.includes('Interés enviado')), false)
+  assert.equal(await tab.evaluate(() => document.body.innerText.includes('Vivienda descartada. Tu decisión se ha guardado.')), false)
   assert.equal(await tab.evaluate(() => document.body.innerText.includes('¡Match confirmado!')), false)
 })
 
 component('US 5.9 candidaturas paginadas y conflicto con actualización fallida', 'SellerMatchesPage', {
+  path: '/vendedor/matches',
   role: 'SELLER',
   replies: {
     getActiveProperties: Array.from({ length: 2 }, () => success({ properties: [home] })),
@@ -114,6 +120,13 @@ component('US 5.9 candidaturas paginadas y conflicto con actualización fallida'
   await tab.text('Cargando pendientes…')
   await release(tab, 'load')
   await tab.text('Ana')
+  assert.equal(await tab.evaluate(() => (
+    [...document.querySelectorAll('nav.dashboard-header__navigation a')]
+      .some((link) => link.textContent.trim() === 'Candidatos y matches')
+  )), false)
+  assert.equal(await tab.evaluate(() => document.querySelector('#seller-panel-pending').innerText.includes('Pendientes')), true)
+  assert.equal(await tab.evaluate(() => document.querySelector('#seller-panel-pending').innerText.includes('Piso de prueba')), false)
+  assert.equal(await tab.evaluate(() => document.body.innerText.includes('Sin propuesta de selección.')), false)
   await tab.click('Cargar más')
   await tab.text('Bea')
   await tab.text('Ana')
@@ -128,12 +141,17 @@ component('US 5.9 candidaturas paginadas y conflicto con actualización fallida'
 })
 
 component('US 5.9 matches privados de comprador con paginación y disponibilidad', 'BuyerMatchesPage', {
+  path: '/comprador/matches',
   replies: { getConfirmedMatches: [
     success(page([candidate('first', 'Ana')], 'cursor')),
     success(page([{ ...candidate('second', 'Bea'), listing: { ...home, title: 'Piso cerrado', availability: 'CLOSED' } }])),
   ] },
 }, async (tab) => {
   await tab.text(home.title)
+  assert.equal(await tab.evaluate(() => (
+    [...document.querySelectorAll('nav.dashboard-header__navigation a')]
+      .some((link) => link.textContent.trim() === 'Mis matches')
+  )), false)
   assert.equal(await hasButton(tab, 'Proponer selección'), false)
   await tab.keyboardClick('Cargar más')
   await tab.text('Piso cerrado')

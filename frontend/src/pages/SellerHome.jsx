@@ -1,9 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { Link, useNavigate } from 'react-router-dom'
 import { getNotifications } from '../api/notifications'
 import { getActiveProperties } from '../api/properties'
-import { Logo } from '../components/Logo'
-import { useAuth } from '../hooks/useAuth'
+import { DashboardHeader } from '../components/DashboardHeader'
 
 function formatNotificationDate(value) {
   const date = new Date(value)
@@ -27,8 +25,6 @@ function notificationMessage(notification) {
  * Inicio del vendedor y acceso al formulario de publicación.
  */
 export function SellerHome() {
-  const { logout } = useAuth()
-  const navigate = useNavigate()
   const [publishedProperties, setPublishedProperties] = useState([])
   const [propertiesStatus, setPropertiesStatus] = useState('loading')
   const [propertiesError, setPropertiesError] = useState('')
@@ -87,34 +83,9 @@ export function SellerHome() {
 
   return (
     <main className="seller-dashboard">
-      <header className="seller-dashboard__header">
-        <Logo size="sm" to="/vendedor/inicio" />
-        <div className="seller-dashboard__account">
-          <span className="seller-dashboard__role uniform-action">Vendedor</span>
-          <button type="button" className="uniform-action" onClick={() => navigate('/notificaciones')}>
-            Notificaciones
-          </button>
-          <button type="button" className="seller-dashboard__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
-            Mi perfil
-          </button>
-          <button type="button" className="seller-dashboard__logout uniform-action" onClick={logout}>
-            LogOut
-          </button>
-        </div>
-      </header>
+      <DashboardHeader />
 
       <div className="seller-dashboard__content">
-        <nav className="seller-matches__actions" aria-label="Menú del vendedor">
-          <button
-            type="button"
-            className="seller-dashboard__publish"
-            onClick={() => navigate('/publicar')}
-          >
-            Publicar
-          </button>
-          <Link className="btn btn--ghost" to="/vendedor/matches">Candidatos y matches</Link>
-        </nav>
-
         <section className="seller-dashboard__list" aria-labelledby="published-properties-title">
           <div className="seller-dashboard__section-header">
             <h1 id="published-properties-title">Mis inmuebles publicados</h1>

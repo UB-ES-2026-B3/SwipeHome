@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { publishProperty } from '../api/properties'
 import { FormField } from '../components/FormField'
+import { DashboardHeader } from '../components/DashboardHeader'
 import {
   validatePhotoContent,
   validatePhotoSelection,
@@ -167,12 +168,10 @@ export function PropertyPublish() {
 
   return (
     <main className="property-page">
+      <DashboardHeader />
       <header className="property-page__header">
-        <button
-          type="button"
-          className="property-page__back"
-          onClick={() => navigate('/vendedor/inicio')}
-        >
+        <button type="button" className="btn btn--ghost uniform-action dashboard-back-link property-page__back"
+          onClick={() => navigate('/vendedor/inicio')}>
           Volver al inicio
         </button>
         <h1 className="property-page__title">Publicar inmueble</h1>
@@ -186,7 +185,8 @@ export function PropertyPublish() {
           <button type="button" className="register-form__submit" onClick={startAnotherListing}>
             Publicar otro inmueble
           </button>
-          <button type="button" className="home-page__logout" onClick={() => navigate('/vendedor/inicio')}>
+          <button type="button" className="btn btn--ghost uniform-action dashboard-back-link"
+            onClick={() => navigate('/vendedor/inicio')}>
             Volver al inicio
           </button>
         </section>
