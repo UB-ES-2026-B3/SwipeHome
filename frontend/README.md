@@ -51,11 +51,6 @@ Para ver que la sesión es de Firebase y no de cookies hacen falta las DevTools
 
 ## Comprobaciones
 
-La [guía de testing del equipo](../docs/TESTING.md) explica unitarios,
-componentes React en Chrome y E2E con Django. Desde la raíz usa
-`.\scripts\test.cmd --suite components` para montar los componentes y
-`.\scripts\test.cmd --suite e2e` para validar la aplicación completa.
-
 ```powershell
 npm run lint
 npm run build
@@ -130,11 +125,11 @@ fecha/hora local y estado vacío. No hubo desbordamiento horizontal en
 1280×900 ni 390×844. Es responsive emulado en escritorio, no una prueba en
 hardware móvil ni persistencia real de UI en Firestore.
 
-El estado descrito en la comprobación US7.4 precede a US5.8. US5.8 añadió el
-aviso al Comprador al aceptar una candidatura y US5.9 incorporó la consulta
-visual de matches y la gestión de candidaturas del Vendedor. La persistencia de
-avisos/matches se comprueba en backend con Auth/Firestore Emulator; la UI de
-US5.9 se validó aparte contra un mock HTTP local.
+No hay en este árbol implementación de confirmación US5 ni un escritor de
+avisos destinados al Comprador. Se puede consultar un aviso BUYER previamente
+persistido, pero su creación por US5 queda no verificada. La persistencia del
+aviso de interés al SELLER sí se comprobó con Auth/Firestore Emulator en
+backend, incluyendo cierre y nuevo inicio de sesión.
 
 ## Integración US6
 
@@ -182,87 +177,3 @@ interceptaron con fixtures. Se comprobó:
 El backend de US6.8 ya verificó aparte persistencia, duplicados concurrentes,
 cambio de contraseña y revocación con Auth/Firestore Emulator. No se desplegó
 Firebase ni se probó en producción en esta US.
-
-## Recorrido de matches y candidaturas (US5.9)
-
-`/mis-matches` es una ruta protegida compartida por BUYER y SELLER; consulta
-`GET /api/matches` y presenta solo registros confirmados del usuario. BuyerHome
-conserva el aviso de interés enviado sin presentarlo como confirmación. El
-inicio SELLER incorpora «Candidaturas pendientes», que consulta
-`GET /api/matches/candidatos` y permite ACCEPT/REJECT mediante el endpoint
-existente. Se identifica al Comprador y la vivienda. Las decisiones bloquean
-solicitudes repetidas; si la respuesta es ambigua o falla, se conserva la
-candidatura para reintentar y no se muestra éxito sin confirmación. Cargas,
-listas vacías, errores y paginación tienen estados visibles.
-
-`npm test` pasa 27 pruebas, incluidas las nuevas llamadas autenticadas,
-paginación y decisión por ID. `npm run lint` y `npm run build` finalizan; Oxlint
-mantiene advertencias (`set-state-in-effect` en páginas, importación no usada y
-Fast Refresh), sin errores de lint bloqueantes.
-
-En navegador se utilizó Auth Emulator real y un mock HTTP local en memoria
-(no Firestore ni el backend real): BUYER envió interés y vio confirmación; antes
-de ACCEPT la lista de matches quedó vacía. SELLER identificó vivienda/comprador
-y aceptó con Enter; la lista SELLER mostró el match. Un segundo Comprador mostró
-interés en otra vivienda y SELLER la rechazó con doble clic; desapareció de
-pendientes, no se incorporó a matches y el primer match se conservó. Se
-comprobaron lista vacía, fallo 503 con retry y 401 con regreso al login.
-Viewports 390×844 y 1280×900 no tuvieron overflow horizontal. Es una prueba
-emulada en navegador de escritorio, no hardware móvil ni persistencia real de
-la UI. La persistencia, privacidad, re-login e idempotencia se verifican aparte
-con Auth/Firestore Emulator en backend. La visualización no depende de chat.
-
-## Filtros del explorador y perfil (US8.6)
-
-`BuyerHome` presenta «Filtros» en el explorador y `Mi perfil` comparte el mismo
-componente `PreferenceFilters` para Compradores. El cliente usa
-`GET/PUT /api/auth/preferences`, bloquea acciones y swipes mientras aplica o
-restablece, conserva el último formulario válido al cancelar y distingue carga,
-validación, guardado y consulta fallida. Sin resultados ofrece modificar,
-restablecer y actualizar. Las respuestas tardías se invalidan con un identificador
-de petición y no sustituyen resultados de una configuración posterior.
-
-Verificación US8.6:
-
-| CA US8 | Método | Resultado |
-|---|---|---|
-| CA-01/02 | Navegador y tests Node del cliente | Pasa con mocks; API valida los campos reales aparte. |
-| CA-03/05 | Navegador con API interceptada y Firestore Emulator | Pasa con mocks visuales/emulador persistente. |
-| CA-04/08 | Persistencia y dos compradores en Firestore Emulator | Pasa con emuladores. |
-| CA-06/07/09 | Estados vacío/error/validación/reintento simulados | Pasa con mocks. |
-| Responsive/teclado | Browser automation y viewports emulados 390×844/1280×900 | Pasa en escritorio emulado; sin hardware físico. |
-
-`npm test` pasa 28 pruebas, `npm run lint` finaliza con advertencias existentes
-(incluido el efecto de carga del componente nuevo) y `npm run build` termina
-correctamente. Azure no participa en esta US y no se probaron índices ni datos
-remotos.
-
-## Disponibilidad en «Mis matches» (US9.7)
-
-BUYER y SELLER ven «Vivienda no disponible» cuando `GET /api/matches`
-devuelve `listing.available: false`. La tarjeta conserva la vivienda y la
-fecha de confirmación del match.
-
-`npm test` pasó 29 pruebas, incluida una respuesta simulada con un anuncio
-disponible y otro cerrado. `npm run lint` terminó con advertencias
-preexistentes y `npm run build` pasó. La verificación de este cambio de
-interfaz en US9.7 se limitó al contrato del cliente y la compilación.
-
-## Recorrido de selección definitiva (US9.8)
-
-El Vendedor envía la propuesta desde un match confirmado en «Mis matches».
-Puede revisarla o cancelarla en «Propuestas». El Comprador destinatario
-abre el detalle desde «Propuestas» o desde el enlace del aviso, consulta los
-datos vigentes y acepta o rechaza. Las propuestas resueltas quedan visibles
-en el historial. Los avisos de indisponibilidad de otros candidatos contienen
-los datos públicos de la vivienda.
-
-Los controles se bloquean mientras se guarda. Si se pierde la respuesta de
-un envío, «Reintentar envío» recupera la misma intención incluso después
-de recargar esa pestaña. Una respuesta sobre una propuesta ya resuelta
-actualiza el estado visible.
-
-El comando para ejecutar los recorridos en Chrome o Chromium y los
-emuladores está en el [README de backend](../backend/README.md). Los
-controles locales del cliente son `npm test`, `npm run lint` y
-`npm run build`.

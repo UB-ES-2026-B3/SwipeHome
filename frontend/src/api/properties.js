@@ -1,4 +1,5 @@
 import { auth } from '../firebase'
+import { apiUrl } from './baseUrl'
 
 const SESSION_GONE = new Set([
   'auth/user-token-expired',
@@ -21,7 +22,7 @@ async function authenticatedRequest(path, options = {}) {
     throw error
   }
 
-  const response = await fetch(path, {
+  const response = await fetch(apiUrl(path), {
     ...options,
     headers: { ...options.headers, Authorization: `Bearer ${token}` },
     cache: 'no-store',
@@ -36,8 +37,8 @@ async function authenticatedRequest(path, options = {}) {
   return { ok: response.ok, status: response.status, data }
 }
 
-export function getActiveProperties() {
-  return authenticatedRequest('/api/inmuebles')
+export function getActiveProperties(signal) {
+  return authenticatedRequest('/api/inmuebles', { signal })
 }
 
 export function exploreProperties(cursor = null) {
@@ -46,15 +47,52 @@ export function exploreProperties(cursor = null) {
   return authenticatedRequest(`/api/inmuebles/explorar?${query}`)
 }
 
-export function getBuyerFilters() {
-  return authenticatedRequest('/api/auth/preferences')
+function getMatchPage(path, cursor, signal, propertyId) {
+  const query = new URLSearchParams({ limit: '20' })
+  if (cursor) query.set('cursor', cursor)
+  if (propertyId) query.set('inmueble', propertyId)
+  return authenticatedRequest(`${path}?${query}`, { method: 'GET', signal })
 }
 
-export function saveBuyerFilters(filters) {
-  return authenticatedRequest('/api/auth/preferences', {
-    method: 'PUT',
+export function getConfirmedMatches(cursor = null, signal, propertyId) {
+  return getMatchPage('/api/matches', cursor, signal, propertyId)
+}
+
+export function getPendingCandidates(cursor = null, signal, propertyId) {
+  return getMatchPage('/api/candidatos', cursor, signal, propertyId)
+}
+
+export function decideCandidate(matchId, decision) {
+  return authenticatedRequest(`/api/matches/${encodeURIComponent(matchId)}/decision-vendedor`, {
+    method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(filters),
+    body: JSON.stringify({ decision }),
+  })
+}
+
+export function getProposals(cursor = null, signal) {
+  const query = new URLSearchParams({ limit: '20' })
+  if (cursor) query.set('cursor', cursor)
+  return authenticatedRequest(`/api/propuestas?${query}`, { method: 'GET', signal })
+}
+
+export function getProposal(proposalId, signal) {
+  return authenticatedRequest(`/api/propuestas/${encodeURIComponent(proposalId)}`, { method: 'GET', signal })
+}
+
+export function createProposal(listingId, matchId, requestId) {
+  return authenticatedRequest('/api/propuestas', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ listing_id: listingId, match_id: matchId, request_id: requestId }),
+  })
+}
+
+export function resolveProposal(proposalId, action) {
+  return authenticatedRequest(`/api/propuestas/${encodeURIComponent(proposalId)}/${action}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({}),
   })
 }
 
@@ -66,53 +104,24 @@ export function decideProperty(propertyId, decision) {
   })
 }
 
-function pagedUrl(path, { limit = 20, cursor } = {}) {
-  const query = new URLSearchParams({ limit: String(limit) })
-  if (cursor) query.set('cursor', cursor)
-  return `${path}?${query}`
+export function getSearchPreferences() {
+  return authenticatedRequest('/api/exploracion/filtros', { method: 'GET' })
 }
 
-export function getMatches(options) {
-  return authenticatedRequest(pagedUrl('/api/matches', options))
-}
-
-export function getProposals(options) {
-  return authenticatedRequest(pagedUrl('/api/propuestas', options))
-}
-
-export function getProposal(id) {
-  return authenticatedRequest(`/api/propuestas/${encodeURIComponent(id)}`)
-}
-
-export function sendProposal(listingId, buyerUid, idempotencyKey) {
-  return authenticatedRequest(`/api/inmuebles/${encodeURIComponent(listingId)}/propuestas`, {
-    method: 'POST',
+export function saveSearchPreferences(preferences) {
+  return authenticatedRequest('/api/exploracion/filtros', {
+    method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ buyer_uid: buyerUid, idempotency_key: idempotencyKey }),
+    body: JSON.stringify(preferences),
   })
 }
 
-export function respondToProposal(id, decision) {
-  return authenticatedRequest(`/api/propuestas/${encodeURIComponent(id)}/decision`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ decision }),
-  })
+export function resetSearchPreferences() {
+  return authenticatedRequest('/api/exploracion/filtros', { method: 'DELETE' })
 }
 
-export function getPendingCandidates(options) {
-  return authenticatedRequest(pagedUrl('/api/matches/candidatos', options))
-}
-
-export function decideCandidate(decisionId, decision) {
-  return authenticatedRequest(
-    `/api/matches/candidaturas/${encodeURIComponent(decisionId)}/decision`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ decision }),
-    },
-  )
+export function getFilterOptions() {
+  return authenticatedRequest('/api/inmuebles/opciones-filtro', { method: 'GET' })
 }
 
 export function publishProperty(fields, photos) {

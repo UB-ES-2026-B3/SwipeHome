@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import vm from 'node:vm'
+import { apiUrl } from '../src/api/baseUrl.js'
 
 // Ejecuta el módulo real con sus dos imports sustituidos por dobles.
 // Sin dependencias nuevas; fetch y Firebase nunca acceden a la red.
@@ -11,6 +12,7 @@ const source = readFileSync(new URL('../src/api/auth.js', import.meta.url), 'utf
     'const { sendPasswordResetEmail, signInWithCustomToken, signInWithEmailAndPassword, signOut } = sdk',
   )
   .replace(/^import .* from '..\/firebase'$/m, '')
+  .replace(/^import .* from '.\/baseUrl'$/m, '')
   .replace(/^export /gm, '')
 
 function harness({ status = 200, data = {}, exchangeFailure = false, networkFailure = false } = {}) {
@@ -27,7 +29,7 @@ function harness({ status = 200, data = {}, exchangeFailure = false, networkFail
     signOut: async () => { calls.push(['signOut']); auth.currentUser = null },
   }
   const context = vm.createContext({
-    sdk, auth,
+    sdk, auth, apiUrl,
     fetch: async (path, options) => {
       calls.push(['fetch', path, options])
       if (networkFailure) throw new Error('offline')

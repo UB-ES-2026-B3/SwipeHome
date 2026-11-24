@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import vm from 'node:vm'
+import { apiUrl } from '../src/api/baseUrl.js'
 
 const source = readFileSync(new URL('../src/api/notifications.js', import.meta.url), 'utf8')
   .replace(/^import .* from '..\/firebase'$/m, '')
+  .replace(/^import .* from '.\/baseUrl'$/m, '')
   .replace(/^export /gm, '')
 
 function harness({ user, response = { ok: true, status: 200, data: { items: [], next_cursor: null } }, networkFailure = false } = {}) {
@@ -12,6 +14,7 @@ function harness({ user, response = { ok: true, status: 200, data: { items: [], 
   const auth = { currentUser: user ?? { getIdToken: async () => 'firebase-id-token' } }
   const context = vm.createContext({
     auth,
+    apiUrl,
     URLSearchParams,
     console: { error() {} },
     fetch: async (path, options) => {

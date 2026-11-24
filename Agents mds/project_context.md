@@ -1,19 +1,22 @@
+> Actualización 15/11/2026: [US8 backend](us8_backend.md) documenta preferencias
+> propias BUYER en Firestore, filtros persistidos y cursores ligados a configuración.
+> Se conserva Firebase Bearer y US3/US4/US5. LIKE crea candidatura PENDING y aviso
+> INTEREST; confirmar por el vendedor produce CONFIRMED, sin aviso BUYER nuevo en
+> el código actual. Los apartados anteriores tienen valor histórico donde discrepen.
+> El soporte servidor de US8.2 está implementado; sus criterios de UI quedan pendientes.
+
 # Contexto del proyecto SwipeHome
 
-Las pruebas de US5.8, US5.9, US8.6, US9.7 y US9.8 se reproducen desde
-la [guía de testing](../docs/TESTING.md) y tienen trazabilidad en la
-[matriz de cobertura](../docs/TEST-COVERAGE.md).
-
-## Estado vigente — US4, US5.8–US5.9, US6, US7.4, US8.6 y US9
+## Estado vigente — US4, US6 y US7.4 (10 noviembre 2026)
 
 El stack vigente es Django con Firebase Auth y Firestore. La implementación
 de US 4.4–4.7 sobre ese stack fue autorizada explícitamente por el usuario.
 Las descripciones anteriores de sesiones Django/SQLite son historial.
 
-**Regla vigente:** LIKE crea una candidatura pendiente. El Vendedor propietario
-la acepta o rechaza; solo aceptar crea el match y un aviso privado al Comprador.
-PASS no crea candidatura ni aviso. Un match no reserva el anuncio y varios
-Compradores pueden tener matches independientes con la misma vivienda.
+**Regla vigente:** el Comprador da LIKE y crea directamente match y aviso
+al propietario. US5 incorpora aceptación del Vendedor; no hay segundo swipe del comprador. PASS no
+crea match ni aviso. Un match no reserva el anuncio y varios Compradores
+pueden tener match con la misma vivienda.
 
 | Historia | Estado de backend |
 |---|---|
@@ -23,14 +26,9 @@ Compradores pueden tener matches independientes con la misma vivienda.
 | US 4.7 | Avisos privados SELLER, relaciones de match/Comprador/vivienda y paginación. |
 | US 4.9 | Verificación de permisos, datos, paginación, privacidad, concurrencia y rollback con persistencia local aislada. |
 | US 4.10 | Verificación integrada del recorrido de exploración, decisiones y avisos; UI contrastada con API mockeada y persistencia backend en emuladores. |
-| US 5.8 | APIs de matches/candidaturas, aceptación/rechazo transaccional, privacidad, concurrencia, idempotencia y rollback con Firestore Emulator. |
-| US 5.9 | Recorrido integrado Buyer–Seller en interfaz: candidaturas, aceptación/rechazo y matches privados para ambos roles; backend emulado y UI verificada con Auth Emulator y API mock local. |
 | US 7.4 | Lectura privada de avisos para BUYER y SELLER, pantalla, paginación, errores, estados vacíos y persistencia del aviso de interés. |
 | US 6.8 | Verificación de perfil, cambio de contraseña y logout para BUYER/SELLER; concurrencia, integridad y continuidad probadas con emuladores. |
 | US 6.9 | Recorrido de perfil y logout para ambos roles verificado en navegador con Auth Emulator y API interceptada; cobertura de persistencia backend reutilizada de US6.8. |
-| US 8.6 | Filtros privados BUYER compartidos entre explorador y perfil; persistencia, validación, aplicación, restablecimiento y fallback documentados y probados. |
-| US 9.7 | API privada de propuestas desde matches confirmados y verificación del cierre, permisos, concurrencia y avisos en emuladores. |
-| US 9.8 | Envío y respuesta desde la interfaz. Aceptación, rechazo, cancelación y recuperación de fallos comprobados en Chrome con Django y los emuladores. |
 
 Verificación US 4.9: 166 pruebas correctas con Auth y Firestore Emulator, sin
 omisiones. Contra los CA oficiales, CA-03 a CA-06 pasan en la API/persistencia;
@@ -53,12 +51,10 @@ El fallo de logout ahora ofrece un botón explícito de reintento.
 La referencia de modelos, atomicidad, concurrencia, compatibilidad histórica y
 resultados reales es [US4 backend](us4_backend.md). Los contratos HTTP completos,
 ejemplos y comandos están en el [README backend](../backend/README.md).
-US7.4 verificó la consulta paginada de avisos; US5.8 añade el productor del
-aviso al aceptar y US5.9 incorpora pantallas para candidaturas del Vendedor y
-matches de ambos roles. La suite de backend de US5.9 pasó 184 tests con
-Auth/Firestore Emulator; Azure Blob se mockea, los índices no se desplegaron y
-la UI se probó con Auth Emulator y API mock local, no contra Firestore. Evidencia
-por CA en el [README backend](../backend/README.md) y [resultado.md](../resultado.md).
+US7.4 pasó 172 pruebas backend con Auth/Firestore Emulator y Azure Blob mock,
+25 pruebas frontend, lint/build y verificación visual con API interceptada en
+viewports emulados. La consulta BUYER está disponible, pero no existe en este
+árbol el productor de aviso de confirmación US5: esa generación no se verificó.
 El backlog original de Sprint 0 se conserva a continuación como historial:
 sus afirmaciones sobre funcionalidades futuras no describen el estado actual.
 

@@ -1,29 +1,33 @@
+> US9 backend: [selección definitiva](us9_backend.md) incorpora propuestas privadas,
+> idempotencia, control transaccional por vivienda, cierre y avisos US7.
+> Las nuevas operaciones de gestión del anuncio deben respetar `listing_selections`
+> y no reabrir una selección aceptada. Los documentos antiguos siguen siendo válidos.
+
+> Actualización 15/11/2026: [US8 backend](us8_backend.md) documenta preferencias
+> propias BUYER en Firestore, filtros persistidos y cursores ligados a configuración.
+> Se conserva Firebase Bearer y US3/US4/US5. LIKE crea candidatura PENDING y aviso
+> INTEREST; confirmar por el vendedor produce CONFIRMED, sin aviso BUYER nuevo en
+> el código actual. Los apartados anteriores tienen valor histórico donde discrepen.
+> El soporte servidor de US8.2 está implementado; sus criterios de UI quedan pendientes.
+
 # Pautas vigentes de trabajo en SwipeHome
 
-## Continuidad US5.9 — ciclo integrado de candidatura y match
+## Continuidad US4 — 8 noviembre 2026
 
 Este archivo es documentación del equipo, no una skill instalada.
-El contrato vigente separa LIKE pendiente de match confirmado: solo la
-aceptación del propietario crea el match. Revisar [US4 backend](us4_backend.md),
-[US6 backend](us6_backend.md) y
+El usuario autorizó implementar US 4.4–4.7 usando Firebase/Firestore.
+Revisar [US4 backend](us4_backend.md), [US6 backend](us6_backend.md) y
 [README backend](../backend/README.md) antes de continuar.
 
 - Conservar Firebase Auth/Firestore y sus cuentas/anuncios/fotografías.
 - Identidad desde `request.user`, construido con token y perfil verificados.
-- LIKE crea candidatura PENDING sin match/aviso; mantener la decisión SELLER
-  mediante `repository.transition_seller_decision` y no duplicar documentos.
-- Toda transición, match y aviso se escriben en la transacción del repositorio;
-  no omitir la comprobación de propiedad o rol.
+- LIKE crea decisión, candidatura PENDING y aviso INTEREST; US5 incorpora la aceptación del vendedor. Ver `us5_backend.md`.
+- Mantener todas las escrituras US4 en `repository.record_decision`; no
+  escribir documentos equivalentes con IDs arbitrarios ni omitir la transacción.
 - No atribuir CHECK/FK SQL a Firestore: unicidad de path y controles del
   servicio son garantías distintas. Accesos directos de clientes siguen cerrados.
 - Mantener fechas e identidades inmutables y paginación por fecha/ID sin OFFSET.
 - Conservar avisos históricos; no fabricarles relaciones ausentes.
-- Consumir los endpoints `/api/matches` y `/api/matches/candidatos` con el token
-  Firebase actual; no aceptar UIDs del cliente como filtro de cuenta.
-- Mostrar únicamente matches confirmados; una candidatura solo desaparece de
-  pendientes después de una respuesta SELLER coherente y confirmada.
-- Mantener botones de decisión reentrantes protegidos por bloqueo local y dejar
-  reintentar errores sin simular un resultado guardado.
 - Ejecutar las pruebas reales de concurrencia en los emuladores demo.
 - Actualizar documentación con resultados reales; no tocar credenciales.
 - Preservar cambios ajenos y el registro local excluido de Git.

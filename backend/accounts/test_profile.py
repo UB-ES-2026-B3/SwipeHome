@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from unittest import skipUnless
 from unittest.mock import Mock, patch
 
-from django.test import Client, SimpleTestCase, tag
+from django.test import Client, SimpleTestCase
 from firebase_admin import auth, delete_app, initialize_app
 from google.auth.credentials import AnonymousCredentials
 from google.api_core.exceptions import ServiceUnavailable
@@ -15,7 +15,6 @@ from google.cloud import firestore
 from . import repository
 from .passwords import IncorrectPassword, change_password
 from .test_views import FirebaseMocks, UID
-from qa.fixtures import scoped_collections
 
 PROFILE = {"uid": UID, "name": "Ana", "email": "ana@example.com", "role": "BUYER"}
 
@@ -230,7 +229,6 @@ class PasswordServiceTests(SimpleTestCase):
 
 
 @skipUnless(os.environ.get("FIREBASE_AUTH_EMULATOR_HOST"), "Requiere Firebase Auth Emulator local.")
-@tag("integration")
 class EmailRaceIntegrationTests(SimpleTestCase):
     """Concurrencia real del proveedor; nunca usa el proyecto de producción."""
 
@@ -327,7 +325,6 @@ class EmailRaceIntegrationTests(SimpleTestCase):
     os.environ.get("FIREBASE_AUTH_EMULATOR_HOST") and os.environ.get("FIRESTORE_EMULATOR_HOST"),
     "Requiere Firebase Auth y Firestore Emulators locales.",
 )
-@tag("integration")
 class ProfileSessionIntegrationTests(SimpleTestCase):
     """Pruebas de API con Auth y Firestore aislados en emuladores loopback."""
 
@@ -351,7 +348,6 @@ class ProfileSessionIntegrationTests(SimpleTestCase):
         self.enterContext(patch("accounts.repository.firestore.client", return_value=self.db))
         self.users = []
         self.addCleanup(self.cleanup_emulator_data)
-        scoped_collections(self, self.db, ("revocations",))
 
     def cleanup_emulator_data(self):
         for user in self.users:

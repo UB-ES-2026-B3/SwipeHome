@@ -3,9 +3,11 @@ import { File } from 'node:buffer'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import vm from 'node:vm'
+import { apiUrl } from '../src/api/baseUrl.js'
 
 const source = readFileSync(new URL('../src/api/properties.js', import.meta.url), 'utf8')
   .replace(/^import .* from '..\/firebase'$/m, '')
+  .replace(/^import .* from '.\/baseUrl'$/m, '')
   .replace(/^export /gm, '')
 
 function harness({ user, response = { ok: true, status: 201, data: { id: 'listing-1' } }, networkFailure = false } = {}) {
@@ -13,6 +15,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
   const auth = { currentUser: user ?? { getIdToken: async () => 'firebase-id-token' } }
   const context = vm.createContext({
     auth,
+    apiUrl,
     FormData,
     URLSearchParams,
     fetch: async (path, options) => {
@@ -21,7 +24,7 @@ function harness({ user, response = { ok: true, status: 201, data: { id: 'listin
       return { ok: response.ok, status: response.status, json: async () => response.data }
     },
   })
-  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, getBuyerFilters, saveBuyerFilters, decideProperty, getMatches, getPendingCandidates, decideCandidate, getProposals, getProposal, sendProposal, respondToProposal };', context)
+  vm.runInContext(source + '\nthis.api = { publishProperty, exploreProperties, decideProperty, getConfirmedMatches, getPendingCandidates, decideCandidate, getProposals, getProposal, createProposal, resolveProposal, getSearchPreferences, saveSearchPreferences, resetSearchPreferences, getFilterOptions };', context)
   return { api: context.api, calls, auth }
 }
 
@@ -103,31 +106,70 @@ test('explores with the cursor-based US4 API contract', async () => {
   assert.match(calls[0][1].headers.Authorization, /^Bearer /)
 })
 
-test('reads and saves buyer filters with the authenticated preferences contract', async () => {
-  const filters = {
-    price_min: '500.00',
-    price_max: null,
-    surface_min: null,
-    surface_max: '90.00',
-    bedrooms_min: 2,
-    bathrooms_min: null,
-    people_min: 1,
-    shared_accommodation: false,
+test('reads confirmed matches with authentication and an opaque pagination cursor', async () => {
+  const { api, calls } = harness()
+  const { signal } = new AbortController()
+
+  await api.getConfirmedMatches(null, signal)
+  await api.getConfirmedMatches('opaque cursor/with spaces')
+
+  assert.deepEqual(calls.map(([path]) => path), [
+    '/api/matches?limit=20',
+    '/api/matches?limit=20&cursor=opaque+cursor%2Fwith+spaces',
+  ])
+  assert.equal(calls[0][1].method, 'GET')
+  assert.equal(calls[0][1].headers.Authorization, 'Bearer firebase-id-token')
+  assert.equal(calls[0][1].signal, signal)
+})
+
+test('filters both seller lists and sends decisions for a specific candidacy', async () => {
+  const { api, calls } = harness()
+  await api.getPendingCandidates('page two', undefined, 'home/one')
+  await api.getConfirmedMatches(null, undefined, 'home/one')
+  await api.decideCandidate('match/one', 'LIKE')
+  await api.decideCandidate('match/two', 'PASS')
+  assert.deepEqual(calls.map(([path]) => path), [
+    '/api/candidatos?limit=20&cursor=page+two&inmueble=home%2Fone',
+    '/api/matches?limit=20&inmueble=home%2Fone',
+    '/api/matches/match%2Fone/decision-vendedor',
+    '/api/matches/match%2Ftwo/decision-vendedor',
+  ])
+  assert.deepEqual(calls.map(([, options]) => options.method), ['GET', 'GET', 'POST', 'POST'])
+  for (const [, options] of calls) assert.equal(options.headers.Authorization, 'Bearer firebase-id-token')
+  assert.equal(calls[2][1].headers['Content-Type'], 'application/json')
+  assert.deepEqual(JSON.parse(calls[2][1].body), { decision: 'LIKE' })
+  assert.deepEqual(JSON.parse(calls[3][1].body), { decision: 'PASS' })
+})
+
+test('preserves decision response statuses and network errors for seller actions', async () => {
+  for (const status of [401, 409, 500]) {
+    const { api } = harness({ response: { ok: false, status, data: { error: 'failed' } } })
+    const result = await api.decideCandidate('candidate', 'LIKE')
+    assert.equal(result.ok, false)
+    assert.equal(result.status, status)
   }
-  const { api, calls } = harness({
-    response: { ok: true, status: 200, data: { filters } },
-  })
+  const { api } = harness({ networkFailure: true })
+  await assert.rejects(api.decideCandidate('candidate', 'LIKE'), /offline/)
+  await assert.rejects(api.getPendingCandidates(), /offline/)
+  await assert.rejects(api.getConfirmedMatches(), /offline/)
+})
 
-  const loaded = await api.getBuyerFilters()
-  await api.saveBuyerFilters(filters)
-
-  assert.equal(loaded.data.filters, filters)
-  assert.equal(calls[0][0], '/api/auth/preferences')
-  assert.equal(calls[0][1].cache, 'no-store')
-  assert.equal(calls[1][0], '/api/auth/preferences')
-  assert.equal(calls[1][1].method, 'PUT')
-  assert.equal(calls[1][1].headers['Content-Type'], 'application/json')
-  assert.deepEqual(JSON.parse(calls[1][1].body), filters)
+test('queries and creates proposals using the authenticated US9 API', async () => {
+  const { api, calls } = harness()
+  await api.getProposals('opaque cursor')
+  await api.getProposal('proposal/one')
+  await api.createProposal('home-1', 'match-1', 'request-1')
+  await api.resolveProposal('proposal/one', 'cancelar')
+  assert.deepEqual(calls.map(([path]) => path), [
+    '/api/propuestas?limit=20&cursor=opaque+cursor',
+    '/api/propuestas/proposal%2Fone',
+    '/api/propuestas',
+    '/api/propuestas/proposal%2Fone/cancelar',
+  ])
+  assert.deepEqual(calls.map(([, options]) => options.method), ['GET', 'GET', 'POST', 'POST'])
+  for (const [, options] of calls) assert.equal(options.headers.Authorization, 'Bearer firebase-id-token')
+  assert.deepEqual(JSON.parse(calls[2][1].body), { listing_id: 'home-1', match_id: 'match-1', request_id: 'request-1' })
+  assert.deepEqual(JSON.parse(calls[3][1].body), {})
 })
 
 test('sends decisions to the selected listing endpoint with only the decision', async () => {
@@ -141,56 +183,20 @@ test('sends decisions to the selected listing endpoint with only the decision', 
   assert.deepEqual(JSON.parse(calls[0][1].body), { decision: 'LIKE' })
 })
 
-test('loads private match and pending-candidate pages with the shared cursor contract', async () => {
+test('uses the buyer search preference and filter-option endpoints', async () => {
   const { api, calls } = harness()
 
-  await api.getMatches({ limit: 12, cursor: 'match cursor' })
-  await api.getPendingCandidates()
-
-  assert.equal(calls[0][0], '/api/matches?limit=12&cursor=match+cursor')
-  assert.equal(calls[1][0], '/api/matches/candidatos?limit=20')
-  assert.equal(calls[0][1].cache, 'no-store')
-  assert.match(calls[0][1].headers.Authorization, /^Bearer firebase-id-token$/)
-})
-
-test('sends seller decisions only to the selected candidate', async () => {
-  const { api, calls } = harness()
-
-  await api.decideCandidate('candidate/id', 'ACCEPT')
-
-  assert.equal(calls[0][0], '/api/matches/candidaturas/candidate%2Fid/decision')
-  assert.equal(calls[0][1].method, 'POST')
-  assert.equal(calls[0][1].headers['Content-Type'], 'application/json')
-  assert.deepEqual(JSON.parse(calls[0][1].body), { decision: 'ACCEPT' })
-})
-
-test('preserves listing availability in existing matches', async () => {
-  const items = [
-    { id: 'match-closed', listing: { id: 'closed', available: false } },
-    { id: 'match-open', listing: { id: 'open', available: true } },
-  ]
-  const { api } = harness({ response: { ok: true, status: 200, data: { items } } })
-
-  const result = await api.getMatches()
-
-  assert.deepEqual(result.data.items.map(({ listing }) => listing.available), [false, true])
-})
-
-test('uses the private proposal paths and keeps the idempotency key supplied by the caller', async () => {
-  const { api, calls } = harness()
-
-  await api.getProposals({ cursor: 'proposal cursor' })
-  await api.getProposal('proposal/id')
-  await api.sendProposal('listing/id', 'buyer-uid', 'existing-intent-key')
-  await api.respondToProposal('proposal/id', 'CANCEL')
+  await api.getSearchPreferences()
+  await api.getFilterOptions()
+  await api.saveSearchPreferences({ bedrooms: 0, is_shared: false })
+  await api.resetSearchPreferences()
 
   assert.deepEqual(calls.map(([path]) => path), [
-    '/api/propuestas?limit=20&cursor=proposal+cursor',
-    '/api/propuestas/proposal%2Fid',
-    '/api/inmuebles/listing%2Fid/propuestas',
-    '/api/propuestas/proposal%2Fid/decision',
+    '/api/exploracion/filtros',
+    '/api/inmuebles/opciones-filtro',
+    '/api/exploracion/filtros',
+    '/api/exploracion/filtros',
   ])
-  for (const [, request] of calls) assert.equal(request.headers.Authorization, 'Bearer firebase-id-token')
-  assert.deepEqual(JSON.parse(calls[2][1].body), { buyer_uid: 'buyer-uid', idempotency_key: 'existing-intent-key' })
-  assert.deepEqual(JSON.parse(calls[3][1].body), { decision: 'CANCEL' })
+  assert.deepEqual(calls.map(([, options]) => options.method), ['GET', 'GET', 'PUT', 'DELETE'])
+  assert.deepEqual(JSON.parse(calls[2][1].body), { bedrooms: 0, is_shared: false })
 })
