@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { Children, cloneElement, isValidElement, useState } from 'react'
 
 /**
  * Campo de formulario reutilizable con soporte de error accesible.
@@ -24,9 +24,16 @@ export function FormField({ id, label, error, children, type, ...inputProps }) {
         // Render de select u otros elementos personalizados
         <div
           className={`form-field__input-wrapper ${children.type === 'select' ? 'form-field__select-wrapper' : ''} ${error ? 'form-field__input-wrapper--error' : ''}`}
-          aria-describedby={errorId}
         >
-          {children}
+          {Children.map(children, (child) => {
+            if (!error || !isValidElement(child) || child.props.id !== id) return child
+            const descriptions = new Set((child.props['aria-describedby'] || '').split(/\s+/).filter(Boolean))
+            descriptions.add(errorId)
+            return cloneElement(child, {
+              'aria-invalid': true,
+              'aria-describedby': [...descriptions].join(' '),
+            })
+          })}
         </div>
       ) : (
         <div className="form-field__input-wrapper">

@@ -380,7 +380,7 @@ export function SellerMatchesPage() {
       }
       if (status === 409) {
         refreshLists()
-        setDecisionState({ saving: false, message: 'Esta candidatura ya tiene una decisión diferente. Hemos actualizado las listas.' })
+        setDecisionState({ saving: false, message: 'Esta candidatura ya tiene una decisión diferente.' })
         return 'conflict'
       }
       if (!ok || data?.id !== matchId || data?.status !== (confirmed ? 'CONFIRMED' : 'REJECTED')) {

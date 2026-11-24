@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getFilterOptions, getSearchPreferences, resetSearchPreferences, saveSearchPreferences } from '../api/properties'
 import { FormField } from './FormField'
 
@@ -51,6 +51,7 @@ export function SearchPreferencesForm({ onCancel, onSaved, onReset, inModal = fa
   const [errors, setErrors] = useState({})
   const [status, setStatus] = useState('loading')
   const [message, setMessage] = useState('')
+  const saving = useRef(false)
 
   useEffect(() => {
     if (!inModal) return undefined
@@ -93,10 +94,12 @@ export function SearchPreferencesForm({ onCancel, onSaved, onReset, inModal = fa
 
   async function apply(event) {
     event.preventDefault()
+    if (saving.current) return
     const validation = validateDraft(draft)
     setErrors(validation)
     setMessage('')
     if (Object.keys(validation).length) return
+    saving.current = true
     setStatus('saving')
     try {
       const result = await saveSearchPreferences(payloadFrom(draft))
@@ -115,10 +118,14 @@ export function SearchPreferencesForm({ onCancel, onSaved, onReset, inModal = fa
     } catch {
       setStatus('ready')
       setMessage('No hay conexión con el servidor. Inténtalo de nuevo.')
+    } finally {
+      saving.current = false
     }
   }
 
   async function reset() {
+    if (saving.current) return
+    saving.current = true
     setStatus('saving')
     setErrors({})
     setMessage('')
@@ -137,6 +144,8 @@ export function SearchPreferencesForm({ onCancel, onSaved, onReset, inModal = fa
     } catch {
       setStatus('ready')
       setMessage('No hay conexión con el servidor. Inténtalo de nuevo.')
+    } finally {
+      saving.current = false
     }
   }
 

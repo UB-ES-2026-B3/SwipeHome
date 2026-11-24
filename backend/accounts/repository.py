@@ -689,7 +689,13 @@ def get_candidates(seller_uid, *, limit, position=None, listing_id=None):
     from google.cloud.firestore_v1.base_query import FieldFilter
 
     client = firestore.client(app=get_app())
-    seller_listings = _seller_match_listings(client, seller_uid, listing_id)
+    seller_listings = {
+        lid: data
+        for lid, data in _seller_match_listings(client, seller_uid, listing_id).items()
+        if listing_availability(data) != "CLOSED"
+    }
+    if not seller_listings:
+        return []
 
     # Backfill legacy matches or sync updated ownership for seller's listings (H1 and H4)
     for lid, ldata in seller_listings.items():
@@ -724,20 +730,28 @@ def get_candidates(seller_uid, *, limit, position=None, listing_id=None):
             "created_at": created_at, "__name__": collection.document(identifier),
         })
     records = []
-    for snapshot in query.limit(limit).stream():
-        data = snapshot.to_dict()
-        if data.get("listing_id") not in seller_listings:
-            continue
-        records.append({
-            "id": snapshot.id,
-            "status": "PENDING",
-            "created_at": data["created_at"],
-            "buyer_uid": data["buyer_uid"],
-            "buyer_name": data.get("buyer_name", ""),
-            "listing_id": data["listing_id"],
-            "listing_title": data.get("listing_title", ""),
-        })
-    return records
+    # Skip ineligible matches before counting them toward the page limit.
+    batch_size = max(limit, 50)
+    while True:
+        batch = query.limit(batch_size).get()
+        for snapshot in batch:
+            data = snapshot.to_dict()
+            if data.get("listing_id") not in seller_listings:
+                continue
+            records.append({
+                "id": snapshot.id,
+                "status": "PENDING",
+                "created_at": data["created_at"],
+                "buyer_uid": data["buyer_uid"],
+                "buyer_name": data.get("buyer_name", ""),
+                "listing_id": data["listing_id"],
+                "listing_title": data.get("listing_title", ""),
+            })
+            if len(records) == limit:
+                return records
+        if len(batch) < batch_size:
+            return records
+        query = query.start_after(batch[-1])
 
 
 def get_confirmed_matches(uid, role, *, limit, position=None, listing_id=None):
