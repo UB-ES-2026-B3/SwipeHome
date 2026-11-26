@@ -834,3 +834,18 @@ Azure se mantiene simulado por las pruebas existentes. `manage.py check`,
 realizado despliegues, commits o push. Los índices compuestos deben publicarse y
 comprobarse en producción: el emulador no certifica su disponibilidad. También
 queda por configurar allí la ejecución periódica del comando de recuperación.
+
+## US11.3–US11.7 · Conversaciones con match
+
+BUYER y SELLER pueden abrir una sola conversación por match CONFIRMED,
+consultar sus cabeceras y enviar o paginar mensajes. Los envíos usan un UUID
+idempotente y un commit Firestore para mensaje, resumen y aviso US7. El
+historial permanece accesible tras pausar o cerrar un anuncio.
+
+El [contrato US11](<../Agents mds/us11_backend.md>) incluye rutas, campos,
+códigos de error, índices, paginación y un ejemplo con dos cuentas. Para ejecutar
+la verificación aislada desde `backend/`:
+
+```powershell
+npx.cmd --yes --package firebase-tools@15.34.1 firebase emulators:exec --project demo-swipehome-us4 --only auth,firestore --config tests/firebase.json ".venv\Scripts\python.exe -B manage.py test properties.test_conversations --verbosity 2"
+```
