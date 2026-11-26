@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { decideProperty, exploreProperties } from '../api/properties'
-import { Logo } from '../components/Logo'
+import { DashboardHeader } from '../components/DashboardHeader'
 import { PropertyDetails, PropertyGallery } from '../components/PropertyDetails'
 import { SearchPreferencesForm } from '../components/SearchPreferencesForm'
 import { useAuth } from '../hooks/useAuth'
@@ -18,15 +17,13 @@ function IconHeart() {
 }
 
 export function BuyerHome() {
-  const { logout, expireSession } = useAuth()
-  const navigate = useNavigate()
+  const { expireSession } = useAuth()
   const [properties, setProperties] = useState([])
   const [status, setStatus] = useState('loading')
   const [error, setError] = useState('')
   const [decisionError, setDecisionError] = useState('')
   const [retryDecision, setRetryDecision] = useState(null)
   const [decisionBusy, setDecisionBusy] = useState(false)
-  const [feedback, setFeedback] = useState('')
   const [offset, setOffset] = useState(0)
   const [dragging, setDragging] = useState(false)
   const [preferencesOpen, setPreferencesOpen] = useState(false)
@@ -94,11 +91,6 @@ export function BuyerHome() {
         const remaining = properties.slice(1)
         setProperties(remaining)
         setRetryDecision(null)
-        setFeedback(
-          decision === 'LIKE'
-            ? 'Interés enviado'
-            : 'Vivienda descartada. Tu decisión se ha guardado.',
-        )
         if (remaining.length === 0 && nextCursor.current) await loadProperties()
       } else if (result.ok) {
         setDecisionError('El servidor no confirmó la decisión. Inténtalo de nuevo.')
@@ -184,24 +176,7 @@ export function BuyerHome() {
 
   return (
     <main className="home-page home-page--buyer">
-      <header className="home-page__header buyer-explorer__header">
-        <Logo size="sm" to="/comprador/inicio" />
-        <div className="buyer-dashboard__account">
-          <span className="buyer-dashboard__role uniform-action">Comprador</span>
-          <button type="button" className="uniform-action" onClick={() => navigate('/comprador/matches')}>
-            Mis matches
-          </button>
-          <button type="button" className="uniform-action" onClick={() => navigate('/notificaciones')}>
-            Notificaciones
-          </button>
-          <button type="button" className="home-page__profile uniform-action" onClick={() => navigate('/mi-perfil')}>
-            Mi perfil
-          </button>
-          <button type="button" className="buyer-dashboard__logout uniform-action" onClick={logout}>
-            Cerrar sesión
-          </button>
-        </div>
-      </header>
+      <DashboardHeader />
       <div className="home-page__content buyer-explorer">
         <div className="buyer-filter-bar">
           <button type="button" className="buyer-filter-bar__button" onClick={() => setPreferencesOpen(true)}>
@@ -221,7 +196,6 @@ export function BuyerHome() {
             <button type="button" className="btn btn--ghost" onClick={() => loadProperties(true)}>Actualizar</button>
           </div>
         )}
-        {feedback && <p className="property-card__feedback" role="status">{feedback}</p>}
         {status === 'ready' && property && (
           <div className="buyer-swipe-deck">
             <article

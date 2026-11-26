@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { getProposal, getProposals, resolveProposal } from '../api/properties'
-import { Logo } from '../components/Logo'
+import { DashboardHeader } from '../components/DashboardHeader'
 import { PropertyDetails, PropertyGallery, PropertyPrice } from '../components/PropertyDetails'
 import { useAuth } from '../hooks/useAuth'
 
@@ -171,9 +171,9 @@ export function BuyerProposalsPage() {
 
   return (
     <main className="home-page home-page--buyer">
-      <header className="home-page__header"><Logo size="sm" to="/comprador/inicio" /></header>
+      <DashboardHeader />
       <div className="home-page__content buyer-matches">
-        <Link className="btn btn--ghost notifications-page__back" to="/comprador/matches"><span aria-hidden="true">&larr;</span> Volver a mis matches</Link>
+        <Link className="btn btn--ghost uniform-action dashboard-back-link" to="/comprador/matches"><span aria-hidden="true">&larr;</span> Volver a mis matches</Link>
         <div className="buyer-matches__heading">
           <h1 className="home-page__title">Propuestas recibidas</h1>
           <button type="button" className="btn btn--ghost" disabled={loading} onClick={() => reload()}>Actualizar</button>

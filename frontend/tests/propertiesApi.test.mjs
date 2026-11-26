@@ -200,3 +200,15 @@ test('uses the buyer search preference and filter-option endpoints', async () =>
   assert.deepEqual(calls.map(([, options]) => options.method), ['GET', 'GET', 'PUT', 'DELETE'])
   assert.deepEqual(JSON.parse(calls[2][1].body), { bedrooms: 0, is_shared: false })
 })
+
+test('preserves listing availability in existing matches', async () => {
+  const items = [
+    { id: 'match-closed', listing: { id: 'closed', availability: 'CLOSED' } },
+    { id: 'match-open', listing: { id: 'open', availability: 'ACTIVE' } },
+  ]
+  const { api } = harness({ response: { ok: true, status: 200, data: { items } } })
+
+  const result = await api.getConfirmedMatches()
+
+  assert.deepEqual(result.data.items.map(({ listing }) => listing.availability), ['CLOSED', 'ACTIVE'])
+})

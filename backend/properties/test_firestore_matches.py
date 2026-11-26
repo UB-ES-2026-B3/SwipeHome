@@ -10,6 +10,7 @@ from uuid import uuid4
 from django.test import Client, SimpleTestCase
 from google.auth.credentials import AnonymousCredentials
 from google.cloud import firestore
+from google.cloud.firestore_v1.transaction import Transaction
 
 from accounts import repository
 from properties.test_discovery import STAMP, listing
@@ -242,6 +243,26 @@ class FirestoreMatchesTests(SimpleTestCase):
 
         final_match = self.collection("matches").document(match_id).get().to_dict()
         self.assertIn(final_match["status"], {"CONFIRMED", "REJECTED"})
+
+    def test_failed_seller_confirmation_leaves_candidate_and_notifications_unchanged(self):
+        response = self.swipe()
+        self.assertEqual(response.status_code, 201)
+        match_id = response.json()["match"]["id"]
+
+        def snapshot():
+            return {
+                name: {row.id: row.to_dict() for row in self.collection(name).stream()}
+                for name in ("matches", "swipes", "notifications")
+            }
+
+        before = snapshot()
+        with patch.object(Transaction, "_commit", side_effect=RuntimeError("private credentials SQL")):
+            response = self.decide_seller(match_id)
+        self.assertEqual(response.status_code, 500)
+        self.assertNotIn("private", response.content.decode())
+        self.assertEqual(snapshot(), before)
+        self.assertEqual(before["matches"][match_id]["status"], "PENDING")
+        self.assertEqual(self.decide_seller(match_id).status_code, 200)
 
     def test_candidate_pagination_stability_without_skips(self):
         # Create 3 homes and candidate swipes

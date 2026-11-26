@@ -643,23 +643,17 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
    ═══════════════════════════════════════════════════════════════════ */
 .property-page {
   min-height: 100vh;
-  padding: 104px var(--sp-4) var(--sp-8);
+  padding-bottom: var(--sp-8);
   background: var(--c-gray-50);
 }
 .property-page__header,
 .property-form,
 .property-success {
-  width: 100%;
-  max-width: 760px;
+  width: min(100% - 32px, 760px);
   margin: 0 auto;
 }
-.property-page__header { margin-bottom: var(--sp-3); }
-.property-page__back {
-  margin-bottom: var(--sp-2);
-  color: var(--c-gray-700);
-  text-decoration: underline;
-  text-underline-offset: 3px;
-}
+.property-page__header { padding-top: var(--sp-6); margin-bottom: var(--sp-3); }
+.property-page__back { width: fit-content; }
 .property-page__title {
   font-size: 2rem;
   font-weight: 900;
@@ -742,7 +736,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 .property-photos__remove:disabled { opacity: 0.5; cursor: not-allowed; }
 .property-success { display: flex; flex-direction: column; gap: var(--sp-2); }
-.property-success .home-page__logout { width: fit-content; margin: 0 auto; }
+.property-success .dashboard-back-link { width: fit-content; margin: 0 auto; }
 .property-form .register-form__submit { margin-top: 0; }
 .property-form .register-form__submit:disabled { cursor: progress; }
 
@@ -962,11 +956,14 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 
 .buyer-matches {
-  width: min(100% - 32px, 960px);
+  width: min(100% - 32px, 800px);
+  margin: 0 auto;
+  padding: var(--sp-4) 0;
   text-align: left;
 }
 .buyer-matches .property-explorer__message { margin-inline: auto; }
-.buyer-matches__heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); }
+.buyer-matches__heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--sp-2); margin-bottom: var(--sp-3); }
+.buyer-matches__actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); }
 .buyer-matches__list {
   display: grid;
   gap: var(--sp-3);
@@ -1015,7 +1012,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 .property-availability { color: var(--c-gray-700); font-size: .875rem; font-weight: 700; margin-bottom: var(--sp-2); }
 
 .seller-matches__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2); }
-.notifications-page__back { display: inline-flex; gap: 8px; margin-bottom: var(--sp-2); }
+.dashboard-back-link { display: inline-flex; align-items: center; gap: 8px; margin-bottom: var(--sp-2); }
 .seller-matches { max-width: 1200px; }
 .seller-matches > .home-page__title { font-size: 1.75rem; line-height: 1.2; }
 .seller-matches__layout { display: grid; grid-template-columns: minmax(0, 420px) minmax(0, 1fr); align-items: start; gap: var(--sp-6); margin-top: var(--sp-4); }
@@ -1100,8 +1097,19 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   min-height: 64px;
   padding: var(--sp-2) var(--sp-6);
   background: var(--c-gray-50);
-  border-bottom: 1px solid var(--c-gray-100);
+  border-bottom: 0;
 }
+.dashboard-header { gap: var(--sp-2); }
+.dashboard-header__navigation {
+  display: flex;
+  flex: 1 1 auto;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+.dashboard-header__link { text-decoration: none; }
+.dashboard-header__account { display: flex; align-items: center; gap: var(--sp-2); }
 .seller-dashboard__account {
   display: flex;
   align-items: center;
@@ -1150,6 +1158,10 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 .buyer-dashboard__logout:hover { background: var(--c-gray-700); }
 .seller-dashboard__publish {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   min-height: 40px;
   padding: 0 24px;
   color: var(--c-white);
@@ -1160,6 +1172,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 }
 .seller-dashboard__publish:hover { background: var(--c-red-dark); }
 .seller-dashboard__list { margin-top: var(--sp-6); }
+.seller-dashboard__home-actions { margin-bottom: var(--sp-4); }
 .seller-dashboard__list h1 {
   margin-bottom: var(--sp-3);
   font-size: 2rem;
@@ -1256,7 +1269,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   min-height: 64px;
   padding: var(--sp-2) var(--sp-6);
   background: var(--c-gray-50);
-  border-bottom: 1px solid var(--c-gray-100);
+  border-bottom: 0;
 }
 .publish-page__inner {
   width: 100%;
@@ -1488,7 +1501,7 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   min-height: 64px;
   padding: var(--sp-2) var(--sp-6);
   background: var(--c-gray-50);
-  border-bottom: 1px solid var(--c-gray-100);
+  border-bottom: 0;
 }
 .home-page__profile,
 .seller-dashboard__profile {
@@ -1680,6 +1693,11 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
 
 @media (max-width: 600px) {
   .home-page__header { padding: var(--sp-2); }
+  .dashboard-header { flex-wrap: wrap; }
+  .dashboard-header__navigation { order: 3; flex-basis: 100%; justify-content: flex-end; }
+  .dashboard-header__link { flex: 0 1 auto; }
+  .dashboard-header__account .buyer-dashboard__role,
+  .dashboard-header__account .seller-dashboard__role { display: none; }
   .profile-page__header { padding: 12px var(--sp-2); }
   .profile-page__header-actions { gap: var(--sp-1); }
   .profile-page__back,
@@ -1691,6 +1709,9 @@ button { font-family: var(--font); cursor: pointer; border: none; background: no
   .property-card__gallery img,
   .property-card__no-photo { height: 220px; }
   .property-card__details { grid-template-columns: repeat(2, 1fr); }
+  .buyer-matches { width: min(100% - 24px, 800px); padding: var(--sp-2) 0; }
+  .buyer-matches__actions { width: 100%; }
+  .buyer-matches__actions .btn { flex: 1 1 auto; }
 }
 
 .login-form__reset-submit {

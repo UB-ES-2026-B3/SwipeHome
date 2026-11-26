@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { createProposal, decideCandidate, getActiveProperties, getConfirmedMatches, getPendingCandidates, getProposals, resolveProposal } from '../api/properties'
 import { clearProposalRequestId, createProposalRequestId, getProposalRequestId, proposalRequestKey } from '../api/proposalRequests'
-import { Logo } from '../components/Logo'
+import { DashboardHeader } from '../components/DashboardHeader'
 import { PropertyDetails, PropertyGallery, PropertyPrice } from '../components/PropertyDetails'
 import { useAuth } from '../hooks/useAuth'
 
@@ -97,16 +97,10 @@ function MatchSection({ pending = false, propertyId, saving, onDecision, expireS
           {page.items.map((item) => {
             const buyer = item.buyer?.name || 'Comprador sin nombre'
             const listing = item.listing?.title || 'Vivienda sin título'
-            const timestamp = pending ? item.created_at : item.confirmed_at
-            const date = timestamp && new Date(timestamp)
             return (
               <li className="seller-dashboard__notification seller-matches__item" key={item.id}>
                 <div className="seller-matches__summary">
                   <h3>{buyer}</h3>
-                  <p>{listing}</p>
-                  {date && !Number.isNaN(date.getTime()) && (
-                    <p className="seller-matches__date">{pending ? 'Interés: ' : 'Confirmación: '}<time dateTime={timestamp}>{dateFormat.format(date)}</time></p>
-                  )}
                 </div>
                 {pending && (
                   <div className="seller-matches__actions" role="group" aria-label={`Candidatura de ${buyer} para ${listing}`}>
@@ -380,7 +374,7 @@ export function SellerMatchesPage() {
       }
       if (status === 409) {
         refreshLists()
-        setDecisionState({ saving: false, message: 'Esta candidatura ya tiene una decisión diferente. Hemos actualizado las listas.' })
+        setDecisionState({ saving: false, message: 'Esta candidatura ya tiene una decisión diferente.' })
         return 'conflict'
       }
       if (!ok || data?.id !== matchId || data?.status !== (confirmed ? 'CONFIRMED' : 'REJECTED')) {
@@ -391,7 +385,7 @@ export function SellerMatchesPage() {
         refreshSelection()
         setActiveTab('confirmed')
       }
-      setDecisionState({ saving: false, message: confirmed ? 'Match confirmado.' : 'Candidatura rechazada.' })
+      setDecisionState({ saving: false, message: confirmed ? '' : 'Candidatura rechazada.' })
       return 'saved'
     } catch {
       setDecisionState({ saving: false, message: '' })
@@ -403,11 +397,9 @@ export function SellerMatchesPage() {
 
   return (
     <main className="seller-dashboard">
-      <header className="home-page__header">
-        <Logo size="sm" to="/vendedor/inicio" />
-      </header>
+      <DashboardHeader />
       <div className="seller-dashboard__content seller-matches">
-        <Link className="btn btn--ghost notifications-page__back" to="/vendedor/inicio">
+        <Link className="btn btn--ghost uniform-action dashboard-back-link" to="/vendedor/inicio">
           <span aria-hidden="true">&larr;</span> Volver al inicio
         </Link>
         <h1 className="home-page__title">Candidatos y matches</h1>
@@ -470,7 +462,8 @@ export function SellerMatchesPage() {
                 }}>Actualizar</button>
               </div>
               <p className="seller-matches__feedback" role="status">{decisionState.message}</p>
-              <section className="seller-selection" aria-labelledby="selection-title">
+              {(currentSelection.loading || currentSelection.error || currentSelection.items.length > 0) && (
+                <section className="seller-selection" aria-labelledby="selection-title">
                   <h2 id="selection-title">Selección de inquilino</h2>
                   {currentSelection.loading && <p className="seller-selection__empty" role="status">Cargando propuestas…</p>}
                   {currentSelection.error && (
@@ -503,6 +496,7 @@ export function SellerMatchesPage() {
                     </>
                   )}
                 </section>
+                )}
               <div className="seller-matches__tabs" role="tablist" aria-label="Candidaturas de la vivienda">
                 <button type="button" role="tab" id="seller-tab-pending" aria-controls="seller-panel-pending"
                   aria-selected={activeTab === 'pending'} tabIndex={activeTab === 'pending' ? 0 : -1}

@@ -1,8 +1,7 @@
 import { useState } from 'react'
-import { useNavigate } from 'react-router-dom'
 import { changePassword, updateProfile } from '../api/auth'
 import { FormField } from '../components/FormField'
-import { Logo } from '../components/Logo'
+import { DashboardHeader } from '../components/DashboardHeader'
 import { SearchPreferencesForm } from '../components/SearchPreferencesForm'
 import { useAuth } from '../hooks/useAuth'
 
@@ -49,8 +48,7 @@ function apiError(data, fallback) {
 }
 
 export function ProfilePage() {
-  const { user, loading, setUser, logout, loggingOut } = useAuth()
-  const navigate = useNavigate()
+  const { user, loading, setUser, loggingOut } = useAuth()
   const [profile, setProfile] = useState({ name: user?.name || '', email: user?.email || '' })
   const [profileErrors, setProfileErrors] = useState({})
   const [profileMessage, setProfileMessage] = useState(null)
@@ -150,31 +148,12 @@ export function ProfilePage() {
     }
   }
 
-  async function handleLogout() {
-    const success = await logout()
-    if (success) {
-      setPasswords({ currentPassword: '', newPassword: '', confirmation: '' })
-      setVisiblePasswords({ current: false, new: false, confirmation: false })
-      navigate('/', { replace: true })
-    }
-  }
-
   return (
     <main className="profile-page">
-      <header className="profile-page__header">
-        <Logo size="sm" to={user.role === 'SELLER' ? '/vendedor/inicio' : '/comprador/inicio'} />
-        <div className="profile-page__header-actions">
-          <button type="button" className="profile-page__back" onClick={() => navigate(-1)}>
-            Volver
-          </button>
-          <button type="button" className="profile-page__logout uniform-action" onClick={handleLogout} disabled={loggingOut}>
-            {loggingOut ? 'Cerrando sesión…' : 'Cerrar sesión'}
-          </button>
-        </div>
-      </header>
+      <DashboardHeader />
 
       <div className="profile-page__content">
-        <h1>Mi perfil</h1>
+        <h1>¡Hola, {user.name}!</h1>
         <p className="profile-page__subtitle">Consulta y actualiza tus datos de cuenta.</p>
 
         <section className="profile-card" aria-labelledby="account-data-title">

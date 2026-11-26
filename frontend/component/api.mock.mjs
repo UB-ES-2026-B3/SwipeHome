@@ -1,0 +1,17 @@
+const call = (name) => (...args) => window.qa.call(name, args)
+
+export const exploreProperties = call('exploreProperties')
+export const decideProperty = call('decideProperty')
+export const getConfirmedMatches = call('getConfirmedMatches')
+export const getPendingCandidates = call('getPendingCandidates')
+export const decideCandidate = call('decideCandidate')
+export const getSearchPreferences = call('getSearchPreferences')
+export const saveSearchPreferences = call('saveSearchPreferences')
+export const createProposal = call('createProposal')
+export const getProposals = call('getProposals')
+export const getProposal = call('getProposal')
+export const resolveProposal = call('resolveProposal')
+
+export const getActiveProperties = call('getActiveProperties')
+export const getFilterOptions = call('getFilterOptions')
+export const resetSearchPreferences = call('resetSearchPreferences')
