@@ -29,7 +29,7 @@ privado sin caché. Los cuerpos de mutación son objetos JSON, sin campos adicio
 | POST | `/api/propuestas/{id}/rechazar` | BUYER; `{}` | 200 REJECTED. |
 | POST | `/api/propuestas/{id}/cancelar` | SELLER; `{}` | 200 CANCELLED. |
 | PATCH | `/api/inmuebles/{id}` | SELLER; todos los campos canónicos de US3, sin fotos | 200 vivienda editada. |
-| PUT | `/api/inmuebles/{id}/disponibilidad` | SELLER; `{"availability":"ACTIVE"}` o PAUSED | 200 `{id,availability}`. |
+| PUT | `/api/inmuebles/{id}/disponibilidad` | SELLER; `{"availability":"ACTIVE","version":N}` o PAUSED | 200 `{id,availability,version}`. |
 
 Ejemplo de creación:
 
