@@ -34,6 +34,7 @@ from firebase_admin import auth, firestore
 from .azure_storage import get_container_client
 from .fields import normalize_account_email
 from .firebase import get_app
+from .pagination import timestamp
 
 logger = logging.getLogger(__name__)
 
@@ -442,6 +443,8 @@ def get_notifications(uid, *, limit, position=None):
             related = {field: data[field] for field in fields}
         if "listing_id" in data and "match_id" not in data:
             related = {"listing_id": data["listing_id"], "listing_title": data.get("listing_title", "")}
+        if data["type"] == "MESSAGE" and isinstance(data.get("conversation_id"), str):
+            related["conversation_id"] = data["conversation_id"]
         records.append({
             **related,
             "id": snapshot.id, "type": data["type"],
@@ -1544,3 +1547,207 @@ def update_listing_full(
         _cleanup_removed_blob(p)
 
     return get_listing(listing_id)
+
+
+CONVERSATIONS_COLLECTION = "conversations"
+CONVERSATION_MESSAGES_SUBCOLLECTION = "messages"
+
+
+def _conversation_match(tx, client, user, match_id, *, opening=False):
+    match = client.collection(MATCHES_COLLECTION).document(match_id).get(transaction=tx).to_dict()
+    if not match:
+        raise MatchNotFound()
+    if user.role == "BUYER" and match.get("buyer_uid") != user.uid:
+        raise MatchNotFound()
+    listing = client.collection(LISTINGS_COLLECTION).document(match["listing_id"]).get(transaction=tx).to_dict()
+    if user.role == "SELLER" and (
+        not listing or listing.get("seller_uid") != user.uid or match.get("seller_uid", user.uid) != user.uid
+    ):
+        raise MatchNotFound()
+    if match.get("status") != "CONFIRMED":
+        if opening:
+            raise DecisionConflict()
+        raise MatchNotFound()
+    if not listing or listing.get("seller_uid") != match.get("seller_uid"):
+        raise MatchNotFound()
+    if not match.get("buyer_uid") or not match.get("seller_uid") or match["buyer_uid"] == match["seller_uid"]:
+        raise MatchNotFound()
+    return match, listing
+
+
+def _conversation_access(tx, client, user, ref, snapshot=None):
+    if snapshot is None:
+        snapshot = ref.get(transaction=tx)
+    data = snapshot.to_dict()
+    if data is None:
+        raise MatchNotFound()
+    match, listing = _conversation_match(tx, client, user, ref.id)
+    fields = ("listing_id", "buyer_uid", "seller_uid")
+    if data["match_id"] != ref.id or any(data[field] != match[field] for field in fields):
+        raise MatchNotFound()
+    return data, listing
+
+
+def _conversation_header(user, identifier, data, listing):
+    other_role = "SELLER" if user.role == "BUYER" else "BUYER"
+    other_uid = data["seller_uid"] if other_role == "SELLER" else data["buyer_uid"]
+    profile = get_user_profile(other_uid)
+    last = data["last_message"]
+    summary = None if last is None else {
+        "id": last["id"],
+        "sender_id": last["sender_id"],
+        "content": last["content"],
+        "created_at": timestamp(last["created_at"]),
+    }
+    return {
+        "id": identifier,
+        "match_id": data["match_id"],
+        "other_user": {"id": other_uid, "name": profile["name"] if profile else "", "role": other_role},
+        "inmueble": {
+            "id": data["listing_id"], "title": listing["title"], "status": listing_availability(listing),
+        },
+        "last_message": summary,
+        "created_at": timestamp(data["created_at"]),
+        "updated_at": timestamp(data["updated_at"]),
+    }
+
+
+def open_conversation(user, match_id):
+    client = _selection_client()
+    ref = client.collection(CONVERSATIONS_COLLECTION).document(match_id)
+
+    def write(tx):
+        match, _ = _conversation_match(tx, client, user, match_id, opening=True)
+        if ref.get(transaction=tx).exists:
+            return False
+        tx.create(ref, {
+            "match_id": match_id,
+            "listing_id": match["listing_id"],
+            "buyer_uid": match["buyer_uid"],
+            "seller_uid": match["seller_uid"],
+            "sequence": 0,
+            "last_message": None,
+            "created_at": firestore.SERVER_TIMESTAMP,
+            "updated_at": firestore.SERVER_TIMESTAMP,
+        })
+        return True
+
+    created = _run_selection_transaction(client, write)
+    return get_conversation(user, match_id), created
+
+
+def get_conversation(user, identifier):
+    client = _selection_client()
+    ref = client.collection(CONVERSATIONS_COLLECTION).document(identifier)
+    data, listing = _run_selection_transaction(client, lambda tx: _conversation_access(tx, client, user, ref))
+    return _conversation_header(user, identifier, data, listing)
+
+
+def get_conversations(user, *, limit, position):
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    client = _selection_client()
+    collection = client.collection(CONVERSATIONS_COLLECTION)
+    participant = "buyer_uid" if user.role == "BUYER" else "seller_uid"
+    query = (
+        collection.where(filter=FieldFilter(participant, "==", user.uid))
+        .order_by("updated_at", direction=firestore.Query.DESCENDING)
+        .order_by("__name__", direction=firestore.Query.DESCENDING)
+    )
+    if position is not None:
+        updated_at, identifier = position
+        query = query.start_after({"updated_at": updated_at, "__name__": collection.document(identifier)})
+
+    def read(tx):
+        records = []
+        batch_query = query
+        while len(records) < limit:
+            batch = batch_query.limit(limit - len(records)).get(transaction=tx)
+            for snapshot in batch:
+                try:
+                    data, listing = _conversation_access(tx, client, user, snapshot.reference, snapshot)
+                except MatchNotFound:
+                    continue
+                records.append((snapshot.id, data, listing))
+            if len(records) == limit or not batch:
+                break
+            batch_query = query.start_after(batch[-1])
+        return records
+
+    records = _run_selection_transaction(client, read)
+    return [_conversation_header(user, identifier, data, listing) for identifier, data, listing in records]
+
+
+def _message_response(snapshot, identifier):
+    data = snapshot.to_dict()
+    return {
+        "id": snapshot.id,
+        "conversation_id": identifier,
+        "sequence": data["sequence"],
+        "sender": data["sender"],
+        "content": data["content"],
+        "created_at": timestamp(data["created_at"]),
+    }
+
+
+def get_conversation_messages(user, identifier, *, limit, before, after):
+    from google.cloud.firestore_v1.base_query import FieldFilter
+
+    client = _selection_client()
+    ref = client.collection(CONVERSATIONS_COLLECTION).document(identifier)
+    messages = ref.collection(CONVERSATION_MESSAGES_SUBCOLLECTION)
+    if after is not None:
+        query = messages.where(filter=FieldFilter("sequence", ">", after)).order_by("sequence")
+    else:
+        query = messages.order_by("sequence", direction=firestore.Query.DESCENDING)
+        if before is not None:
+            query = query.where(filter=FieldFilter("sequence", "<", before))
+
+    def read(tx):
+        _conversation_access(tx, client, user, ref)
+        return query.limit(limit).get(transaction=tx)
+
+    return [_message_response(doc, identifier) for doc in _run_selection_transaction(client, read)]
+
+
+def send_conversation_message(user, identifier, key, content):
+    client = _selection_client()
+    ref = client.collection(CONVERSATIONS_COLLECTION).document(identifier)
+    message_id = decision_key(identifier, decision_key(user.uid, key))
+    message_ref = ref.collection(CONVERSATION_MESSAGES_SUBCOLLECTION).document(message_id)
+    notice_id = "message-" + message_id
+    notice_ref = client.collection(NOTIFICATIONS_COLLECTION).document(notice_id)
+
+    def write(tx):
+        data, _ = _conversation_access(tx, client, user, ref)
+        previous = message_ref.get(transaction=tx).to_dict()
+        if previous is not None:
+            if previous["content"] != content:
+                raise DecisionConflict()
+            return False
+
+        sequence = data["sequence"] + 1
+        now = firestore.SERVER_TIMESTAMP
+        recipient = data["seller_uid"] if user.role == "BUYER" else data["buyer_uid"]
+        tx.create(message_ref, {
+            "sequence": sequence,
+            "sender": {"id": user.uid, "name": user.name, "role": user.role},
+            "content": content,
+            "created_at": now,
+        })
+        tx.update(ref, {
+            "sequence": sequence,
+            "last_message": {"id": message_id, "sender_id": user.uid, "content": content, "created_at": now},
+            "updated_at": now,
+        })
+        tx.create(notice_ref, {
+            "recipient_uid": recipient,
+            "type": "MESSAGE",
+            "message": "Has recibido un nuevo mensaje.",
+            "conversation_id": identifier,
+            "created_at": now,
+        })
+        return True
+
+    created = _run_selection_transaction(client, write)
+    return _message_response(message_ref.get(), identifier), created

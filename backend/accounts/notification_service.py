@@ -28,5 +28,7 @@ def list_notifications(user, params):
             })
         if "listing_id" in row and "match_id" not in row:
             item["listing"] = {"id": row["listing_id"], "title": row.get("listing_title", "")}
+        if "conversation_id" in row:
+            item["conversation_id"] = row["conversation_id"]
         items.append(item)
     return page_result(items, limit, user.uid, salt=CURSOR_SALT)

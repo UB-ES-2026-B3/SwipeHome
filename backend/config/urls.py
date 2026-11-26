@@ -15,6 +15,9 @@ from accounts.notification_views import notifications
 from config.health import health
 from properties.views import create_property
 from properties.discovery_views import explore_listings, listing_decision
+from properties.conversation_views import (
+    conversation_detail, conversation_list, conversation_messages, open_conversation,
+)
 from properties.match_views import candidates_view, matches_view, seller_match_decision
 from properties.views import decide_property
 
@@ -43,6 +46,10 @@ urlpatterns = [
     path("api/inmuebles", create_property, name="create-property"),
     path("api/inmuebles/decidir", decide_property, name="decide-property"),
     path("api/matches", matches_view, name="matches"),
+    path("api/matches/<str:match_id>/conversacion", open_conversation, name="open-conversation"),
+    path("api/conversaciones", conversation_list, name="conversation-list"),
+    path("api/conversaciones/<str:conversation_id>", conversation_detail, name="conversation-detail"),
+    path("api/conversaciones/<str:conversation_id>/mensajes", conversation_messages, name="conversation-messages"),
     path("api/candidatos", candidates_view, name="candidates"),
     path("api/matches/<str:match_id>/decision-vendedor", seller_match_decision, name="seller-match-decision"),
     path("api/inmuebles/mios", my_listings, name="my-listings"),

@@ -257,3 +257,11 @@ Un vendedor puede tener varios inmuebles; cada inmueble pertenece a un vendedor.
 No está resuelto si «inmueble» y «anuncio» serán entidades separadas. Se han utilizado de forma conjunta en el backlog inicial; no duplicarlas automáticamente en el diseño.
 
 </details>
+
+## US11 · Comunicación entre usuarios con match
+
+[US11 backend](us11_backend.md) documenta los endpoints privados HTTP con
+Firebase Bearer, el historial por secuencia y el commit conjunto de mensaje,
+resumen y aviso US7. Un match CONFIRMED habilita una conversación compartida.
+US9/10 conservan el match cuando cierran o pausan un anuncio y US11 consulta
+esa disponibilidad para la cabecera.
